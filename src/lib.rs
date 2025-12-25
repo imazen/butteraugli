@@ -154,11 +154,17 @@ impl std::fmt::Display for ButteraugliError {
                 write!(
                     f,
                     "image dimensions don't match: {}x{} vs {}x{}",
-                    first.0, first.1, second.0, second.1  // Cannot inline tuple fields
+                    first.0,
+                    first.1,
+                    second.0,
+                    second.1 // Cannot inline tuple fields
                 )
             }
             Self::InvalidBufferSize { expected, actual } => {
-                write!(f, "buffer size {actual} doesn't match expected size {expected}")
+                write!(
+                    f,
+                    "buffer size {actual} doesn't match expected size {expected}"
+                )
             }
             Self::InvalidDimensions { width, height } => {
                 write!(f, "invalid dimensions: {width}x{height} (minimum 8x8)")
