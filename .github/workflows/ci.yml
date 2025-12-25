@@ -39,8 +39,8 @@ jobs:
         os:
           - ubuntu-latest      # Ubuntu 24.04
           - ubuntu-22.04       # Ubuntu 22.04 LTS
+          - ubuntu-20.04       # Ubuntu 20.04 LTS
           - macos-latest       # macOS ARM64 (Apple Silicon)
-          - macos-13           # macOS x86_64 (Intel)
           - windows-latest     # Windows Server 2022
           - windows-2019       # Windows Server 2019
 
