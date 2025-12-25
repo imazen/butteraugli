@@ -448,7 +448,7 @@ mod tests {
 
         // Edge detection patterns should differ
         assert!(
-            edge != uniform,
+            (edge - uniform).abs() > 1e-6,
             "Malta should differ at edge vs uniform region"
         );
     }

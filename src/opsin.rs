@@ -335,10 +335,7 @@ mod tests {
             let exact = x.log2();
             assert!(
                 (fast - exact).abs() < 0.1,
-                "fast_log2f({}) = {}, expected {}",
-                x,
-                fast,
-                exact
+                "fast_log2f({x}) = {fast}, expected {exact}"
             );
         }
     }

@@ -252,7 +252,7 @@ mod tests {
         for v in 0..=255u8 {
             let linear = srgb_u8_to_linear(v);
             let back = linear_to_srgb_u8(linear);
-            assert!((v as i16 - back as i16).abs() <= 1, "Failed for {}", v);
+            assert!((v as i16 - back as i16).abs() <= 1, "Failed for {v}");
         }
     }
 
@@ -278,30 +278,15 @@ mod tests {
             let tol = 15i16;
             assert!(
                 (r as i16 - r2 as i16).abs() <= tol,
-                "R mismatch for ({},{},{}): {} vs {}",
-                r,
-                g,
-                b,
-                r,
-                r2
+                "R mismatch for ({r},{g},{b}): {r} vs {r2}"
             );
             assert!(
                 (g as i16 - g2 as i16).abs() <= tol,
-                "G mismatch for ({},{},{}): {} vs {}",
-                r,
-                g,
-                b,
-                g,
-                g2
+                "G mismatch for ({r},{g},{b}): {g} vs {g2}"
             );
             assert!(
                 (b as i16 - b2 as i16).abs() <= tol,
-                "B mismatch for ({},{},{}): {} vs {}",
-                r,
-                g,
-                b,
-                b,
-                b2
+                "B mismatch for ({r},{g},{b}): {b} vs {b2}"
             );
         }
     }
@@ -313,7 +298,7 @@ mod tests {
         // so X may not be exactly 0 for gray values
         for gray in [0u8, 64, 128, 192, 255] {
             let (x, _y, _b) = srgb_to_xyb(gray, gray, gray);
-            assert!(x.abs() < 0.1, "X should be small for gray, got {}", x);
+            assert!(x.abs() < 0.1, "X should be small for gray, got {x}");
         }
     }
 }

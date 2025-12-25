@@ -2,6 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/butteraugli-oxide.svg)](https://crates.io/crates/butteraugli-oxide)
 [![Documentation](https://docs.rs/butteraugli-oxide/badge.svg)](https://docs.rs/butteraugli-oxide)
+[![CI](https://github.com/imazen/butteraugli/actions/workflows/ci.yml/badge.svg)](https://github.com/imazen/butteraugli/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/imazen/butteraugli/graph/badge.svg)](https://codecov.io/gh/imazen/butteraugli)
 [![License](https://img.shields.io/crates/l/butteraugli-oxide.svg)](LICENSE)
 
 Pure Rust implementation of Google's **butteraugli** perceptual image quality metric from [libjxl](https://github.com/libjxl/libjxl).
@@ -197,6 +199,45 @@ This crate does NOT accept XYB input directly because there are multiple incompa
 - [Original butteraugli repository](https://github.com/google/butteraugli)
 - [JPEG XL (libjxl)](https://github.com/libjxl/libjxl) - Contains the reference implementation
 - [Butteraugli paper](https://github.com/google/butteraugli/blob/master/doc/butteraugli-theory.pdf)
+
+## Development
+
+### Running CI Locally
+
+To reproduce the CI checks locally:
+
+```bash
+# Format check
+cargo fmt --all -- --check
+
+# Clippy lints
+cargo clippy --lib --tests -- -D warnings
+
+# Build
+cargo build
+
+# Run unit tests
+cargo test --lib
+
+# Run conformance tests
+cargo test --test conformance
+
+# Run reference parity tests
+cargo test --test reference_parity
+```
+
+### Test Coverage
+
+```bash
+# Install cargo-llvm-cov
+cargo install cargo-llvm-cov
+
+# Generate coverage report
+cargo llvm-cov --lib --html
+
+# Open report
+open target/llvm-cov/html/index.html
+```
 
 ## AI-Generated Code Notice
 

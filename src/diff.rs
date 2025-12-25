@@ -520,7 +520,8 @@ fn compute_diffmap_single_resolution(
     let ps2 = separate_frequencies(&xyb2);
 
     // Compute AC differences using Malta filter
-    let mut block_diff_ac = compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
+    let mut block_diff_ac =
+        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
     // This matches C++ MaskPsychoImage which calls CombineChannelsForMasking + Mask
@@ -887,6 +888,8 @@ mod tests {
         // (7+1)/2 = 4
         assert_eq!(sw, 4);
         assert_eq!(sh, 4);
+        // Verify subsampled buffer size
+        assert_eq!(sub_rgb.len(), sw * sh * 3);
     }
 
     #[test]
@@ -899,7 +902,7 @@ mod tests {
         // Should have blended values
         // new = old * (1 - 0.3 * 0.5) + 0.5 * 1.0 = 2.0 * 0.85 + 0.5 = 1.7 + 0.5 = 2.2
         let val = dest.get(0, 0);
-        assert!((val - 2.2).abs() < 0.01, "Expected ~2.2, got {}", val);
+        assert!((val - 2.2).abs() < 0.01, "Expected ~2.2, got {val}");
     }
 
     #[test]

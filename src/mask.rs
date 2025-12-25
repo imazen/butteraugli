@@ -336,7 +336,7 @@ fn test_mask_y_cpp_values() {
     // return 0.2119^2 = 0.0449
 
     let result = mask_y(1.0);
-    println!("MaskY(1.0) = {}", result);
+    println!("MaskY(1.0) = {result}");
 
     // Calculate expected value
     let offset = 0.829591754942;
@@ -348,15 +348,10 @@ fn test_mask_y_cpp_values() {
     let retval = global_scale * (1.0 + c);
     let expected = retval * retval;
 
-    println!(
-        "Expected: {}, c={}, retval={}, global_scale={}",
-        expected, c, retval, global_scale
-    );
+    println!("Expected: {expected}, c={c}, retval={retval}, global_scale={global_scale}");
 
     assert!(
         (result - expected).abs() < 1e-6,
-        "MaskY(1.0) = {}, expected {}",
-        result,
-        expected
+        "MaskY(1.0) = {result}, expected {expected}"
     );
 }
