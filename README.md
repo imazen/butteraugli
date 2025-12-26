@@ -26,7 +26,51 @@ The metric is based on:
 | 1.0 - 2.0 | Subtle differences may be noticeable |
 | > 2.0 | Visible differences between images |
 
-## Usage
+## Command-Line Tool
+
+Install with:
+
+```bash
+cargo install butteraugli-oxide --features cli
+```
+
+### Basic Usage
+
+```bash
+# Compare two images
+butteraugli original.png compressed.jpg
+# Output: Butteraugli score: 1.2345
+
+# Show quality rating
+butteraugli -q original.png compressed.jpg
+# Output: Butteraugli score: 1.2345 (acceptable)
+#         Quality: Noticeable but acceptable
+
+# JSON output for scripting
+butteraugli --json original.png compressed.jpg
+
+# Save difference heatmap
+butteraugli --diffmap diff.png original.png compressed.jpg
+
+# Just the score (for scripting)
+butteraugli --quiet original.png compressed.jpg
+# Output: 1.234500
+```
+
+### Advanced Options
+
+```bash
+# Custom intensity target (default: 80 nits)
+butteraugli --intensity-target 250 hdr_orig.png hdr_comp.png
+
+# High-frequency asymmetry (penalize blur vs ringing)
+butteraugli --hf-asymmetry 1.5 original.png compressed.jpg
+
+# See all options
+butteraugli --help
+```
+
+## Library Usage
 
 Add to your `Cargo.toml`:
 
@@ -154,6 +198,7 @@ let class = butteraugli_fuzzy_class(1.5);  // ~1.25
 ## Features
 
 - **`simd`** (default): Enable SIMD optimizations via the `wide` crate
+- **`cli`**: Build the command-line tool (adds `clap`, `image`, `serde_json` dependencies)
 
 ## Performance
 

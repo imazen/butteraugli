@@ -63,6 +63,9 @@ jobs:
       - name: Build
         run: cargo build
 
+      - name: Build CLI
+        run: cargo build --features cli
+
       - name: Run unit tests
         run: cargo test --lib
 

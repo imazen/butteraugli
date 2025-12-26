@@ -20,10 +20,21 @@ exclude = [
 [features]
 default = ["simd"]
 simd = []
+cli = ["dep:clap", "dep:image", "dep:serde", "dep:serde_json"]
 
 [dependencies]
 # SIMD support
 wide = "0.7"
+
+# CLI dependencies (optional)
+clap = { version = "4.5", features = ["derive"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+
+[[bin]]
+name = "butteraugli"
+required-features = ["cli"]
 
 [dev-dependencies]
 # Image I/O for testing
