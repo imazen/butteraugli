@@ -4,11 +4,11 @@
 //! The goal is to ensure the Rust butteraugli implementation provides meaningful
 //! perceptual quality scores.
 
-use butteraugli_oxide::{
-    compute_butteraugli, ButteraugliParams, BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD,
-};
+mod common;
+
+use butteraugli::{compute_butteraugli, ButteraugliParams, BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Load a PNG file and return RGB data.
 fn load_png(path: &Path) -> Option<(Vec<u8>, usize, usize)> {
@@ -135,13 +135,16 @@ fn test_large_difference_nonzero_score() {
 /// Higher quality should give lower (better) butteraugli scores.
 #[test]
 fn test_score_monotonicity_with_quality() {
-    let path = Path::new("/home/lilith/work/jpegli/testdata/jxl/flower/flower_small.rgb.png");
+    let Some(path) = common::try_get_flower_small_path() else {
+        eprintln!("Skipping test: test image not found. Set JPEGLI_TESTDATA env var.");
+        return;
+    };
     if !path.exists() {
         eprintln!("Skipping test: test image not found at {:?}", path);
         return;
     }
 
-    let (original, width, height) = load_png(path).expect("Failed to load test image");
+    let (original, width, height) = load_png(&path).expect("Failed to load test image");
 
     let qualities = [50, 70, 90];
     let mut prev_score = f64::MAX;
@@ -227,13 +230,16 @@ fn test_diffmap_dimensions() {
 #[test]
 #[ignore] // Requires test image and jpegli encoder
 fn test_jpegli_roundtrip_butteraugli() {
-    let path = Path::new("/home/lilith/work/jpegli/testdata/jxl/flower/flower_small.rgb.png");
+    let Some(path) = common::try_get_flower_small_path() else {
+        eprintln!("Skipping test: test image not found. Set JPEGLI_TESTDATA env var.");
+        return;
+    };
     if !path.exists() {
         eprintln!("Skipping test: test image not found at {:?}", path);
         return;
     }
 
-    let (original, width, height) = load_png(path).expect("Failed to load test image");
+    let (original, width, height) = load_png(&path).expect("Failed to load test image");
 
     // Test at various quality levels
     for quality in [50, 70, 85, 95] {
@@ -272,19 +278,22 @@ fn test_jpegli_roundtrip_butteraugli() {
 #[test]
 #[ignore] // Requires C++ cjpegli build
 fn test_cpp_butteraugli_comparison() {
-    let cjpegli = "/home/lilith/work/jpegli/build/tools/cjpegli";
-    if !Path::new(cjpegli).exists() {
-        eprintln!("Skipping: cjpegli not found at {}", cjpegli);
+    let Some(cjpegli) = common::find_cjpegli() else {
+        eprintln!("Skipping: cjpegli not found. Set CJPEGLI_PATH env var.");
         return;
-    }
+    };
+    let _ = cjpegli; // TODO: use cjpegli for comparison
 
-    let path = Path::new("/home/lilith/work/jpegli/testdata/jxl/flower/flower_small.rgb.png");
+    let Some(path) = common::try_get_flower_small_path() else {
+        eprintln!("Skipping: test image not found. Set JPEGLI_TESTDATA env var.");
+        return;
+    };
     if !path.exists() {
         eprintln!("Skipping: test image not found");
         return;
     }
 
-    let (original, width, height) = load_png(path).expect("Failed to load");
+    let (original, width, height) = load_png(&path).expect("Failed to load");
 
     // Encode with Rust jpegli, decode, measure with Rust butteraugli
     let jpeg_data = encode_jpeg(&original, width as u32, height as u32, 85);

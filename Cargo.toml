@@ -1,11 +1,11 @@
 [package]
-name = "butteraugli-oxide"
+name = "butteraugli"
 version = "0.2.1"
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/imazen/butteraugli"
 homepage = "https://github.com/imazen/butteraugli"
-documentation = "https://docs.rs/butteraugli-oxide"
+documentation = "https://docs.rs/butteraugli"
 readme = "README.md"
 description = "Pure Rust implementation of Google's butteraugli perceptual image quality metric from libjxl"
 keywords = ["image", "quality", "perceptual", "metric", "butteraugli"]
@@ -15,12 +15,19 @@ rust-version = "1.70"
 exclude = [
     # Comparison outputs from local testing
     "comparison_outputs/",
+    # Tests that require jpegli-internals-sys (cpp-parity feature, not on crates.io)
+    "tests/cpp_parity.rs",
+    "tests/cpp_fuzz.rs",
+    "tests/intermediate_values.rs",
+    "tests/step_by_step_comparison.rs",
+    "tests/reference_parity.rs",
 ]
 
 [features]
 default = ["simd"]
 simd = []
 cli = ["dep:clap", "dep:image", "dep:serde", "dep:serde_json"]
+# cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
 
 [dependencies]
 # SIMD support
@@ -31,6 +38,10 @@ clap = { version = "4.5", features = ["derive"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
+
+# For local C++ parity testing, add to .cargo/config.toml:
+# [patch.crates-io]
+# jpegli-internals-sys = { path = "../jpegli-rs/internal/jpegli-internals-sys" }
 
 [[bin]]
 name = "butteraugli"
@@ -52,6 +63,3 @@ proptest = "1.4"
 
 # Date/time for reference data generation
 chrono = "0.4"
-
-# Note: jpegli-sys dev-dependency removed for standalone repo
-# The cpp_* tests that required it are excluded from the package

@@ -5,7 +5,7 @@
 //!
 //! Run with: `cargo test --test reference_parity`
 
-use butteraugli_oxide::{compute_butteraugli, reference_data, ButteraugliParams};
+use butteraugli::{compute_butteraugli, reference_data, ButteraugliParams};
 
 // ============================================================================
 // Image Generation Functions (must match capture_cpp_reference.rs exactly)

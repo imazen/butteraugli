@@ -1,10 +1,10 @@
-# butteraugli-oxide
+# butteraugli
 
-[![Crates.io](https://img.shields.io/crates/v/butteraugli-oxide.svg)](https://crates.io/crates/butteraugli-oxide)
-[![Documentation](https://docs.rs/butteraugli-oxide/badge.svg)](https://docs.rs/butteraugli-oxide)
+[![Crates.io](https://img.shields.io/crates/v/butteraugli.svg)](https://crates.io/crates/butteraugli)
+[![Documentation](https://docs.rs/butteraugli/badge.svg)](https://docs.rs/butteraugli)
 [![CI](https://github.com/imazen/butteraugli/actions/workflows/ci.yml/badge.svg)](https://github.com/imazen/butteraugli/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/imazen/butteraugli/graph/badge.svg)](https://codecov.io/gh/imazen/butteraugli)
-[![License](https://img.shields.io/crates/l/butteraugli-oxide.svg)](LICENSE)
+[![License](https://img.shields.io/crates/l/butteraugli.svg)](LICENSE)
 
 Pure Rust implementation of Google's **butteraugli** perceptual image quality metric from [libjxl](https://github.com/libjxl/libjxl).
 
@@ -31,7 +31,7 @@ The metric is based on:
 Install with:
 
 ```bash
-cargo install butteraugli-oxide --features cli
+cargo install butteraugli --features cli
 ```
 
 ### Basic Usage
@@ -76,7 +76,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-butteraugli-oxide = "0.1"
+butteraugli = "0.1"
 ```
 
 ### Input Formats
@@ -212,13 +212,13 @@ The implementation includes 195 synthetic test cases validated against the C++ l
 
 | Crate | Type | Notes |
 |-------|------|-------|
-| `butteraugli-oxide` | Pure Rust | Full implementation, no C++ dependency |
+| `butteraugli` | Pure Rust | Full implementation, no C++ dependency |
 | `butteraugli` | FFI wrapper | Wraps C++ butteraugli library |
 | `butteraugli-sys` | FFI bindings | Low-level C++ bindings |
 
 ### API Comparison with C++ libjxl
 
-| Feature | C++ butteraugli | butteraugli-oxide |
+| Feature | C++ butteraugli | butteraugli |
 |---------|-----------------|-------------------|
 | Input format | Linear RGB float | sRGB u8 or linear RGB f32 |
 | Bit depth | Any (via float) | 8-bit u8 or f32 |

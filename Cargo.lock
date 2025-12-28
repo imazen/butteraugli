@@ -122,7 +122,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
 
 [[package]]
-name = "butteraugli-oxide"
+name = "butteraugli"
 version = "0.2.1"
 dependencies = [
  "approx",
