@@ -1,6 +1,6 @@
 [package]
 name = "butteraugli"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/imazen/butteraugli"
