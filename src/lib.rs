@@ -18,7 +18,7 @@
 //! ## Example
 //!
 //! ```rust
-//! use butteraugli_oxide::{compute_butteraugli, ButteraugliParams};
+//! use butteraugli::{compute_butteraugli, ButteraugliParams};
 //!
 //! // Create two 8x8 RGB images (must be 8x8 minimum)
 //! let width = 8;
@@ -36,7 +36,7 @@
 //! ## Comparing Different Images
 //!
 //! ```rust
-//! use butteraugli_oxide::{compute_butteraugli, ButteraugliParams, BUTTERAUGLI_GOOD, BUTTERAUGLI_BAD};
+//! use butteraugli::{compute_butteraugli, ButteraugliParams, BUTTERAUGLI_GOOD, BUTTERAUGLI_BAD};
 //!
 //! let width = 16;
 //! let height = 16;
@@ -179,7 +179,7 @@ impl std::error::Error for ButteraugliError {}
 ///
 /// Use the builder pattern to construct:
 /// ```rust
-/// use butteraugli_oxide::ButteraugliParams;
+/// use butteraugli::ButteraugliParams;
 ///
 /// let params = ButteraugliParams::new()
 ///     .with_intensity_target(250.0)  // HDR display

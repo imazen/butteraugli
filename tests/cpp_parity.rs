@@ -6,7 +6,7 @@
 
 mod common;
 
-use butteraugli_oxide::{compute_butteraugli, ButteraugliParams};
+use butteraugli::{compute_butteraugli, ButteraugliParams};
 use jpegli_internals_sys::{
     butteraugli_compare, butteraugli_fast_log2f, butteraugli_gamma, butteraugli_srgb_to_linear,
     BUTTERAUGLI_OK,
@@ -106,7 +106,7 @@ fn test_srgb_to_linear_parity() {
 /// Test FastLog2f parity.
 #[test]
 fn test_fast_log2f_parity() {
-    use butteraugli_oxide::opsin::fast_log2f;
+    use butteraugli::opsin::fast_log2f;
 
     // Test a range of values
     let test_values: Vec<f32> = (1..=1000)
@@ -143,7 +143,7 @@ fn test_fast_log2f_parity() {
 /// Test Gamma function parity.
 #[test]
 fn test_gamma_parity() {
-    use butteraugli_oxide::opsin::gamma;
+    use butteraugli::opsin::gamma;
 
     // Test a range of values
     let test_values: Vec<f32> = (0..=100)

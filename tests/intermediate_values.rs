@@ -4,8 +4,8 @@
 //! Uses synthetic test images stored as constants for reproducibility.
 //! Compares intermediate pipeline stages between Rust and C++ implementations.
 
-use butteraugli_oxide::opsin::srgb_to_xyb_butteraugli;
-use butteraugli_oxide::{compute_butteraugli, ButteraugliParams};
+use butteraugli::opsin::srgb_to_xyb_butteraugli;
+use butteraugli::{compute_butteraugli, ButteraugliParams};
 use jpegli_internals_sys::{
     butteraugli_compare_full, butteraugli_opsin_dynamics, butteraugli_srgb_to_linear,
     BUTTERAUGLI_OK,

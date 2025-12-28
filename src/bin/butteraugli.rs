@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use butteraugli_oxide::{compute_butteraugli, ButteraugliParams, ButteraugliResult, ImageF};
+use butteraugli::{compute_butteraugli, ButteraugliParams, ButteraugliResult, ImageF};
 use clap::{Parser, ValueEnum};
 use image::GenericImageView;
 use serde::Serialize;
