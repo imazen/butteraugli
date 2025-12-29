@@ -8,7 +8,7 @@ homepage.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 description = "Command-line tool for butteraugli perceptual image quality comparison"
-keywords = ["image", "quality", "perceptual", "metric", "butteraugli", "cli"]
+keywords = ["image", "quality", "perceptual", "butteraugli", "cli"]
 categories = ["command-line-utilities", "multimedia::images"]
 readme = "README.md"
 
