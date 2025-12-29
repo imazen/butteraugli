@@ -9,7 +9,7 @@ license = "BSD-3-Clause"
 repository = "https://github.com/imazen/butteraugli"
 homepage = "https://github.com/imazen/butteraugli"
 authors = ["Lilith River <lilith@imazen.io>"]
-rust-version = "1.70"
+rust-version = "1.78"
 
 [workspace.dependencies]
 butteraugli = { path = "butteraugli", version = "0.3.0" }
