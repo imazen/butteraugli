@@ -49,8 +49,8 @@ fn linear_rgb_to_xyb_image(
 fn subsample_2x(input: &Image3F) -> Image3F {
     let in_width = input.width();
     let in_height = input.height();
-    let out_width = (in_width + 1) / 2;
-    let out_height = (in_height + 1) / 2;
+    let out_width = in_width.div_ceil(2);
+    let out_height = in_height.div_ceil(2);
 
     let mut output = Image3F::new(out_width, out_height);
 
@@ -92,8 +92,8 @@ fn subsample_2x(input: &Image3F) -> Image3F {
 
 /// Subsamples an RGB buffer by 2x for multi-resolution processing.
 fn subsample_rgb_2x(rgb: &[u8], width: usize, height: usize) -> (Vec<u8>, usize, usize) {
-    let out_width = (width + 1) / 2;
-    let out_height = (height + 1) / 2;
+    let out_width = width.div_ceil(2);
+    let out_height = height.div_ceil(2);
     let mut output = vec![0u8; out_width * out_height * 3];
 
     // Simple averaging of 2x2 blocks
@@ -583,8 +583,8 @@ fn compute_diffmap_multiresolution(
 
 /// Subsamples linear RGB f32 buffer by 2x for multi-resolution processing.
 fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32>, usize, usize) {
-    let out_width = (width + 1) / 2;
-    let out_height = (height + 1) / 2;
+    let out_width = width.div_ceil(2);
+    let out_height = height.div_ceil(2);
     let mut output = vec![0.0f32; out_width * out_height * 3];
 
     // Simple averaging of 2x2 blocks

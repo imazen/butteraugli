@@ -57,7 +57,7 @@ fn create_solid_png(path: &std::path::Path, r: u8, g: u8, b: u8) {
     let mut raw_data = Vec::with_capacity(height as usize * row_size);
     for _ in 0..height {
         raw_data.push(0); // filter type: none
-        raw_data.extend(std::iter::repeat([r, g, b]).take(width as usize).flatten());
+        raw_data.extend(std::iter::repeat_n([r, g, b], width as usize).flatten());
     }
 
     // Compress with zlib (deflate)
