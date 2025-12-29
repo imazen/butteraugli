@@ -1,0 +1,59 @@
+[package]
+name = "butteraugli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+documentation = "https://docs.rs/butteraugli"
+readme = "../README.md"
+description = "Pure Rust implementation of Google's butteraugli perceptual image quality metric from libjxl"
+keywords = ["image", "quality", "perceptual", "metric", "butteraugli"]
+categories = ["multimedia::images", "algorithms", "graphics"]
+exclude = [
+    # Comparison outputs from local testing
+    "comparison_outputs/",
+    # Tests that require jpegli-internals-sys (cpp-parity feature, not on crates.io)
+    "tests/cpp_parity.rs",
+    "tests/cpp_fuzz.rs",
+    "tests/intermediate_values.rs",
+    "tests/step_by_step_comparison.rs",
+    "tests/reference_parity.rs",
+]
+
+[features]
+default = ["simd"]
+simd = []
+# cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
+cpp-parity = []
+
+[lints.rust]
+# Allow dead code in test utilities (used by cpp-parity tests not published to crates.io)
+dead_code = { level = "allow", priority = -1 }
+unused_imports = { level = "allow", priority = -1 }
+
+[dependencies]
+wide.workspace = true
+
+# For local C++ parity testing, add to .cargo/config.toml:
+# [patch.crates-io]
+# jpegli-internals-sys = { path = "../jpegli-rs/internal/jpegli-internals-sys" }
+
+[dev-dependencies]
+# Image I/O for testing
+png = "0.17"
+
+# JPEG encoding/decoding for roundtrip tests
+mozjpeg = "0.10"
+jpeg-decoder = "0.3"
+
+# Testing utilities
+approx = "0.5"
+
+# Property-based testing
+proptest = "1.4"
+
+# Date/time for reference data generation
+chrono = "0.4"

@@ -1,0 +1,25 @@
+[package]
+name = "butteraugli-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Command-line tool for butteraugli perceptual image quality comparison"
+keywords = ["image", "quality", "perceptual", "metric", "butteraugli", "cli"]
+categories = ["command-line-utilities", "multimedia::images"]
+readme = "README.md"
+
+[[bin]]
+name = "butteraugli"
+path = "src/main.rs"
+
+[dependencies]
+butteraugli.workspace = true
+clap.workspace = true
+image.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+colored.workspace = true

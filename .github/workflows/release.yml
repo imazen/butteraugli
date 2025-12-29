@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v0.3.0)'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: butteraugli
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact: butteraugli
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: butteraugli
+
+          # macOS
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: butteraugli
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: butteraugli
+
+          # Windows
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: butteraugli.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} -p butteraugli-cli
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Strip binary (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            aarch64-linux-gnu-strip target/${{ matrix.target }}/release/${{ matrix.artifact }}
+          else
+            strip target/${{ matrix.target }}/release/${{ matrix.artifact }}
+          fi
+
+      - name: Create archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar -czvf ../../../butteraugli-${{ matrix.target }}.tar.gz ${{ matrix.artifact }}
+
+      - name: Create archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.artifact }}" -DestinationPath "butteraugli-${{ matrix.target }}.zip"
+
+      - name: Upload artifact (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: butteraugli-${{ matrix.target }}
+          path: butteraugli-${{ matrix.target }}.tar.gz
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: butteraugli-${{ matrix.target }}
+          path: butteraugli-${{ matrix.target }}.zip
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec mv {} release/ \;
+          ls -la release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: ${{ github.event.inputs.tag || github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish butteraugli library
+        run: cargo publish -p butteraugli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        continue-on-error: true  # May fail if version already published
+
+      - name: Wait for crates.io index update
+        run: sleep 30
+
+      - name: Publish butteraugli-cli
+        run: cargo publish -p butteraugli-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        continue-on-error: true  # May fail if version already published

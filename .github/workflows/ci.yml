@@ -27,9 +27,9 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --lib --tests -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-  # Test on 6 platforms
+  # Test on multiple platforms
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -60,20 +60,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-cargo-
 
-      - name: Build
-        run: cargo build
+      - name: Build library
+        run: cargo build -p butteraugli
 
       - name: Build CLI
-        run: cargo build --features cli
+        run: cargo build -p butteraugli-cli
 
       - name: Run unit tests
-        run: cargo test --lib
+        run: cargo test -p butteraugli --lib
 
       - name: Run conformance tests
-        run: cargo test --test conformance
+        run: cargo test -p butteraugli --test conformance
 
       - name: Run reference parity tests
-        run: cargo test --test reference_parity
+        run: cargo test -p butteraugli --test reference_parity
 
   # Documentation build
   docs:
@@ -86,7 +86,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build documentation
-        run: cargo doc --no-deps
+        run: cargo doc --workspace --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
 
@@ -101,7 +101,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.70.0
 
       - name: Build with MSRV
-        run: cargo build
+        run: cargo build --workspace
 
   # Code coverage
   coverage:
@@ -119,7 +119,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Generate coverage report
-        run: cargo llvm-cov --lib --lcov --output-path lcov.info
+        run: cargo llvm-cov -p butteraugli --lib --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -137,5 +137,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check packaging
-        run: cargo publish --dry-run
+      - name: Check library packaging
+        run: cargo publish -p butteraugli --dry-run
+
+      - name: Check CLI packaging
+        run: cargo publish -p butteraugli-cli --dry-run

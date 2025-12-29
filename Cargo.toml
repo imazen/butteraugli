@@ -1,65 +1,21 @@
-[package]
-name = "butteraugli"
-version = "0.2.2"
+[workspace]
+resolver = "2"
+members = ["butteraugli", "butteraugli-cli"]
+
+[workspace.package]
+version = "0.3.0"
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/imazen/butteraugli"
 homepage = "https://github.com/imazen/butteraugli"
-documentation = "https://docs.rs/butteraugli"
-readme = "README.md"
-description = "Pure Rust implementation of Google's butteraugli perceptual image quality metric from libjxl"
-keywords = ["image", "quality", "perceptual", "metric", "butteraugli"]
-categories = ["multimedia::images", "algorithms", "graphics"]
 authors = ["Lilith River <lilith@imazen.io>"]
 rust-version = "1.70"
-exclude = [
-    # Comparison outputs from local testing
-    "comparison_outputs/",
-    # Tests that require jpegli-internals-sys (cpp-parity feature, not on crates.io)
-    "tests/cpp_parity.rs",
-    "tests/cpp_fuzz.rs",
-    "tests/intermediate_values.rs",
-    "tests/step_by_step_comparison.rs",
-    "tests/reference_parity.rs",
-]
 
-[features]
-default = ["simd"]
-simd = []
-cli = ["dep:clap", "dep:image", "dep:serde", "dep:serde_json"]
-# cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
-
-[dependencies]
-# SIMD support
+[workspace.dependencies]
+butteraugli = { path = "butteraugli", version = "0.3.0" }
 wide = "0.7"
-
-# CLI dependencies (optional)
-clap = { version = "4.5", features = ["derive"], optional = true }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
-serde = { version = "1.0", features = ["derive"], optional = true }
-serde_json = { version = "1.0", optional = true }
-
-# For local C++ parity testing, add to .cargo/config.toml:
-# [patch.crates-io]
-# jpegli-internals-sys = { path = "../jpegli-rs/internal/jpegli-internals-sys" }
-
-[[bin]]
-name = "butteraugli"
-required-features = ["cli"]
-
-[dev-dependencies]
-# Image I/O for testing
-png = "0.17"
-
-# JPEG encoding/decoding for roundtrip tests
-mozjpeg = "0.10"
-jpeg-decoder = "0.3"
-
-# Testing utilities
-approx = "0.5"
-
-# Property-based testing
-proptest = "1.4"
-
-# Date/time for reference data generation
-chrono = "0.4"
+clap = { version = "4.5", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+colored = "2.1"
