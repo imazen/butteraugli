@@ -64,6 +64,18 @@
 //! }
 //! ```
 //!
+//! ## Features
+//!
+//! - **`simd`** (default): Enable SIMD optimizations via the `wide` crate
+//! - **`unsafe-perf`**: Enable unsafe pointer arithmetic for ~1.5x speedup
+//!
+//! The `unsafe-perf` feature uses pointer arithmetic to eliminate bounds
+//! checking in the Malta filter hot path, matching C++ libjxl performance:
+//!
+//! ```toml
+//! butteraugli = { version = "0.3", features = ["unsafe-perf"] }
+//! ```
+//!
 //! ## References
 //!
 //! - <https://github.com/google/butteraugli>

@@ -198,11 +198,23 @@ let class = butteraugli_fuzzy_class(1.5);  // ~1.25
 ## Features
 
 - **`simd`** (default): Enable SIMD optimizations via the `wide` crate
+- **`unsafe-perf`**: Enable unsafe pointer arithmetic for ~1.5x speedup (matches C++ performance)
 - **`cli`**: Build the command-line tool (adds `clap`, `image`, `serde_json` dependencies)
+
+For maximum performance matching C++ libjxl:
+
+```toml
+butteraugli = { version = "0.3", features = ["unsafe-perf"] }
+```
 
 ## Performance
 
-This implementation uses SIMD operations where available for gaussian blur and other compute-intensive operations. Performance is comparable to the C++ implementation for typical image sizes.
+| Version | 512×512 image | vs C++ |
+|---------|---------------|--------|
+| Safe Rust (default) | ~215ms | ~1.5x slower |
+| `unsafe-perf` | ~140ms | ~matching |
+
+The safe implementation uses bounded array accesses. The `unsafe-perf` feature uses pointer arithmetic in the Malta filter hot path, eliminating bounds checks for interior pixels.
 
 ## Accuracy
 
