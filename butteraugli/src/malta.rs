@@ -8,8 +8,14 @@
 //! - `MaltaUnit`: Full 9x9 pattern with 9-sample line kernels
 //! - `MaltaUnitLF`: Low-frequency variant with 5-sample line kernels
 //!
-//! The implementation copies pixel neighborhoods into fixed-size arrays
-//! to enable bounds-check-free access patterns.
+//! # Performance
+//!
+//! By default, the implementation uses safe Rust with fixed-size array windows.
+//! Enable the `unsafe-perf` feature for ~1.5x speedup via pointer arithmetic:
+//!
+//! ```toml
+//! butteraugli = { version = "0.3", features = ["unsafe-perf"] }
+//! ```
 
 use crate::image::ImageF;
 
@@ -449,6 +455,390 @@ fn extract_window(data: &ImageF, x: usize, y: usize) -> [f32; 81] {
     window
 }
 
+// ============================================================================
+// Unsafe fast path (enabled with `unsafe-perf` feature)
+// ============================================================================
+
+/// Malta filter for interior pixels (HF/UHF bands).
+///
+/// Uses unsafe pointer arithmetic - caller must ensure the pixel is
+/// at least 4 pixels from all borders.
+///
+/// # Safety
+/// The pointer `d` must point to a valid pixel with at least 4 pixels
+/// of valid data in all directions. `xs` is the stride (pixels per row).
+#[cfg(feature = "unsafe-perf")]
+#[inline]
+unsafe fn malta_unit_fast(d: *const f32, xs: isize) -> f32 {
+    let xs2 = xs + xs;
+    let xs3 = xs2 + xs;
+    let xs4 = xs3 + xs;
+    let mut retval = 0.0f32;
+
+    // Pattern 1: x grows, y constant (horizontal line)
+    {
+        let sum = *d.offset(-4)
+            + *d.offset(-3)
+            + *d.offset(-2)
+            + *d.offset(-1)
+            + *d
+            + *d.offset(1)
+            + *d.offset(2)
+            + *d.offset(3)
+            + *d.offset(4);
+        retval += sum * sum;
+    }
+
+    // Pattern 2: y grows, x constant (vertical line)
+    {
+        let sum = *d.offset(-xs4)
+            + *d.offset(-xs3)
+            + *d.offset(-xs2)
+            + *d.offset(-xs)
+            + *d
+            + *d.offset(xs)
+            + *d.offset(xs2)
+            + *d.offset(xs3)
+            + *d.offset(xs4);
+        retval += sum * sum;
+    }
+
+    // Pattern 3: both grow (diagonal \)
+    {
+        let sum = *d.offset(-xs3 - 3)
+            + *d.offset(-xs2 - 2)
+            + *d.offset(-xs - 1)
+            + *d
+            + *d.offset(xs + 1)
+            + *d.offset(xs2 + 2)
+            + *d.offset(xs3 + 3);
+        retval += sum * sum;
+    }
+
+    // Pattern 4: y grows, x shrinks (diagonal /)
+    {
+        let sum = *d.offset(-xs3 + 3)
+            + *d.offset(-xs2 + 2)
+            + *d.offset(-xs + 1)
+            + *d
+            + *d.offset(xs - 1)
+            + *d.offset(xs2 - 2)
+            + *d.offset(xs3 - 3);
+        retval += sum * sum;
+    }
+
+    // Pattern 5: y grows -4 to 4, x shrinks 1 -> -1
+    {
+        let sum = *d.offset(-xs4 + 1)
+            + *d.offset(-xs3 + 1)
+            + *d.offset(-xs2 + 1)
+            + *d.offset(-xs)
+            + *d
+            + *d.offset(xs)
+            + *d.offset(xs2 - 1)
+            + *d.offset(xs3 - 1)
+            + *d.offset(xs4 - 1);
+        retval += sum * sum;
+    }
+
+    // Pattern 6: y grows -4 to 4, x grows -1 -> 1
+    {
+        let sum = *d.offset(-xs4 - 1)
+            + *d.offset(-xs3 - 1)
+            + *d.offset(-xs2 - 1)
+            + *d.offset(-xs)
+            + *d
+            + *d.offset(xs)
+            + *d.offset(xs2 + 1)
+            + *d.offset(xs3 + 1)
+            + *d.offset(xs4 + 1);
+        retval += sum * sum;
+    }
+
+    // Pattern 7: x grows -4 to 4, y grows -1 to 1
+    {
+        let sum = *d.offset(-4 - xs)
+            + *d.offset(-3 - xs)
+            + *d.offset(-2 - xs)
+            + *d.offset(-1)
+            + *d
+            + *d.offset(1)
+            + *d.offset(2 + xs)
+            + *d.offset(3 + xs)
+            + *d.offset(4 + xs);
+        retval += sum * sum;
+    }
+
+    // Pattern 8: x grows -4 to 4, y shrinks 1 to -1
+    {
+        let sum = *d.offset(-4 + xs)
+            + *d.offset(-3 + xs)
+            + *d.offset(-2 + xs)
+            + *d.offset(-1)
+            + *d
+            + *d.offset(1)
+            + *d.offset(2 - xs)
+            + *d.offset(3 - xs)
+            + *d.offset(4 - xs);
+        retval += sum * sum;
+    }
+
+    // Pattern 9: steep diagonal (2:1 slope)
+    {
+        let sum = *d.offset(-xs3 - 2)
+            + *d.offset(-xs2 - 1)
+            + *d.offset(-xs - 1)
+            + *d
+            + *d.offset(xs + 1)
+            + *d.offset(xs2 + 1)
+            + *d.offset(xs3 + 2);
+        retval += sum * sum;
+    }
+
+    // Pattern 10: steep diagonal other way
+    {
+        let sum = *d.offset(-xs3 + 2)
+            + *d.offset(-xs2 + 1)
+            + *d.offset(-xs + 1)
+            + *d
+            + *d.offset(xs - 1)
+            + *d.offset(xs2 - 1)
+            + *d.offset(xs3 - 2);
+        retval += sum * sum;
+    }
+
+    // Pattern 11: shallow diagonal (1:2 slope)
+    {
+        let sum = *d.offset(-xs2 - 3)
+            + *d.offset(-xs - 2)
+            + *d.offset(-xs - 1)
+            + *d
+            + *d.offset(xs + 1)
+            + *d.offset(xs + 2)
+            + *d.offset(xs2 + 3);
+        retval += sum * sum;
+    }
+
+    // Pattern 12: shallow diagonal other way
+    {
+        let sum = *d.offset(-xs2 + 3)
+            + *d.offset(-xs + 2)
+            + *d.offset(-xs + 1)
+            + *d
+            + *d.offset(xs - 1)
+            + *d.offset(xs - 2)
+            + *d.offset(xs2 - 3);
+        retval += sum * sum;
+    }
+
+    // Pattern 13: curved line pattern (same as 8)
+    {
+        let sum = *d.offset(-4 + xs)
+            + *d.offset(-3 + xs)
+            + *d.offset(-2 + xs)
+            + *d.offset(-1)
+            + *d
+            + *d.offset(1)
+            + *d.offset(2 - xs)
+            + *d.offset(3 - xs)
+            + *d.offset(4 - xs);
+        retval += sum * sum;
+    }
+
+    // Pattern 14: curved line other direction (same as 7)
+    {
+        let sum = *d.offset(-4 - xs)
+            + *d.offset(-3 - xs)
+            + *d.offset(-2 - xs)
+            + *d.offset(-1)
+            + *d
+            + *d.offset(1)
+            + *d.offset(2 + xs)
+            + *d.offset(3 + xs)
+            + *d.offset(4 + xs);
+        retval += sum * sum;
+    }
+
+    // Pattern 15: very shallow curve (same as 6)
+    {
+        let sum = *d.offset(-xs4 - 1)
+            + *d.offset(-xs3 - 1)
+            + *d.offset(-xs2 - 1)
+            + *d.offset(-xs)
+            + *d
+            + *d.offset(xs)
+            + *d.offset(xs2 + 1)
+            + *d.offset(xs3 + 1)
+            + *d.offset(xs4 + 1);
+        retval += sum * sum;
+    }
+
+    // Pattern 16: very shallow curve other direction (same as 5)
+    {
+        let sum = *d.offset(-xs4 + 1)
+            + *d.offset(-xs3 + 1)
+            + *d.offset(-xs2 + 1)
+            + *d.offset(-xs)
+            + *d
+            + *d.offset(xs)
+            + *d.offset(xs2 - 1)
+            + *d.offset(xs3 - 1)
+            + *d.offset(xs4 - 1);
+        retval += sum * sum;
+    }
+
+    retval
+}
+
+/// Malta filter for interior pixels (LF band).
+///
+/// # Safety
+/// Same requirements as `malta_unit_fast`.
+#[cfg(feature = "unsafe-perf")]
+#[inline]
+unsafe fn malta_unit_lf_fast(d: *const f32, xs: isize) -> f32 {
+    let xs2 = xs + xs;
+    let xs3 = xs2 + xs;
+    let xs4 = xs3 + xs;
+    let mut retval = 0.0f32;
+
+    // Pattern 1: x grows, y constant (sparse horizontal)
+    {
+        let sum = *d.offset(-4) + *d.offset(-2) + *d + *d.offset(2) + *d.offset(4);
+        retval += sum * sum;
+    }
+
+    // Pattern 2: y grows, x constant (sparse vertical)
+    {
+        let sum = *d.offset(-xs4) + *d.offset(-xs2) + *d + *d.offset(xs2) + *d.offset(xs4);
+        retval += sum * sum;
+    }
+
+    // Pattern 3: both grow (diagonal)
+    {
+        let sum = *d.offset(-xs3 - 3)
+            + *d.offset(-xs2 - 2)
+            + *d
+            + *d.offset(xs2 + 2)
+            + *d.offset(xs3 + 3);
+        retval += sum * sum;
+    }
+
+    // Pattern 4: y grows, x shrinks
+    {
+        let sum = *d.offset(-xs3 + 3)
+            + *d.offset(-xs2 + 2)
+            + *d
+            + *d.offset(xs2 - 2)
+            + *d.offset(xs3 - 3);
+        retval += sum * sum;
+    }
+
+    // Pattern 5: y grows, x shifts 1 to -1
+    {
+        let sum = *d.offset(-xs4 + 1)
+            + *d.offset(-xs2 + 1)
+            + *d
+            + *d.offset(xs2 - 1)
+            + *d.offset(xs4 - 1);
+        retval += sum * sum;
+    }
+
+    // Pattern 6: y grows, x shifts -1 to 1
+    {
+        let sum = *d.offset(-xs4 - 1)
+            + *d.offset(-xs2 - 1)
+            + *d
+            + *d.offset(xs2 + 1)
+            + *d.offset(xs4 + 1);
+        retval += sum * sum;
+    }
+
+    // Pattern 7: x grows, y shifts -1 to 1
+    {
+        let sum =
+            *d.offset(-4 - xs) + *d.offset(-2 - xs) + *d + *d.offset(2 + xs) + *d.offset(4 + xs);
+        retval += sum * sum;
+    }
+
+    // Pattern 8: x grows, y shifts 1 to -1
+    {
+        let sum =
+            *d.offset(-4 + xs) + *d.offset(-2 + xs) + *d + *d.offset(2 - xs) + *d.offset(4 - xs);
+        retval += sum * sum;
+    }
+
+    // Pattern 9: steep slope
+    {
+        let sum = *d.offset(-xs3 - 2)
+            + *d.offset(-xs2 - 1)
+            + *d
+            + *d.offset(xs2 + 1)
+            + *d.offset(xs3 + 2);
+        retval += sum * sum;
+    }
+
+    // Pattern 10: steep slope other way
+    {
+        let sum = *d.offset(-xs3 + 2)
+            + *d.offset(-xs2 + 1)
+            + *d
+            + *d.offset(xs2 - 1)
+            + *d.offset(xs3 - 2);
+        retval += sum * sum;
+    }
+
+    // Pattern 11: shallow slope
+    {
+        let sum =
+            *d.offset(-xs2 - 3) + *d.offset(-xs - 2) + *d + *d.offset(xs + 2) + *d.offset(xs2 + 3);
+        retval += sum * sum;
+    }
+
+    // Pattern 12: shallow slope other way
+    {
+        let sum =
+            *d.offset(-xs2 + 3) + *d.offset(-xs + 2) + *d + *d.offset(xs - 2) + *d.offset(xs2 - 3);
+        retval += sum * sum;
+    }
+
+    // Pattern 13: curved path
+    {
+        let sum =
+            *d.offset(-4 + xs2) + *d.offset(-2 + xs) + *d + *d.offset(2 - xs) + *d.offset(4 - xs2);
+        retval += sum * sum;
+    }
+
+    // Pattern 14: curved other direction
+    {
+        let sum =
+            *d.offset(-4 - xs2) + *d.offset(-2 - xs) + *d + *d.offset(2 + xs) + *d.offset(4 + xs2);
+        retval += sum * sum;
+    }
+
+    // Pattern 15: vertical with shift
+    {
+        let sum = *d.offset(-xs4 - 2)
+            + *d.offset(-xs2 - 1)
+            + *d
+            + *d.offset(xs2 + 1)
+            + *d.offset(xs4 + 2);
+        retval += sum * sum;
+    }
+
+    // Pattern 16: vertical other shift
+    {
+        let sum = *d.offset(-xs4 + 2)
+            + *d.offset(-xs2 + 1)
+            + *d
+            + *d.offset(xs2 - 1)
+            + *d.offset(xs4 - 2);
+        retval += sum * sum;
+    }
+
+    retval
+}
+
 /// Malta filter for HF/UHF bands (9 samples per line, 16 orientations).
 ///
 /// Applies 16 different line kernels in various orientations centered at (x,y)
@@ -557,17 +947,91 @@ pub fn malta_diff_map(
     }
 
     // Second pass: apply Malta filter
-    // The extract_window function has an optimized path for interior pixels
     let mut block_diff_ac = ImageF::new(width, height);
 
-    for y in 0..height {
-        let out = block_diff_ac.row_mut(y);
-        for x in 0..width {
-            out[x] = if use_lf {
-                malta_unit_lf(&diffs, x, y)
-            } else {
-                malta_unit(&diffs, x, y)
-            };
+    #[cfg(feature = "unsafe-perf")]
+    {
+        // Fast path: use unsafe pointer arithmetic for interior pixels
+        let stride = diffs.stride();
+        let diffs_ptr = diffs.as_ptr();
+
+        // Top border (rows 0..4)
+        for y in 0..4.min(height) {
+            let out = block_diff_ac.row_mut(y);
+            for x in 0..width {
+                out[x] = if use_lf {
+                    malta_unit_lf(&diffs, x, y)
+                } else {
+                    malta_unit(&diffs, x, y)
+                };
+            }
+        }
+
+        // Middle rows (4..height-4)
+        if height > 8 {
+            for y in 4..height - 4 {
+                let out = block_diff_ac.row_mut(y);
+
+                // Left border (x = 0..4)
+                for x in 0..4.min(width) {
+                    out[x] = if use_lf {
+                        malta_unit_lf(&diffs, x, y)
+                    } else {
+                        malta_unit(&diffs, x, y)
+                    };
+                }
+
+                // Interior - fast path with unsafe pointer arithmetic
+                if width > 8 {
+                    let row_ptr = unsafe { diffs_ptr.add(y * stride) };
+                    for x in 4..width - 4 {
+                        let d = unsafe { row_ptr.add(x) };
+                        out[x] = unsafe {
+                            if use_lf {
+                                malta_unit_lf_fast(d, stride as isize)
+                            } else {
+                                malta_unit_fast(d, stride as isize)
+                            }
+                        };
+                    }
+                }
+
+                // Right border (x = width-4..width)
+                for x in (width - 4).max(4)..width {
+                    out[x] = if use_lf {
+                        malta_unit_lf(&diffs, x, y)
+                    } else {
+                        malta_unit(&diffs, x, y)
+                    };
+                }
+            }
+        }
+
+        // Bottom border (rows height-4..height)
+        for y in (height - 4).max(4.min(height))..height {
+            let out = block_diff_ac.row_mut(y);
+            for x in 0..width {
+                out[x] = if use_lf {
+                    malta_unit_lf(&diffs, x, y)
+                } else {
+                    malta_unit(&diffs, x, y)
+                };
+            }
+        }
+    }
+
+    #[cfg(not(feature = "unsafe-perf"))]
+    {
+        // Safe path: use window copy approach
+        for y in 0..height {
+            let out = block_diff_ac.row_mut(y);
+            for x in 0..width {
+                out[x] = if use_lf {
+                    malta_unit_lf(&diffs, x, y)
+                } else {
+                    malta_unit(&diffs, x, y)
+                };
+            }
         }
     }
 
