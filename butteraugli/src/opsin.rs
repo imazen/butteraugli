@@ -162,42 +162,77 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
     let mut xyb = Image3F::new(width, height);
     let min_val = 1e-4_f32;
 
+    // Pre-cast matrix coefficients to f32
+    let mixi0 = MIXI0 as f32;
+    let mixi1 = MIXI1 as f32;
+    let mixi2 = MIXI2 as f32;
+    let mixi3 = MIXI3 as f32;
+    let mixi4 = MIXI4 as f32;
+    let mixi5 = MIXI5 as f32;
+    let mixi6 = MIXI6 as f32;
+    let mixi7 = MIXI7 as f32;
+    let mixi8 = MIXI8 as f32;
+    let mixi9 = MIXI9 as f32;
+    let mixi10 = MIXI10 as f32;
+    let mixi11 = MIXI11 as f32;
+
+    // Get raw pointers to output planes for simultaneous writes
+    let out_stride = xyb.plane(0).stride();
+    let out_x_ptr = xyb.plane_mut(0).as_mut_ptr();
+    let out_y_ptr = xyb.plane_mut(1).as_mut_ptr();
+    let out_b_ptr = xyb.plane_mut(2).as_mut_ptr();
+
     for y in 0..height {
+        // Get row slices for cache-friendly access
+        let row_r = rgb.plane(0).row(y);
+        let row_g = rgb.plane(1).row(y);
+        let row_b = rgb.plane(2).row(y);
+        let row_blur_r = blurred_r.row(y);
+        let row_blur_g = blurred_g.row(y);
+        let row_blur_b = blurred_b.row(y);
+
+        let row_offset = y * out_stride;
+
         for x in 0..width {
             // Get RGB values scaled by intensity target
-            let r = rgb.plane(0).get(x, y) * intensity_target;
-            let g = rgb.plane(1).get(x, y) * intensity_target;
-            let b = rgb.plane(2).get(x, y) * intensity_target;
+            let r = row_r[x] * intensity_target;
+            let g = row_g[x] * intensity_target;
+            let b = row_b[x] * intensity_target;
 
-            let blurred_r_val = blurred_r.get(x, y) * intensity_target;
-            let blurred_g_val = blurred_g.get(x, y) * intensity_target;
-            let blurred_b_val = blurred_b.get(x, y) * intensity_target;
+            let blurred_r_val = row_blur_r[x] * intensity_target;
+            let blurred_g_val = row_blur_g[x] * intensity_target;
+            let blurred_b_val = row_blur_b[x] * intensity_target;
 
             // Step 2: Calculate sensitivity based on blurred image
-            let (pre0, pre1, pre2) =
-                opsin_absorbance(blurred_r_val, blurred_g_val, blurred_b_val, true);
-            let pre0 = pre0.max(min_val);
-            let pre1 = pre1.max(min_val);
-            let pre2 = pre2.max(min_val);
+            // Inline opsin_absorbance for performance
+            let pre0 =
+                (mixi0 * blurred_r_val + mixi1 * blurred_g_val + mixi2 * blurred_b_val + mixi3)
+                    .max(MIN_01)
+                    .max(min_val);
+            let pre1 =
+                (mixi4 * blurred_r_val + mixi5 * blurred_g_val + mixi6 * blurred_b_val + mixi7)
+                    .max(MIN_01)
+                    .max(min_val);
+            let pre2 =
+                (mixi8 * blurred_r_val + mixi9 * blurred_g_val + mixi10 * blurred_b_val + mixi11)
+                    .max(MIN_2)
+                    .max(min_val);
 
             let sensitivity0 = (gamma(pre0) / pre0).max(min_val);
             let sensitivity1 = (gamma(pre1) / pre1).max(min_val);
             let sensitivity2 = (gamma(pre2) / pre2).max(min_val);
 
             // Step 3: Apply sensitivity to original RGB
-            let (cur0, cur1, cur2) = opsin_absorbance(r, g, b, false);
-            let cur0 = (cur0 * sensitivity0).max(MIN_01);
-            let cur1 = (cur1 * sensitivity1).max(MIN_01);
-            let cur2 = (cur2 * sensitivity2).max(MIN_2);
+            let cur0 = ((mixi0 * r + mixi1 * g + mixi2 * b + mixi3) * sensitivity0).max(MIN_01);
+            let cur1 = ((mixi4 * r + mixi5 * g + mixi6 * b + mixi7) * sensitivity1).max(MIN_01);
+            let cur2 = ((mixi8 * r + mixi9 * g + mixi10 * b + mixi11) * sensitivity2).max(MIN_2);
 
-            // Step 4: Convert to XYB
-            let out_x = cur0 - cur1;
-            let out_y = cur0 + cur1;
-            let out_b = cur2;
-
-            xyb.plane_mut(0).set(x, y, out_x);
-            xyb.plane_mut(1).set(x, y, out_y);
-            xyb.plane_mut(2).set(x, y, out_b);
+            // Step 4: Convert to XYB (using raw pointers for simultaneous writes)
+            unsafe {
+                *out_x_ptr.add(row_offset + x) = cur0 - cur1;
+                *out_y_ptr.add(row_offset + x) = cur0 + cur1;
+                *out_b_ptr.add(row_offset + x) = cur2;
+            }
         }
     }
 
@@ -222,19 +257,32 @@ pub fn srgb_to_xyb_butteraugli(
 ) -> Image3F {
     assert_eq!(rgb.len(), width * height * 3);
 
+    // Get LUT reference once
+    let lut = &*SRGB_TO_LINEAR_LUT;
+
     // Convert sRGB u8 to linear RGB Image3F
     let mut linear = Image3F::new(width, height);
 
+    // Process each plane separately to satisfy borrow checker
     for y in 0..height {
+        let row_offset = y * width * 3;
+        let out_r = linear.plane_mut(0).row_mut(y);
         for x in 0..width {
-            let idx = y * width + x;
-            let r = srgb_to_linear(rgb[idx * 3]);
-            let g = srgb_to_linear(rgb[idx * 3 + 1]);
-            let b = srgb_to_linear(rgb[idx * 3 + 2]);
-
-            linear.plane_mut(0).set(x, y, r);
-            linear.plane_mut(1).set(x, y, g);
-            linear.plane_mut(2).set(x, y, b);
+            out_r[x] = lut[rgb[row_offset + x * 3] as usize];
+        }
+    }
+    for y in 0..height {
+        let row_offset = y * width * 3;
+        let out_g = linear.plane_mut(1).row_mut(y);
+        for x in 0..width {
+            out_g[x] = lut[rgb[row_offset + x * 3 + 1] as usize];
+        }
+    }
+    for y in 0..height {
+        let row_offset = y * width * 3;
+        let out_b = linear.plane_mut(2).row_mut(y);
+        for x in 0..width {
+            out_b[x] = lut[rgb[row_offset + x * 3 + 2] as usize];
         }
     }
 
@@ -242,15 +290,30 @@ pub fn srgb_to_xyb_butteraugli(
     opsin_dynamics_image(&linear, intensity_target)
 }
 
-/// sRGB transfer function (gamma decoding)
+/// sRGB transfer function (gamma decoding) - slow version
 #[inline]
-pub fn srgb_to_linear(v: u8) -> f32 {
+fn srgb_to_linear_slow(v: u8) -> f32 {
     let v = v as f32 / 255.0;
     if v <= 0.04045 {
         v / 12.92
     } else {
         ((v + 0.055) / 1.055).powf(2.4)
     }
+}
+
+/// Pre-computed sRGB to linear lookup table (256 entries)
+static SRGB_TO_LINEAR_LUT: std::sync::LazyLock<[f32; 256]> = std::sync::LazyLock::new(|| {
+    let mut lut = [0.0f32; 256];
+    for i in 0..256 {
+        lut[i] = srgb_to_linear_slow(i as u8);
+    }
+    lut
+});
+
+/// sRGB transfer function (gamma decoding) using lookup table
+#[inline]
+pub fn srgb_to_linear(v: u8) -> f32 {
+    SRGB_TO_LINEAR_LUT[v as usize]
 }
 
 /// Converts linear RGB f32 interleaved data to butteraugli XYB.

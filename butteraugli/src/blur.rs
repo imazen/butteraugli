@@ -5,13 +5,18 @@
 //!
 //! The C++ butteraugli uses clamp-to-edge boundary handling with
 //! re-normalization for border pixels. This module matches that behavior.
+//!
+//! Optimizations:
+//! - Transpose during horizontal convolution for cache-friendly vertical pass
+//! - Pre-normalized kernel weights for interior pixels (no division in inner loop)
+//! - Separate fast path for interior pixels (no bounds checking)
 
 use crate::image::ImageF;
 
 /// Computes a 1D Gaussian kernel for the given sigma.
 ///
-/// Unlike C++ which returns un-normalized weights, we return normalized
-/// weights for the interior case. Border handling re-normalizes as needed.
+/// Returns un-normalized weights (matches C++ behavior).
+/// The caller should normalize for interior pixels or re-normalize for borders.
 #[must_use]
 pub fn compute_kernel(sigma: f32) -> Vec<f32> {
     const M: f32 = 2.25; // Accuracy increases when m is increased
@@ -20,97 +25,121 @@ pub fn compute_kernel(sigma: f32) -> Vec<f32> {
     let size = (2 * diff + 1) as usize;
     let mut kernel = vec![0.0f32; size];
 
-    let mut sum = 0.0f32;
     for i in -diff..=diff {
         let weight = (scaler * (i * i) as f32).exp();
         kernel[(i + diff) as usize] = weight;
-        sum += weight;
-    }
-
-    // Normalize for interior pixels (border pixels re-normalize)
-    let inv_sum = 1.0 / sum;
-    for k in &mut kernel {
-        *k *= inv_sum;
     }
 
     kernel
 }
 
-/// Performs horizontal convolution on a single row with clamp boundary handling.
+/// Computes a horizontal convolution with transpose (output is transposed).
 ///
-/// This matches C++ butteraugli: clamp to edge values and re-normalize
-/// the kernel weights for border pixels.
-fn convolve_row(input: &[f32], kernel: &[f32], output: &mut [f32]) {
-    let width = input.len();
-    if width == 0 {
-        return;
-    }
+/// This makes the subsequent vertical pass cache-friendly since it becomes
+/// a horizontal pass on the transposed image.
+fn convolve_horizontal_transpose(input: &ImageF, kernel: &[f32], border_ratio: f32) -> ImageF {
+    let width = input.width();
+    let height = input.height();
     let half = kernel.len() / 2;
 
-    for x in 0..width {
-        // Determine the valid range of kernel elements
-        let minx = if x < half { 0 } else { x - half };
-        let maxx = (x + half).min(width - 1);
+    // Output is transposed: height x width
+    let mut output = ImageF::new(height, width);
 
-        // For border pixels, re-normalize based on which kernel elements are used
-        let mut weight_sum = 0.0f32;
-        let mut sum = 0.0f32;
+    // Compute total weight for interior pixels (no border clipping)
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scale_no_border = 1.0 / weight_no_border;
 
-        for j in minx..=maxx {
-            let k_idx = j + half - x;
-            let k_val = kernel[k_idx];
-            weight_sum += k_val;
-            sum += input[j] * k_val;
-        }
+    // Pre-scale kernel for interior pixels
+    let scaled_kernel: Vec<f32> = kernel.iter().map(|&k| k * scale_no_border).collect();
 
-        // Re-normalize for border pixels (C++ approach)
-        output[x] = if weight_sum > 0.0 {
-            sum / weight_sum
-        } else {
-            0.0
-        };
+    let border1 = if width <= half { width } else { half };
+    let border2 = if width > half { width - half } else { 0 };
+
+    // Process left border (x < half)
+    for x in 0..border1 {
+        convolve_border_column_h(
+            input,
+            kernel,
+            weight_no_border,
+            border_ratio,
+            x,
+            &mut output,
+        );
     }
+
+    // Process interior (no bounds checking needed)
+    if border2 > border1 {
+        for y in 0..height {
+            let row_in = input.row(y);
+            for x in border1..border2 {
+                let d = x - half;
+                let mut sum = 0.0f32;
+                for (j, &k) in scaled_kernel.iter().enumerate() {
+                    sum += row_in[d + j] * k;
+                }
+                // Write transposed: output[x][y] = sum
+                output.set(y, x, sum);
+            }
+        }
+    }
+
+    // Process right border
+    for x in border2..width {
+        convolve_border_column_h(
+            input,
+            kernel,
+            weight_no_border,
+            border_ratio,
+            x,
+            &mut output,
+        );
+    }
+
+    output
 }
 
-/// Performs vertical convolution on a single column with clamp boundary handling.
-///
-/// This matches C++ butteraugli: clamp to edge values and re-normalize
-/// the kernel weights for border pixels.
-fn convolve_column(image: &ImageF, x: usize, kernel: &[f32], output: &mut [f32]) {
-    let height = image.height();
-    if height == 0 {
-        return;
-    }
+/// Helper for border handling during horizontal convolution with transpose.
+fn convolve_border_column_h(
+    input: &ImageF,
+    kernel: &[f32],
+    weight_no_border: f32,
+    border_ratio: f32,
+    x: usize,
+    output: &mut ImageF,
+) {
+    let width = input.width();
+    let height = input.height();
     let half = kernel.len() / 2;
 
+    let minx = x.saturating_sub(half);
+    let maxx = (x + half).min(width - 1);
+
+    // Compute actual weight for this column
+    let mut weight = 0.0f32;
+    for j in minx..=maxx {
+        weight += kernel[j + half - x];
+    }
+
+    // Interpolate between no-border and border scaling
+    let effective_weight = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+    let scale = 1.0 / effective_weight;
+
     for y in 0..height {
-        // Determine the valid range of kernel elements
-        let miny = if y < half { 0 } else { y - half };
-        let maxy = (y + half).min(height - 1);
-
-        // For border pixels, re-normalize based on which kernel elements are used
-        let mut weight_sum = 0.0f32;
+        let row_in = input.row(y);
         let mut sum = 0.0f32;
-
-        for j in miny..=maxy {
-            let k_idx = j + half - y;
-            let k_val = kernel[k_idx];
-            weight_sum += k_val;
-            sum += image.get(x, j) * k_val;
+        for j in minx..=maxx {
+            sum += row_in[j] * kernel[j + half - x];
         }
-
-        // Re-normalize for border pixels (C++ approach)
-        output[y] = if weight_sum > 0.0 {
-            sum / weight_sum
-        } else {
-            0.0
-        };
+        // Write transposed
+        output.set(y, x, sum * scale);
     }
 }
 
 /// Applies a 2D Gaussian blur to an image.
 ///
-/// This is implemented as two separable 1D convolutions (horizontal + vertical).
+/// This is implemented as two separable 1D convolutions:
+/// 1. Horizontal convolution with transpose
+/// 2. Horizontal convolution on transposed result (effectively vertical) with transpose back
 ///
 /// # Arguments
 /// * `input` - Input image
@@ -124,32 +153,25 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32) -> ImageF {
     }
 
     let kernel = compute_kernel(sigma);
-    let width = input.width();
-    let height = input.height();
 
-    // Temporary buffer for horizontal pass
-    let mut temp = ImageF::new(width, height);
+    // First pass: horizontal convolution with transpose
+    // Result is height×width
+    let temp = convolve_horizontal_transpose(input, &kernel, 0.0);
 
-    // Horizontal pass
-    for y in 0..height {
-        let row_in = input.row(y);
-        let row_out = temp.row_mut(y);
-        convolve_row(row_in, &kernel, row_out);
+    // Second pass: another horizontal convolution with transpose
+    // This is equivalent to vertical convolution, result is width×height (original orientation)
+    convolve_horizontal_transpose(&temp, &kernel, 0.0)
+}
+
+/// Blur with border ratio parameter (matches C++ Blur signature).
+pub fn blur_with_border(input: &ImageF, sigma: f32, border_ratio: f32) -> ImageF {
+    if sigma <= 0.0 {
+        return input.clone();
     }
 
-    // Output buffer
-    let mut output = ImageF::new(width, height);
-
-    // Vertical pass
-    let mut col_buffer = vec![0.0f32; height];
-    for x in 0..width {
-        convolve_column(&temp, x, &kernel, &mut col_buffer);
-        for (y, &val) in col_buffer.iter().enumerate() {
-            output.set(x, y, val);
-        }
-    }
-
-    output
+    let kernel = compute_kernel(sigma);
+    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio);
+    convolve_horizontal_transpose(&temp, &kernel, border_ratio)
 }
 
 /// Applies blur in-place (modifies the input image).
@@ -169,61 +191,140 @@ pub fn gaussian_blur_inplace(image: &mut ImageF, sigma: f32) {
 pub fn blur_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
     let width = input.width();
     let height = input.height();
-    let mut output = ImageF::new(width, height);
 
     // Separable 5x5 kernel: [w2, w1, w0, w1, w2]
     let w0 = weights[0];
     let w1 = weights[1];
     let w2 = weights[2];
     let kernel = [w2, w1, w0, w1, w2];
+    let weight_sum: f32 = kernel.iter().sum();
+    let scale = 1.0 / weight_sum;
+    let scaled_kernel: [f32; 5] = [
+        kernel[0] * scale,
+        kernel[1] * scale,
+        kernel[2] * scale,
+        kernel[3] * scale,
+        kernel[4] * scale,
+    ];
 
-    // Temporary for horizontal pass
-    let mut temp = ImageF::new(width, height);
+    // Temporary for horizontal pass (transposed)
+    let mut temp = ImageF::new(height, width);
 
-    // Horizontal pass with clamp-and-renormalize
-    for y in 0..height {
-        let row = input.row(y);
-        let out = temp.row_mut(y);
-        for x in 0..width {
+    // Horizontal pass with fast interior
+    let border = 2.min(width);
+    let interior_end = if width > 2 { width - 2 } else { 0 };
+
+    // Left border
+    for x in 0..border {
+        for y in 0..height {
+            let row = input.row(y);
             let minx = x.saturating_sub(2);
             let maxx = (x + 2).min(width - 1);
 
             let mut sum = 0.0f32;
-            let mut weight_sum = 0.0f32;
+            let mut wsum = 0.0f32;
             for j in minx..=maxx {
                 let k_idx = j + 2 - x;
                 let k_val = kernel[k_idx];
-                weight_sum += k_val;
+                wsum += k_val;
                 sum += row[j] * k_val;
             }
-            out[x] = if weight_sum > 0.0 {
-                sum / weight_sum
-            } else {
-                0.0
-            };
+            temp.set(y, x, if wsum > 0.0 { sum / wsum } else { 0.0 });
         }
     }
 
-    // Vertical pass with clamp-and-renormalize
-    for y in 0..height {
-        let out = output.row_mut(y);
+    // Interior (no bounds check)
+    if interior_end > border {
+        for y in 0..height {
+            let row = input.row(y);
+            for x in border..interior_end {
+                let sum = row[x - 2] * scaled_kernel[0]
+                    + row[x - 1] * scaled_kernel[1]
+                    + row[x] * scaled_kernel[2]
+                    + row[x + 1] * scaled_kernel[3]
+                    + row[x + 2] * scaled_kernel[4];
+                temp.set(y, x, sum);
+            }
+        }
+    }
+
+    // Right border
+    for x in interior_end..width {
+        for y in 0..height {
+            let row = input.row(y);
+            let minx = x.saturating_sub(2);
+            let maxx = (x + 2).min(width - 1);
+
+            let mut sum = 0.0f32;
+            let mut wsum = 0.0f32;
+            for j in minx..=maxx {
+                let k_idx = j + 2 - x;
+                let k_val = kernel[k_idx];
+                wsum += k_val;
+                sum += row[j] * k_val;
+            }
+            temp.set(y, x, if wsum > 0.0 { sum / wsum } else { 0.0 });
+        }
+    }
+
+    // Vertical pass (on transposed data, so it's another horizontal pass)
+    // Result goes back to original orientation
+    let mut output = ImageF::new(width, height);
+
+    let h_border = 2.min(height);
+    let h_interior_end = if height > 2 { height - 2 } else { 0 };
+
+    // Top border
+    for y in 0..h_border {
         for x in 0..width {
+            // temp is transposed, so temp.row(x) gives column x of original
+            let col = temp.row(x);
             let miny = y.saturating_sub(2);
             let maxy = (y + 2).min(height - 1);
 
             let mut sum = 0.0f32;
-            let mut weight_sum = 0.0f32;
+            let mut wsum = 0.0f32;
             for j in miny..=maxy {
                 let k_idx = j + 2 - y;
                 let k_val = kernel[k_idx];
-                weight_sum += k_val;
-                sum += temp.get(x, j) * k_val;
+                wsum += k_val;
+                sum += col[j] * k_val;
             }
-            out[x] = if weight_sum > 0.0 {
-                sum / weight_sum
-            } else {
-                0.0
-            };
+            output.set(x, y, if wsum > 0.0 { sum / wsum } else { 0.0 });
+        }
+    }
+
+    // Interior
+    if h_interior_end > h_border {
+        for x in 0..width {
+            let col = temp.row(x);
+            for y in h_border..h_interior_end {
+                let sum = col[y - 2] * scaled_kernel[0]
+                    + col[y - 1] * scaled_kernel[1]
+                    + col[y] * scaled_kernel[2]
+                    + col[y + 1] * scaled_kernel[3]
+                    + col[y + 2] * scaled_kernel[4];
+                output.set(x, y, sum);
+            }
+        }
+    }
+
+    // Bottom border
+    for y in h_interior_end..height {
+        for x in 0..width {
+            let col = temp.row(x);
+            let miny = y.saturating_sub(2);
+            let maxy = (y + 2).min(height - 1);
+
+            let mut sum = 0.0f32;
+            let mut wsum = 0.0f32;
+            for j in miny..=maxy {
+                let k_idx = j + 2 - y;
+                let k_val = kernel[k_idx];
+                wsum += k_val;
+                sum += col[j] * k_val;
+            }
+            output.set(x, y, if wsum > 0.0 { sum / wsum } else { 0.0 });
         }
     }
 
@@ -248,9 +349,9 @@ mod tests {
             }
         }
 
-        // Should sum to ~1.0
+        // Should sum to some positive value (un-normalized)
         let sum: f32 = kernel.iter().sum();
-        assert!((sum - 1.0).abs() < 0.001);
+        assert!(sum > 0.0);
     }
 
     #[test]
@@ -285,5 +386,25 @@ mod tests {
         // Neighbors should be non-zero
         assert!(blurred.get(15, 16) > 0.0);
         assert!(blurred.get(17, 16) > 0.0);
+    }
+
+    #[test]
+    fn test_blur_5x5_constant() {
+        let img = ImageF::filled(32, 32, 0.5);
+        let weights = [1.0f32, 0.5, 0.25]; // Example weights
+        let blurred = blur_5x5(&img, &weights);
+
+        // Interior should stay constant
+        for y in 4..28 {
+            for x in 4..28 {
+                assert!(
+                    (blurred.get(x, y) - 0.5).abs() < 0.01,
+                    "Expected 0.5, got {} at ({}, {})",
+                    blurred.get(x, y),
+                    x,
+                    y
+                );
+            }
+        }
     }
 }
