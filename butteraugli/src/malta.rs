@@ -8,14 +8,13 @@
 //! - `MaltaUnit`: Full 9x9 pattern with 9-sample line kernels
 //! - `MaltaUnitLF`: Low-frequency variant with 5-sample line kernels
 //!
-//! The implementation uses a 9x9 window stored in a fixed-size array,
-//! which allows the compiler to optimize bounds checking away.
+//! The implementation copies pixel neighborhoods into fixed-size arrays
+//! to enable bounds-check-free access patterns.
 
 use crate::image::ImageF;
 
 /// Access a pixel in a 9x9 window at offset (dx, dy) from center.
 /// Center is at (4, 4), so valid offsets are -4..=4.
-/// Using a macro allows compile-time index computation for constant offsets.
 macro_rules! w {
     ($window:expr, $dx:expr, $dy:expr) => {
         $window[((4 + $dy) * 9 + (4 + $dx)) as usize]
@@ -455,7 +454,7 @@ fn extract_window(data: &ImageF, x: usize, y: usize) -> [f32; 81] {
 /// Applies 16 different line kernels in various orientations centered at (x,y)
 /// and returns the sum of squared responses.
 pub fn malta_unit(data: &ImageF, x: usize, y: usize) -> f32 {
-    // Extract window and use fixed-size array for bounds-check-free access
+    // Use window copy approach - compiler can optimize fixed-size array access
     let window = extract_window(data, x, y);
     malta_unit_window(&window)
 }
@@ -644,11 +643,6 @@ mod tests {
     #[test]
     fn test_malta_fast_vs_slow() {
         // Verify fast and slow paths give same result
-        let img = ImageF::filled(32, 32, 0.7);
-        img.data().iter().enumerate().for_each(|(i, _)| {
-            // Add some variation
-        });
-
         let mut img2 = ImageF::new(32, 32);
         for y in 0..32 {
             for x in 0..32 {
