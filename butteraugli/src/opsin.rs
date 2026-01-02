@@ -176,11 +176,8 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
     let mixi10 = MIXI10 as f32;
     let mixi11 = MIXI11 as f32;
 
-    // Get raw pointers to output planes for simultaneous writes
-    let out_stride = xyb.plane(0).stride();
-    let out_x_ptr = xyb.plane_mut(0).as_mut_ptr();
-    let out_y_ptr = xyb.plane_mut(1).as_mut_ptr();
-    let out_b_ptr = xyb.plane_mut(2).as_mut_ptr();
+    // Get mutable references to all three planes using split borrow
+    let (plane_x, plane_y, plane_b) = xyb.planes_mut();
 
     for y in 0..height {
         // Get row slices for cache-friendly access
@@ -191,7 +188,10 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
         let row_blur_g = blurred_g.row(y);
         let row_blur_b = blurred_b.row(y);
 
-        let row_offset = y * out_stride;
+        // Get output row slices (safe split borrow via planes_mut)
+        let out_x = plane_x.row_mut(y);
+        let out_y = plane_y.row_mut(y);
+        let out_b = plane_b.row_mut(y);
 
         for x in 0..width {
             // Get RGB values scaled by intensity target
@@ -227,12 +227,10 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
             let cur1 = ((mixi4 * r + mixi5 * g + mixi6 * b + mixi7) * sensitivity1).max(MIN_01);
             let cur2 = ((mixi8 * r + mixi9 * g + mixi10 * b + mixi11) * sensitivity2).max(MIN_2);
 
-            // Step 4: Convert to XYB (using raw pointers for simultaneous writes)
-            unsafe {
-                *out_x_ptr.add(row_offset + x) = cur0 - cur1;
-                *out_y_ptr.add(row_offset + x) = cur0 + cur1;
-                *out_b_ptr.add(row_offset + x) = cur2;
-            }
+            // Step 4: Convert to XYB (direct write using split borrows)
+            out_x[x] = cur0 - cur1;
+            out_y[x] = cur0 + cur1;
+            out_b[x] = cur2;
         }
     }
 

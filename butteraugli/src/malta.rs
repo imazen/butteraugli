@@ -8,426 +8,454 @@
 //! - `MaltaUnit`: Full 9x9 pattern with 9-sample line kernels
 //! - `MaltaUnitLF`: Low-frequency variant with 5-sample line kernels
 //!
-//! Optimizations:
-//! - Interior pixels use unsafe pointer arithmetic (no bounds checking)
-//! - Border pixels copy to a 9x9 buffer and use the same fast path
+//! The implementation uses a 9x9 window stored in a fixed-size array,
+//! which allows the compiler to optimize bounds checking away.
 
 use crate::image::ImageF;
 
-/// Malta filter for interior pixels (HF/UHF bands).
-///
-/// Uses unsafe pointer arithmetic - caller must ensure the pixel is
-/// at least 4 pixels from all borders.
-///
-/// # Safety
-/// The pointer `d` must point to a valid pixel with at least 4 pixels
-/// of valid data in all directions. `xs` is the stride (pixels per row).
+/// Access a pixel in a 9x9 window at offset (dx, dy) from center.
+/// Center is at (4, 4), so valid offsets are -4..=4.
 #[inline]
-unsafe fn malta_unit_fast(d: *const f32, xs: isize) -> f32 {
-    let xs2 = xs + xs;
-    let xs3 = xs2 + xs;
-    let xs4 = xs3 + xs;
+fn w(window: &[f32; 81], dx: i32, dy: i32) -> f32 {
+    window[((4 + dy) * 9 + (4 + dx)) as usize]
+}
+
+/// Malta filter on a 9x9 window (HF/UHF bands, 9 samples per line).
+///
+/// Takes a 9x9 window centered on the target pixel and returns
+/// the sum of squared responses for 16 orientation patterns.
+#[inline]
+fn malta_unit_window(window: &[f32; 81]) -> f32 {
     let mut retval = 0.0f32;
 
     // Pattern 1: x grows, y constant (horizontal line)
     {
-        let sum = *d.offset(-4)
-            + *d.offset(-3)
-            + *d.offset(-2)
-            + *d.offset(-1)
-            + *d
-            + *d.offset(1)
-            + *d.offset(2)
-            + *d.offset(3)
-            + *d.offset(4);
+        let sum = w(window, -4, 0)
+            + w(window, -3, 0)
+            + w(window, -2, 0)
+            + w(window, -1, 0)
+            + w(window, 0, 0)
+            + w(window, 1, 0)
+            + w(window, 2, 0)
+            + w(window, 3, 0)
+            + w(window, 4, 0);
         retval += sum * sum;
     }
 
     // Pattern 2: y grows, x constant (vertical line)
     {
-        let sum = *d.offset(-xs4)
-            + *d.offset(-xs3)
-            + *d.offset(-xs2)
-            + *d.offset(-xs)
-            + *d
-            + *d.offset(xs)
-            + *d.offset(xs2)
-            + *d.offset(xs3)
-            + *d.offset(xs4);
+        let sum = w(window, 0, -4)
+            + w(window, 0, -3)
+            + w(window, 0, -2)
+            + w(window, 0, -1)
+            + w(window, 0, 0)
+            + w(window, 0, 1)
+            + w(window, 0, 2)
+            + w(window, 0, 3)
+            + w(window, 0, 4);
         retval += sum * sum;
     }
 
     // Pattern 3: both grow (diagonal \)
     {
-        let sum = *d.offset(-xs3 - 3)
-            + *d.offset(-xs2 - 2)
-            + *d.offset(-xs - 1)
-            + *d
-            + *d.offset(xs + 1)
-            + *d.offset(xs2 + 2)
-            + *d.offset(xs3 + 3);
+        let sum = w(window, -3, -3)
+            + w(window, -2, -2)
+            + w(window, -1, -1)
+            + w(window, 0, 0)
+            + w(window, 1, 1)
+            + w(window, 2, 2)
+            + w(window, 3, 3);
         retval += sum * sum;
     }
 
     // Pattern 4: y grows, x shrinks (diagonal /)
     {
-        let sum = *d.offset(-xs3 + 3)
-            + *d.offset(-xs2 + 2)
-            + *d.offset(-xs + 1)
-            + *d
-            + *d.offset(xs - 1)
-            + *d.offset(xs2 - 2)
-            + *d.offset(xs3 - 3);
+        let sum = w(window, 3, -3)
+            + w(window, 2, -2)
+            + w(window, 1, -1)
+            + w(window, 0, 0)
+            + w(window, -1, 1)
+            + w(window, -2, 2)
+            + w(window, -3, 3);
         retval += sum * sum;
     }
 
     // Pattern 5: y grows -4 to 4, x shrinks 1 -> -1
     {
-        let sum = *d.offset(-xs4 + 1)
-            + *d.offset(-xs3 + 1)
-            + *d.offset(-xs2 + 1)
-            + *d.offset(-xs)
-            + *d
-            + *d.offset(xs)
-            + *d.offset(xs2 - 1)
-            + *d.offset(xs3 - 1)
-            + *d.offset(xs4 - 1);
+        let sum = w(window, 1, -4)
+            + w(window, 1, -3)
+            + w(window, 1, -2)
+            + w(window, 0, -1)
+            + w(window, 0, 0)
+            + w(window, 0, 1)
+            + w(window, -1, 2)
+            + w(window, -1, 3)
+            + w(window, -1, 4);
         retval += sum * sum;
     }
 
     // Pattern 6: y grows -4 to 4, x grows -1 -> 1
     {
-        let sum = *d.offset(-xs4 - 1)
-            + *d.offset(-xs3 - 1)
-            + *d.offset(-xs2 - 1)
-            + *d.offset(-xs)
-            + *d
-            + *d.offset(xs)
-            + *d.offset(xs2 + 1)
-            + *d.offset(xs3 + 1)
-            + *d.offset(xs4 + 1);
+        let sum = w(window, -1, -4)
+            + w(window, -1, -3)
+            + w(window, -1, -2)
+            + w(window, 0, -1)
+            + w(window, 0, 0)
+            + w(window, 0, 1)
+            + w(window, 1, 2)
+            + w(window, 1, 3)
+            + w(window, 1, 4);
         retval += sum * sum;
     }
 
     // Pattern 7: x grows -4 to 4, y grows -1 to 1
     {
-        let sum = *d.offset(-4 - xs)
-            + *d.offset(-3 - xs)
-            + *d.offset(-2 - xs)
-            + *d.offset(-1)
-            + *d
-            + *d.offset(1)
-            + *d.offset(2 + xs)
-            + *d.offset(3 + xs)
-            + *d.offset(4 + xs);
+        let sum = w(window, -4, -1)
+            + w(window, -3, -1)
+            + w(window, -2, -1)
+            + w(window, -1, 0)
+            + w(window, 0, 0)
+            + w(window, 1, 0)
+            + w(window, 2, 1)
+            + w(window, 3, 1)
+            + w(window, 4, 1);
         retval += sum * sum;
     }
 
     // Pattern 8: x grows -4 to 4, y shrinks 1 to -1
     {
-        let sum = *d.offset(-4 + xs)
-            + *d.offset(-3 + xs)
-            + *d.offset(-2 + xs)
-            + *d.offset(-1)
-            + *d
-            + *d.offset(1)
-            + *d.offset(2 - xs)
-            + *d.offset(3 - xs)
-            + *d.offset(4 - xs);
+        let sum = w(window, -4, 1)
+            + w(window, -3, 1)
+            + w(window, -2, 1)
+            + w(window, -1, 0)
+            + w(window, 0, 0)
+            + w(window, 1, 0)
+            + w(window, 2, -1)
+            + w(window, 3, -1)
+            + w(window, 4, -1);
         retval += sum * sum;
     }
 
     // Pattern 9: steep diagonal (2:1 slope)
     {
-        let sum = *d.offset(-xs3 - 2)
-            + *d.offset(-xs2 - 1)
-            + *d.offset(-xs - 1)
-            + *d
-            + *d.offset(xs + 1)
-            + *d.offset(xs2 + 1)
-            + *d.offset(xs3 + 2);
+        let sum = w(window, -2, -3)
+            + w(window, -1, -2)
+            + w(window, -1, -1)
+            + w(window, 0, 0)
+            + w(window, 1, 1)
+            + w(window, 1, 2)
+            + w(window, 2, 3);
         retval += sum * sum;
     }
 
     // Pattern 10: steep diagonal other way
     {
-        let sum = *d.offset(-xs3 + 2)
-            + *d.offset(-xs2 + 1)
-            + *d.offset(-xs + 1)
-            + *d
-            + *d.offset(xs - 1)
-            + *d.offset(xs2 - 1)
-            + *d.offset(xs3 - 2);
+        let sum = w(window, 2, -3)
+            + w(window, 1, -2)
+            + w(window, 1, -1)
+            + w(window, 0, 0)
+            + w(window, -1, 1)
+            + w(window, -1, 2)
+            + w(window, -2, 3);
         retval += sum * sum;
     }
 
     // Pattern 11: shallow diagonal (1:2 slope)
     {
-        let sum = *d.offset(-xs2 - 3)
-            + *d.offset(-xs - 2)
-            + *d.offset(-xs - 1)
-            + *d
-            + *d.offset(xs + 1)
-            + *d.offset(xs + 2)
-            + *d.offset(xs2 + 3);
+        let sum = w(window, -3, -2)
+            + w(window, -2, -1)
+            + w(window, -1, -1)
+            + w(window, 0, 0)
+            + w(window, 1, 1)
+            + w(window, 2, 1)
+            + w(window, 3, 2);
         retval += sum * sum;
     }
 
     // Pattern 12: shallow diagonal other way
     {
-        let sum = *d.offset(-xs2 + 3)
-            + *d.offset(-xs + 2)
-            + *d.offset(-xs + 1)
-            + *d
-            + *d.offset(xs - 1)
-            + *d.offset(xs - 2)
-            + *d.offset(xs2 - 3);
+        let sum = w(window, 3, -2)
+            + w(window, 2, -1)
+            + w(window, 1, -1)
+            + w(window, 0, 0)
+            + w(window, -1, 1)
+            + w(window, -2, 1)
+            + w(window, -3, 2);
         retval += sum * sum;
     }
 
     // Pattern 13: curved line pattern (same as 8)
     {
-        let sum = *d.offset(-4 + xs)
-            + *d.offset(-3 + xs)
-            + *d.offset(-2 + xs)
-            + *d.offset(-1)
-            + *d
-            + *d.offset(1)
-            + *d.offset(2 - xs)
-            + *d.offset(3 - xs)
-            + *d.offset(4 - xs);
+        let sum = w(window, -4, 1)
+            + w(window, -3, 1)
+            + w(window, -2, 1)
+            + w(window, -1, 0)
+            + w(window, 0, 0)
+            + w(window, 1, 0)
+            + w(window, 2, -1)
+            + w(window, 3, -1)
+            + w(window, 4, -1);
         retval += sum * sum;
     }
 
     // Pattern 14: curved line other direction (same as 7)
     {
-        let sum = *d.offset(-4 - xs)
-            + *d.offset(-3 - xs)
-            + *d.offset(-2 - xs)
-            + *d.offset(-1)
-            + *d
-            + *d.offset(1)
-            + *d.offset(2 + xs)
-            + *d.offset(3 + xs)
-            + *d.offset(4 + xs);
+        let sum = w(window, -4, -1)
+            + w(window, -3, -1)
+            + w(window, -2, -1)
+            + w(window, -1, 0)
+            + w(window, 0, 0)
+            + w(window, 1, 0)
+            + w(window, 2, 1)
+            + w(window, 3, 1)
+            + w(window, 4, 1);
         retval += sum * sum;
     }
 
     // Pattern 15: very shallow curve (same as 6)
     {
-        let sum = *d.offset(-xs4 - 1)
-            + *d.offset(-xs3 - 1)
-            + *d.offset(-xs2 - 1)
-            + *d.offset(-xs)
-            + *d
-            + *d.offset(xs)
-            + *d.offset(xs2 + 1)
-            + *d.offset(xs3 + 1)
-            + *d.offset(xs4 + 1);
+        let sum = w(window, -1, -4)
+            + w(window, -1, -3)
+            + w(window, -1, -2)
+            + w(window, 0, -1)
+            + w(window, 0, 0)
+            + w(window, 0, 1)
+            + w(window, 1, 2)
+            + w(window, 1, 3)
+            + w(window, 1, 4);
         retval += sum * sum;
     }
 
     // Pattern 16: very shallow curve other direction (same as 5)
     {
-        let sum = *d.offset(-xs4 + 1)
-            + *d.offset(-xs3 + 1)
-            + *d.offset(-xs2 + 1)
-            + *d.offset(-xs)
-            + *d
-            + *d.offset(xs)
-            + *d.offset(xs2 - 1)
-            + *d.offset(xs3 - 1)
-            + *d.offset(xs4 - 1);
+        let sum = w(window, 1, -4)
+            + w(window, 1, -3)
+            + w(window, 1, -2)
+            + w(window, 0, -1)
+            + w(window, 0, 0)
+            + w(window, 0, 1)
+            + w(window, -1, 2)
+            + w(window, -1, 3)
+            + w(window, -1, 4);
         retval += sum * sum;
     }
 
     retval
 }
 
-/// Malta filter for interior pixels (LF band).
+/// Malta filter on a 9x9 window (LF band, 5 samples per line).
 ///
-/// # Safety
-/// Same requirements as `malta_unit_fast`.
+/// Similar to `malta_unit_window` but with sparser sampling.
 #[inline]
-unsafe fn malta_unit_lf_fast(d: *const f32, xs: isize) -> f32 {
-    let xs2 = xs + xs;
-    let xs3 = xs2 + xs;
-    let xs4 = xs3 + xs;
+fn malta_unit_lf_window(window: &[f32; 81]) -> f32 {
     let mut retval = 0.0f32;
 
     // Pattern 1: x grows, y constant (sparse horizontal)
     {
-        let sum = *d.offset(-4) + *d.offset(-2) + *d + *d.offset(2) + *d.offset(4);
+        let sum = w(window, -4, 0)
+            + w(window, -2, 0)
+            + w(window, 0, 0)
+            + w(window, 2, 0)
+            + w(window, 4, 0);
         retval += sum * sum;
     }
 
     // Pattern 2: y grows, x constant (sparse vertical)
     {
-        let sum = *d.offset(-xs4) + *d.offset(-xs2) + *d + *d.offset(xs2) + *d.offset(xs4);
+        let sum = w(window, 0, -4)
+            + w(window, 0, -2)
+            + w(window, 0, 0)
+            + w(window, 0, 2)
+            + w(window, 0, 4);
         retval += sum * sum;
     }
 
     // Pattern 3: both grow (diagonal)
     {
-        let sum = *d.offset(-xs3 - 3)
-            + *d.offset(-xs2 - 2)
-            + *d
-            + *d.offset(xs2 + 2)
-            + *d.offset(xs3 + 3);
+        let sum = w(window, -3, -3)
+            + w(window, -2, -2)
+            + w(window, 0, 0)
+            + w(window, 2, 2)
+            + w(window, 3, 3);
         retval += sum * sum;
     }
 
     // Pattern 4: y grows, x shrinks
     {
-        let sum = *d.offset(-xs3 + 3)
-            + *d.offset(-xs2 + 2)
-            + *d
-            + *d.offset(xs2 - 2)
-            + *d.offset(xs3 - 3);
+        let sum = w(window, 3, -3)
+            + w(window, 2, -2)
+            + w(window, 0, 0)
+            + w(window, -2, 2)
+            + w(window, -3, 3);
         retval += sum * sum;
     }
 
     // Pattern 5: y grows, x shifts 1 to -1
     {
-        let sum = *d.offset(-xs4 + 1)
-            + *d.offset(-xs2 + 1)
-            + *d
-            + *d.offset(xs2 - 1)
-            + *d.offset(xs4 - 1);
+        let sum = w(window, 1, -4)
+            + w(window, 1, -2)
+            + w(window, 0, 0)
+            + w(window, -1, 2)
+            + w(window, -1, 4);
         retval += sum * sum;
     }
 
     // Pattern 6: y grows, x shifts -1 to 1
     {
-        let sum = *d.offset(-xs4 - 1)
-            + *d.offset(-xs2 - 1)
-            + *d
-            + *d.offset(xs2 + 1)
-            + *d.offset(xs4 + 1);
+        let sum = w(window, -1, -4)
+            + w(window, -1, -2)
+            + w(window, 0, 0)
+            + w(window, 1, 2)
+            + w(window, 1, 4);
         retval += sum * sum;
     }
 
     // Pattern 7: x grows, y shifts -1 to 1
     {
-        let sum =
-            *d.offset(-4 - xs) + *d.offset(-2 - xs) + *d + *d.offset(2 + xs) + *d.offset(4 + xs);
+        let sum = w(window, -4, -1)
+            + w(window, -2, -1)
+            + w(window, 0, 0)
+            + w(window, 2, 1)
+            + w(window, 4, 1);
         retval += sum * sum;
     }
 
     // Pattern 8: x grows, y shifts 1 to -1
     {
-        let sum =
-            *d.offset(-4 + xs) + *d.offset(-2 + xs) + *d + *d.offset(2 - xs) + *d.offset(4 - xs);
+        let sum = w(window, -4, 1)
+            + w(window, -2, 1)
+            + w(window, 0, 0)
+            + w(window, 2, -1)
+            + w(window, 4, -1);
         retval += sum * sum;
     }
 
     // Pattern 9: steep slope
     {
-        let sum = *d.offset(-xs3 - 2)
-            + *d.offset(-xs2 - 1)
-            + *d
-            + *d.offset(xs2 + 1)
-            + *d.offset(xs3 + 2);
+        let sum = w(window, -2, -3)
+            + w(window, -1, -2)
+            + w(window, 0, 0)
+            + w(window, 1, 2)
+            + w(window, 2, 3);
         retval += sum * sum;
     }
 
     // Pattern 10: steep slope other way
     {
-        let sum = *d.offset(-xs3 + 2)
-            + *d.offset(-xs2 + 1)
-            + *d
-            + *d.offset(xs2 - 1)
-            + *d.offset(xs3 - 2);
+        let sum = w(window, 2, -3)
+            + w(window, 1, -2)
+            + w(window, 0, 0)
+            + w(window, -1, 2)
+            + w(window, -2, 3);
         retval += sum * sum;
     }
 
     // Pattern 11: shallow slope
     {
-        let sum =
-            *d.offset(-xs2 - 3) + *d.offset(-xs - 2) + *d + *d.offset(xs + 2) + *d.offset(xs2 + 3);
+        let sum = w(window, -3, -2)
+            + w(window, -2, -1)
+            + w(window, 0, 0)
+            + w(window, 2, 1)
+            + w(window, 3, 2);
         retval += sum * sum;
     }
 
     // Pattern 12: shallow slope other way
     {
-        let sum =
-            *d.offset(-xs2 + 3) + *d.offset(-xs + 2) + *d + *d.offset(xs - 2) + *d.offset(xs2 - 3);
+        let sum = w(window, 3, -2)
+            + w(window, 2, -1)
+            + w(window, 0, 0)
+            + w(window, -2, 1)
+            + w(window, -3, 2);
         retval += sum * sum;
     }
 
     // Pattern 13: curved path
     {
-        let sum =
-            *d.offset(-4 + xs2) + *d.offset(-2 + xs) + *d + *d.offset(2 - xs) + *d.offset(4 - xs2);
+        let sum = w(window, -4, 2)
+            + w(window, -2, 1)
+            + w(window, 0, 0)
+            + w(window, 2, -1)
+            + w(window, 4, -2);
         retval += sum * sum;
     }
 
     // Pattern 14: curved other direction
     {
-        let sum =
-            *d.offset(-4 - xs2) + *d.offset(-2 - xs) + *d + *d.offset(2 + xs) + *d.offset(4 + xs2);
+        let sum = w(window, -4, -2)
+            + w(window, -2, -1)
+            + w(window, 0, 0)
+            + w(window, 2, 1)
+            + w(window, 4, 2);
         retval += sum * sum;
     }
 
     // Pattern 15: vertical with shift
     {
-        let sum = *d.offset(-xs4 - 2)
-            + *d.offset(-xs2 - 1)
-            + *d
-            + *d.offset(xs2 + 1)
-            + *d.offset(xs4 + 2);
+        let sum = w(window, -2, -4)
+            + w(window, -1, -2)
+            + w(window, 0, 0)
+            + w(window, 1, 2)
+            + w(window, 2, 4);
         retval += sum * sum;
     }
 
     // Pattern 16: vertical other shift
     {
-        let sum = *d.offset(-xs4 + 2)
-            + *d.offset(-xs2 + 1)
-            + *d
-            + *d.offset(xs2 - 1)
-            + *d.offset(xs4 - 2);
+        let sum = w(window, 2, -4)
+            + w(window, 1, -2)
+            + w(window, 0, 0)
+            + w(window, -1, 2)
+            + w(window, -2, 4);
         retval += sum * sum;
     }
 
     retval
+}
+
+/// Extracts a 9x9 window around (x, y) into a fixed-size array.
+///
+/// For pixels near the border, out-of-bounds values are set to 0.0.
+#[inline]
+fn extract_window(data: &ImageF, x: usize, y: usize) -> [f32; 81] {
+    let width = data.width();
+    let height = data.height();
+    let mut window = [0.0f32; 81];
+
+    // Check if we're in the interior (can use fast path without bounds checking)
+    if x >= 4 && y >= 4 && x < width - 4 && y < height - 4 {
+        // Interior: directly copy rows from the image
+        for dy in 0..9 {
+            let src_y = y + dy - 4;
+            let row = data.row(src_y);
+            let dst_start = dy * 9;
+            let src_start = x - 4;
+            window[dst_start..dst_start + 9].copy_from_slice(&row[src_start..src_start + 9]);
+        }
+    } else {
+        // Border: check each pixel individually
+        for dy in 0..9 {
+            let sy = y as isize + dy as isize - 4;
+            for dx in 0..9 {
+                let sx = x as isize + dx as isize - 4;
+                if sy >= 0 && sy < height as isize && sx >= 0 && sx < width as isize {
+                    window[dy * 9 + dx] = data.get(sx as usize, sy as usize);
+                }
+            }
+        }
+    }
+
+    window
 }
 
 /// Malta filter for HF/UHF bands (9 samples per line, 16 orientations).
 ///
 /// Applies 16 different line kernels in various orientations centered at (x,y)
 /// and returns the sum of squared responses.
-///
-/// For interior pixels, uses fast unsafe path. For border pixels, copies to
-/// a padded buffer.
 pub fn malta_unit(data: &ImageF, x: usize, y: usize) -> f32 {
-    let width = data.width();
-    let height = data.height();
-    let stride = data.stride();
-
-    // Fast path for interior pixels
-    if x >= 4 && y >= 4 && x < width - 4 && y < height - 4 {
-        let ptr = data.as_ptr();
-        let idx = y * stride + x;
-        unsafe {
-            return malta_unit_fast(ptr.add(idx), stride as isize);
-        }
-    }
-
-    // Slow path for border pixels: copy to padded buffer
-    let mut border = [0.0f32; 81]; // 9x9
-
-    for dy in 0..9 {
-        let sy = y as isize + dy as isize - 4;
-        for dx in 0..9 {
-            let sx = x as isize + dx as isize - 4;
-            if sy >= 0 && sy < height as isize && sx >= 0 && sx < width as isize {
-                border[dy * 9 + dx] = data.get(sx as usize, sy as usize);
-            }
-        }
-    }
-
-    // Run fast path on padded buffer (center is at index 4*9+4 = 40)
-    unsafe { malta_unit_fast(border.as_ptr().add(40), 9) }
+    // Extract window and use fixed-size array for bounds-check-free access
+    let window = extract_window(data, x, y);
+    malta_unit_window(&window)
 }
 
 /// Malta filter for LF band (5 samples per line, 16 orientations).
@@ -435,33 +463,8 @@ pub fn malta_unit(data: &ImageF, x: usize, y: usize) -> f32 {
 /// Similar to `malta_unit` but with sparser sampling for low-frequency
 /// content. Uses 5 samples per line instead of 9.
 pub fn malta_unit_lf(data: &ImageF, x: usize, y: usize) -> f32 {
-    let width = data.width();
-    let height = data.height();
-    let stride = data.stride();
-
-    // Fast path for interior pixels
-    if x >= 4 && y >= 4 && x < width - 4 && y < height - 4 {
-        let ptr = data.as_ptr();
-        let idx = y * stride + x;
-        unsafe {
-            return malta_unit_lf_fast(ptr.add(idx), stride as isize);
-        }
-    }
-
-    // Slow path for border pixels: copy to padded buffer
-    let mut border = [0.0f32; 81]; // 9x9
-
-    for dy in 0..9 {
-        let sy = y as isize + dy as isize - 4;
-        for dx in 0..9 {
-            let sx = x as isize + dx as isize - 4;
-            if sy >= 0 && sy < height as isize && sx >= 0 && sx < width as isize {
-                border[dy * 9 + dx] = data.get(sx as usize, sy as usize);
-            }
-        }
-    }
-
-    unsafe { malta_unit_lf_fast(border.as_ptr().add(40), 9) }
+    let window = extract_window(data, x, y);
+    malta_unit_lf_window(&window)
 }
 
 /// Computes the asymmetric Malta difference between two images.
@@ -507,9 +510,7 @@ pub fn malta_diff_map(
     let norm1_f32 = norm1 as f32;
 
     // First pass: compute scaled differences into contiguous buffer
-    // Using stride-aligned ImageF for the diffs since malta needs proper stride
     let mut diffs = ImageF::new(width, height);
-    let stride = diffs.stride();
 
     for y in 0..height {
         let row0 = lum0.row(y);
@@ -554,64 +555,11 @@ pub fn malta_diff_map(
         }
     }
 
-    // Second pass: apply Malta filter with fast interior path
+    // Second pass: apply Malta filter
+    // The extract_window function has an optimized path for interior pixels
     let mut block_diff_ac = ImageF::new(width, height);
-    let diffs_ptr = diffs.as_ptr();
 
-    // Top border
-    for y in 0..4.min(height) {
-        let out = block_diff_ac.row_mut(y);
-        for x in 0..width {
-            out[x] = if use_lf {
-                malta_unit_lf(&diffs, x, y)
-            } else {
-                malta_unit(&diffs, x, y)
-            };
-        }
-    }
-
-    // Middle rows
-    if height > 8 {
-        for y in 4..height - 4 {
-            let out = block_diff_ac.row_mut(y);
-
-            // Left border
-            for x in 0..4.min(width) {
-                out[x] = if use_lf {
-                    malta_unit_lf(&diffs, x, y)
-                } else {
-                    malta_unit(&diffs, x, y)
-                };
-            }
-
-            // Interior - fast path
-            if width > 8 {
-                let row_ptr = unsafe { diffs_ptr.add(y * stride) };
-                for x in 4..width - 4 {
-                    let d = unsafe { row_ptr.add(x) };
-                    out[x] = unsafe {
-                        if use_lf {
-                            malta_unit_lf_fast(d, stride as isize)
-                        } else {
-                            malta_unit_fast(d, stride as isize)
-                        }
-                    };
-                }
-            }
-
-            // Right border
-            for x in (width - 4).max(4)..width {
-                out[x] = if use_lf {
-                    malta_unit_lf(&diffs, x, y)
-                } else {
-                    malta_unit(&diffs, x, y)
-                };
-            }
-        }
-    }
-
-    // Bottom border
-    for y in (height - 4).max(4.min(height))..height {
+    for y in 0..height {
         let out = block_diff_ac.row_mut(y);
         for x in 0..width {
             out[x] = if use_lf {

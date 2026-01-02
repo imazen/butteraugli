@@ -271,6 +271,16 @@ impl Image3F {
     pub fn plane_row_mut(&mut self, plane: usize, y: usize) -> &mut [f32] {
         self.planes[plane].row_mut(y)
     }
+
+    /// Returns mutable references to all three planes simultaneously.
+    ///
+    /// This uses array destructuring to allow safe split borrows,
+    /// avoiding the need for unsafe code when writing to multiple planes.
+    #[inline]
+    pub fn planes_mut(&mut self) -> (&mut ImageF, &mut ImageF, &mut ImageF) {
+        let [p0, p1, p2] = &mut self.planes;
+        (p0, p1, p2)
+    }
 }
 
 impl Index<usize> for Image3F {
