@@ -8,7 +8,7 @@
 //! 2. Uses Gamma function (FastLog2f based), not cube root
 //! 3. Includes dynamic sensitivity based on blurred image
 
-use crate::blur::gaussian_blur;
+use crate::blur::{blur_mirrored_5x5, compute_separable5_weights};
 use crate::image::Image3F;
 
 // ============================================================================
@@ -153,10 +153,12 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
     let height = rgb.plane(0).height();
 
     // Step 1: Blur RGB with sigma=1.2
+    // C++ uses Separable5 (mirrored boundaries) for kernel size 5
     let sigma = 1.2;
-    let blurred_r = gaussian_blur(rgb.plane(0), sigma);
-    let blurred_g = gaussian_blur(rgb.plane(1), sigma);
-    let blurred_b = gaussian_blur(rgb.plane(2), sigma);
+    let weights = compute_separable5_weights(sigma);
+    let blurred_r = blur_mirrored_5x5(rgb.plane(0), &weights);
+    let blurred_g = blur_mirrored_5x5(rgb.plane(1), &weights);
+    let blurred_b = blur_mirrored_5x5(rgb.plane(2), &weights);
 
     // Create output XYB image
     let mut xyb = Image3F::new(width, height);

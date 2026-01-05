@@ -13,6 +13,29 @@
 
 use crate::image::ImageF;
 
+/// Computes normalized separable 5x5 weights for a given sigma.
+///
+/// Returns [w0, w1, w2] where:
+/// - w0 = center weight
+/// - w1 = 1-pixel offset weight
+/// - w2 = 2-pixel offset weight
+///
+/// The kernel is symmetric: [w2, w1, w0, w1, w2]
+#[must_use]
+pub fn compute_separable5_weights(sigma: f32) -> [f32; 3] {
+    let kernel = compute_kernel(sigma);
+    assert_eq!(kernel.len(), 5, "Separable5 requires kernel size 5");
+
+    let sum: f32 = kernel.iter().sum();
+    let scale = 1.0 / sum;
+
+    [
+        kernel[2] * scale, // w0: center
+        kernel[1] * scale, // w1: offset 1
+        kernel[0] * scale, // w2: offset 2
+    ]
+}
+
 /// Computes a 1D Gaussian kernel for the given sigma.
 ///
 /// Returns un-normalized weights (matches C++ behavior).
@@ -182,6 +205,83 @@ pub fn gaussian_blur_inplace(image: &mut ImageF, sigma: f32) {
 
     let blurred = gaussian_blur(image, sigma);
     image.copy_from(&blurred);
+}
+
+/// Mirrors a coordinate outside image bounds.
+///
+/// This matches C++ libjxl's Mirror function - the mirror is placed
+/// outside the last pixel (edge pixel is not repeated at mirror point).
+///
+/// For x < 0: x = -x - 1 (so -1 → 0, -2 → 1)
+/// For x >= size: x = 2*size - 1 - x (so size → size-1, size+1 → size-2)
+#[inline]
+fn mirror(mut x: i32, size: i32) -> usize {
+    while x < 0 || x >= size {
+        if x < 0 {
+            x = -x - 1;
+        } else {
+            x = 2 * size - 1 - x;
+        }
+    }
+    x as usize
+}
+
+/// Blur with mirrored boundary handling for 5x5 kernel.
+///
+/// This matches C++ Separable5 which is used when kernel size == 5.
+/// The key difference from clamp-and-renormalize is that mirrored values
+/// are used at borders instead of clamping and adjusting weights.
+pub fn blur_mirrored_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
+    let width = input.width();
+    let height = input.height();
+
+    // Separable 5x5 kernel: [w2, w1, w0, w1, w2]
+    let w0 = weights[0];
+    let w1 = weights[1];
+    let w2 = weights[2];
+
+    let iwidth = width as i32;
+    let iheight = height as i32;
+
+    // Temporary for horizontal pass (transposed)
+    let mut temp = ImageF::new(height, width);
+
+    // Horizontal pass with mirrored boundaries
+    for y in 0..height {
+        let row = input.row(y);
+        for x in 0..width {
+            let ix = x as i32;
+            let v_m2 = row[mirror(ix - 2, iwidth)];
+            let v_m1 = row[mirror(ix - 1, iwidth)];
+            let v_0 = row[x];
+            let v_p1 = row[mirror(ix + 1, iwidth)];
+            let v_p2 = row[mirror(ix + 2, iwidth)];
+
+            let sum = v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2;
+            // Write transposed
+            temp.set(y, x, sum);
+        }
+    }
+
+    // Vertical pass (on transposed data) with mirrored boundaries
+    let mut output = ImageF::new(width, height);
+    for x in 0..width {
+        // temp is transposed, so temp.row(x) gives column x of original
+        let col = temp.row(x);
+        for y in 0..height {
+            let iy = y as i32;
+            let v_m2 = col[mirror(iy - 2, iheight)];
+            let v_m1 = col[mirror(iy - 1, iheight)];
+            let v_0 = col[y];
+            let v_p1 = col[mirror(iy + 1, iheight)];
+            let v_p2 = col[mirror(iy + 2, iheight)];
+
+            let sum = v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2;
+            output.set(x, y, sum);
+        }
+    }
+
+    output
 }
 
 /// Fast blur for small sigma values (optimized 5x5 kernel).
