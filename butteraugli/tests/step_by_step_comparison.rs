@@ -540,7 +540,7 @@ fn test_malta_diff_map_width_dependent() {
         println!("  Width {} (mod4={}):", width, width % 4);
 
         // Create two test images: uniform vs with edge
-        let mut img0 = butteraugli::image::ImageF::filled(width, height, 0.5);
+        let img0 = butteraugli::image::ImageF::filled(width, height, 0.5);
         let mut img1 = butteraugli::image::ImageF::filled(width, height, 0.5);
 
         // Add edge to img1
