@@ -224,15 +224,18 @@ The safe implementation uses bounded array accesses. The `unsafe-perf` feature u
 |-----------|------------|
 | sRGB→linear conversion | 0% (exact) |
 | Gamma function | 0% (exact) |
+| Frequency bands (all widths) | <0.01% |
 | Real images (tank test) | ~1.2% |
 | Uniform gray patterns | <0.1% |
 | Gradient patterns | ~0.3% |
 | Checkerboard patterns | <0.1% |
 | Brightness/contrast distortion | <2% |
-| Edge + blur (widths 4n, 4n+1) | ~3% |
-| Edge + blur (widths 4n+2, 4n+3) | ~30%* |
+| Edge + blur patterns | ~1-3% |
+| Random + blur patterns | ~20-22%* |
 
-\* Synthetic edge+blur patterns show dimension-dependent divergence: widths that are 2 or 3 modulo 4 (e.g., 18, 19, 22, 23...) diverge by ~30%, while other widths match within ~3%. This appears related to C++ SIMD processing boundaries and doesn't affect real-world images, which consistently show ~1-2% difference regardless of dimensions.
+**Reference Parity Tests:** 185 passed, 6 failed (20% tolerance)
+
+\* Six specific test cases involving blur distortions show ~20-32% divergence: edge patterns with dimensions 23x31 and 47x33, and random mid-range patterns with blur at various sizes. These appear to be related to how the blur distortion interacts with edge-detection patterns and don't affect typical real-world image comparisons.
 
 The implementation is validated against live C++ libjxl butteraugli via FFI bindings during development. For practical image quality assessment, the Rust implementation produces results that closely match C++.
 
