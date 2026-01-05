@@ -454,7 +454,7 @@ fn test_opsin_dynamics_uniform() {
     // Rust OpsinDynamicsImage
     let rust_xyb = srgb_to_xyb_butteraugli(&srgb, width, height, 80.0);
 
-    // C++ OpsinDynamicsImage (via simplified wrapper)
+    // C++ OpsinDynamicsImage (SIMPLIFIED: no blur, no bias, just mix+cbrt)
     let mut cpp_xyb = vec![0.0f32; width * height * 3];
     let result = unsafe {
         butteraugli_opsin_dynamics(linear.as_ptr(), width, height, 80.0, cpp_xyb.as_mut_ptr())
@@ -488,7 +488,7 @@ fn test_opsin_dynamics_uniform() {
         println!("  {} channel max diff: {:.6}", name, max_diff[i]);
     }
 
-    // Note: We expect some difference due to simplified blur in C++ wrapper
+    // Note: Large differences expected - C++ wrapper lacks blur, bias, and proper transfer function
 }
 
 #[test]

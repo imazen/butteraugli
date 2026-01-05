@@ -182,7 +182,7 @@ fn test_stage2_xyb_conversion() {
         // Rust XYB
         let rust_xyb = srgb_to_xyb_butteraugli(&srgb, width, height, intensity_target);
 
-        // C++ XYB (via opsin_dynamics wrapper)
+        // C++ XYB (SIMPLIFIED wrapper: no blur, no bias, just mix+cbrt)
         let mut cpp_xyb = vec![0.0f32; width * height * 3];
         let result = unsafe {
             butteraugli_opsin_dynamics(
@@ -1013,7 +1013,7 @@ fn test_xyb_conversion_width_dependent() {
         // Rust XYB
         let rust_xyb = srgb_to_xyb_butteraugli(&srgb, width, height, intensity_target);
 
-        // C++ XYB (via opsin_dynamics wrapper)
+        // C++ XYB (SIMPLIFIED wrapper: no blur, no bias, just mix+cbrt)
         let mut cpp_xyb = vec![0.0f32; width * height * 3];
         let result = unsafe {
             butteraugli_opsin_dynamics(
