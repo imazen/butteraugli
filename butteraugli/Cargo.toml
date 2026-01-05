@@ -29,7 +29,7 @@ simd = []
 # Enable unsafe pointer arithmetic for ~2x speedup in Malta filter
 unsafe-perf = []
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
-cpp-parity = []
+cpp-parity = ["dep:jpegli-internals-sys"]
 
 [lints.rust]
 # Allow dead code in test utilities (used by cpp-parity tests not published to crates.io)
@@ -39,9 +39,11 @@ unused_imports = { level = "allow", priority = -1 }
 [dependencies]
 wide.workspace = true
 
+# C++ butteraugli bindings for parity testing (not on crates.io)
 # For local C++ parity testing, add to .cargo/config.toml:
 # [patch.crates-io]
 # jpegli-internals-sys = { path = "../jpegli-rs/internal/jpegli-internals-sys" }
+jpegli-internals-sys = { version = "0.1", optional = true, features = ["butteraugli"] }
 
 [dev-dependencies]
 # Image I/O for testing
