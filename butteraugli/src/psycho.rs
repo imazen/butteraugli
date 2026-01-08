@@ -168,14 +168,54 @@ fn suppress_x_by_y(in_y: &ImageF, inout_x: &mut ImageF) {
     let one_minus_s = 1.0 - s;
     let yw = SUPPRESS_XY as f32;
 
-    for y in 0..height {
-        let row_y = in_y.row(y);
-        let row_x = inout_x.row_mut(y);
-        for x in 0..width {
-            let vy = row_y[x];
-            let vx = row_x[x];
-            let scaler = (yw / vy.mul_add(vy, yw)).mul_add(one_minus_s, s);
-            row_x[x] = scaler * vx;
+    #[cfg(feature = "unsafe-simd")]
+    {
+        use wide::f32x8;
+        let s_simd = f32x8::splat(s);
+        let one_minus_s_simd = f32x8::splat(one_minus_s);
+        let yw_simd = f32x8::splat(yw);
+        let simd_width = width / 8 * 8;
+
+        for y in 0..height {
+            let row_y = in_y.row(y);
+            let row_x = inout_x.row_mut(y);
+
+            let mut x = 0;
+            while x < simd_width {
+                // SAFETY: x + 8 <= simd_width <= width
+                let vy = unsafe { f32x8::from(*(row_y[x..].as_ptr() as *const [f32; 8])) };
+                let vx = unsafe { f32x8::from(*(row_x[x..].as_ptr() as *const [f32; 8])) };
+
+                // scaler = (yw / (vy * vy + yw)) * one_minus_s + s
+                let denom = vy * vy + yw_simd;
+                let scaler = (yw_simd / denom) * one_minus_s_simd + s_simd;
+                let result = scaler * vx;
+
+                let arr: [f32; 8] = result.into();
+                row_x[x..x + 8].copy_from_slice(&arr);
+                x += 8;
+            }
+
+            for x in simd_width..width {
+                let vy = row_y[x];
+                let vx = row_x[x];
+                let scaler = (yw / vy.mul_add(vy, yw)).mul_add(one_minus_s, s);
+                row_x[x] = scaler * vx;
+            }
+        }
+    }
+
+    #[cfg(not(feature = "unsafe-simd"))]
+    {
+        for y in 0..height {
+            let row_y = in_y.row(y);
+            let row_x = inout_x.row_mut(y);
+            for x in 0..width {
+                let vy = row_y[x];
+                let vx = row_x[x];
+                let scaler = (yw / vy.mul_add(vy, yw)).mul_add(one_minus_s, s);
+                row_x[x] = scaler * vx;
+            }
         }
     }
 }
@@ -239,9 +279,9 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
     let blurred_b = gaussian_blur(mf.plane(2), sigma);
     mf.plane_mut(2).copy_from(&blurred_b);
 
-    // Suppress X by Y in HF
-    let hf_y_copy = hf[1].clone();
-    suppress_x_by_y(&hf_y_copy, &mut hf[0]);
+    // Suppress X by Y in HF (use split borrow to avoid clone)
+    let (hf_x, hf_y) = hf.split_at_mut(1);
+    suppress_x_by_y(&hf_y[0], &mut hf_x[0]);
 }
 
 /// Separates HF (high frequency) and UHF (ultra high frequency) components.

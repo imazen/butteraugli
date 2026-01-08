@@ -166,14 +166,52 @@ fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     let width = i0.width();
     let height = i0.height();
 
-    for y in 0..height {
-        let row0 = i0.row(y);
-        let row1 = i1.row(y);
-        let row_diff = diffmap.row_mut(y);
+    #[cfg(feature = "unsafe-simd")]
+    {
+        use wide::f32x8;
+        let w_simd = f32x8::splat(w);
+        let simd_width = width / 8 * 8;
 
-        for x in 0..width {
-            let diff = row0[x] - row1[x];
-            row_diff[x] += diff * diff * w;
+        for y in 0..height {
+            let row0 = i0.row(y);
+            let row1 = i1.row(y);
+            let row_diff = diffmap.row_mut(y);
+
+            // SIMD path
+            let mut x = 0;
+            while x < simd_width {
+                // SAFETY: x + 8 <= simd_width <= width
+                let v0 = unsafe { f32x8::from(*(row0[x..].as_ptr() as *const [f32; 8])) };
+                let v1 = unsafe { f32x8::from(*(row1[x..].as_ptr() as *const [f32; 8])) };
+                let curr = unsafe { f32x8::from(*(row_diff[x..].as_ptr() as *const [f32; 8])) };
+
+                let diff = v0 - v1;
+                let result = diff * diff * w_simd + curr;
+
+                let arr: [f32; 8] = result.into();
+                row_diff[x..x + 8].copy_from_slice(&arr);
+                x += 8;
+            }
+
+            // Scalar tail
+            for x in simd_width..width {
+                let diff = row0[x] - row1[x];
+                row_diff[x] += diff * diff * w;
+            }
+        }
+    }
+
+    #[cfg(not(feature = "unsafe-simd"))]
+    {
+        for y in 0..height {
+            let row0 = i0.row(y);
+            let row1 = i1.row(y);
+            let row_diff = diffmap.row_mut(y);
+
+            for x in 0..width {
+                let diff = row0[x] - row1[x];
+                row_diff[x] += diff * diff * w;
+            }
         }
     }
 }
