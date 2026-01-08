@@ -76,60 +76,41 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-butteraugli = "0.1"
+butteraugli = "0.4"
 ```
 
 ### Input Formats
 
-Two input APIs are provided:
+Two input APIs are provided using the [`imgref`](https://crates.io/crates/imgref) and [`rgb`](https://crates.io/crates/rgb) crates:
 
 | Function | Input Type | Color Space | Use Case |
 |----------|------------|-------------|----------|
-| `compute_butteraugli` | `&[u8]` | sRGB (gamma-encoded) | Standard 8-bit images |
-| `compute_butteraugli_linear` | `&[f32]` | Linear RGB (0.0-1.0) | HDR, 16-bit, float pipelines |
+| `butteraugli` | `ImgRef<RGB8>` | sRGB (gamma-encoded) | Standard 8-bit images |
+| `butteraugli_linear` | `ImgRef<RGB<f32>>` | Linear RGB (0.0-1.0) | HDR, 16-bit, float pipelines |
 
-Both APIs require:
-- **Channel order**: RGB (red, green, blue)
-- **Layout**: Row-major, interleaved (see below)
-- **Minimum size**: 8×8 pixels
-
-The sRGB function internally applies gamma decoding before comparison.
-
-### Pixel Layout
-
-Data is **row-major, interleaved RGB**:
-
-```
-Index:  0   1   2   3   4   5   6   7   8  ...
-Data:  [R0, G0, B0, R1, G1, B1, R2, G2, B2, ...]
-        └─pixel 0─┘  └─pixel 1─┘  └─pixel 2─┘
-```
-
-For a 3×2 image:
-```
-Row 0: [R00, G00, B00, R01, G01, B01, R02, G02, B02]
-Row 1: [R10, G10, B10, R11, G11, B11, R12, G12, B12]
-
-Memory: [R00, G00, B00, R01, G01, B01, R02, G02, B02, R10, G10, B10, ...]
-         └────────────── row 0 ──────────────────┘  └──── row 1 ────...
-```
-
-To access pixel at (x, y): `index = (y * width + x) * 3`
+Both APIs:
+- Support **stride** for images with padding via `ImgRef::new_stride()`
+- Require **minimum size**: 8×8 pixels
+- Return `ButteraugliResult` with score and optional diffmap
 
 ### Basic Example
 
 ```rust
-use butteraugli_oxide::{compute_butteraugli, ButteraugliParams};
+use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8};
 
-// Load two RGB images (u8, 3 bytes per pixel, row-major order)
-let original: &[u8] = &[/* original image RGB data */];
-let compressed: &[u8] = &[/* compressed image RGB data */];
+// Create two images (Vec<RGB8> or any container)
 let width = 640;
 let height = 480;
 
+let original: Vec<RGB8> = load_image_pixels(); // Your image loader
+let compressed: Vec<RGB8> = load_compressed_pixels();
+
+let img1 = Img::new(original, width, height);
+let img2 = Img::new(compressed, width, height);
+
 // Compare images
 let params = ButteraugliParams::default();
-let result = compute_butteraugli(original, compressed, width, height, &params)
+let result = butteraugli(img1.as_ref(), img2.as_ref(), &params)
     .expect("valid image data");
 
 println!("Butteraugli score: {:.4}", result.score);
@@ -141,12 +122,21 @@ if result.score < 1.0 {
 } else {
     println!("Significant visible differences");
 }
+```
 
-// Optional: access per-pixel difference map
+### With Difference Map
+
+```rust
+use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8};
+
+let params = ButteraugliParams::default()
+    .with_compute_diffmap(true);  // Enable per-pixel difference map
+
+let result = butteraugli(img1.as_ref(), img2.as_ref(), &params)?;
+
+// Access per-pixel difference map (ImgVec<f32>)
 if let Some(diffmap) = result.diffmap {
-    let max_diff = (0..height)
-        .flat_map(|y| (0..width).map(move |x| diffmap.get(x, y)))
-        .fold(0.0f32, f32::max);
+    let max_diff = diffmap.buf().iter().fold(0.0f32, |a, &b| a.max(b));
     println!("Maximum local difference: {:.4}", max_diff);
 }
 ```
@@ -154,45 +144,66 @@ if let Some(diffmap) = result.diffmap {
 ### Linear RGB Example (HDR/16-bit)
 
 ```rust
-use butteraugli_oxide::{compute_butteraugli_linear, ButteraugliParams, srgb_to_linear};
+use butteraugli::{butteraugli_linear, ButteraugliParams, Img, RGB, srgb_to_linear};
 
 // Convert 16-bit image to linear f32
 let original_16bit: &[u16] = &[/* 16-bit RGB data */];
-let original_linear: Vec<f32> = original_16bit.iter()
-    .map(|&v| v as f32 / 65535.0)  // Assuming already linear
+let original_linear: Vec<RGB<f32>> = original_16bit.chunks(3)
+    .map(|c| RGB::new(c[0] as f32 / 65535.0, c[1] as f32 / 65535.0, c[2] as f32 / 65535.0))
     .collect();
 
 // Or convert 8-bit sRGB manually
 let original_srgb: &[u8] = &[/* sRGB data */];
-let original_linear: Vec<f32> = original_srgb.iter()
-    .map(|&v| srgb_to_linear(v))
+let original_linear: Vec<RGB<f32>> = original_srgb.chunks(3)
+    .map(|c| RGB::new(srgb_to_linear(c[0]), srgb_to_linear(c[1]), srgb_to_linear(c[2])))
     .collect();
 
-let result = compute_butteraugli_linear(&original_linear, &compressed_linear, width, height, &ButteraugliParams::default())
-    .expect("valid image data");
+let img = Img::new(original_linear, width, height);
+let result = butteraugli_linear(img.as_ref(), compressed_img.as_ref(), &ButteraugliParams::default())?;
+```
+
+### Images with Stride (Padding)
+
+```rust
+use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8};
+
+// Image data with padding (stride > width)
+let raw_pixels: &[RGB8] = get_padded_buffer();
+let width = 640;
+let height = 480;
+let stride = 704;  // Actual row length including padding
+
+// Create ImgRef with stride
+let img = Img::new_stride(raw_pixels, width, height, stride);
 ```
 
 ### Custom Parameters
 
 ```rust
-use butteraugli_oxide::ButteraugliParams;
+use butteraugli::ButteraugliParams;
 
 let params = ButteraugliParams::new()
-    .with_hf_asymmetry(1.5)      // Penalize new artifacts more than blurring
-    .with_xmul(1.0)              // X channel multiplier (1.0 = neutral)
-    .with_intensity_target(250.0); // HDR display brightness in nits
+    .with_hf_asymmetry(1.5)        // Penalize new artifacts more than blurring
+    .with_xmul(1.0)                // X channel multiplier (1.0 = neutral)
+    .with_intensity_target(250.0)  // HDR display brightness in nits
+    .with_compute_diffmap(true);   // Generate per-pixel difference map
 ```
 
-### Helper Functions
+### Score Interpretation
 
 ```rust
-use butteraugli_oxide::{score_to_quality, butteraugli_fuzzy_class};
+// Interpret the score directly
+if result.score < 1.0 {
+    println!("Imperceptible difference");
+} else if result.score < 2.0 {
+    println!("Subtle difference");
+} else {
+    println!("Visible difference");
+}
 
-// Convert score to 0-100 quality percentage
-let quality = score_to_quality(1.5);  // ~62.5%
-
-// Get fuzzy classification (2.0 = perfect, 1.0 = ok, 0.0 = bad)
-let class = butteraugli_fuzzy_class(1.5);  // ~1.25
+// Or convert to other scales:
+// Quality percentage (0-100): (100.0 - score * 25.0).clamp(0.0, 100.0)
+// Fuzzy class (0-2, from C++): (2.0 - score * 0.5).clamp(0.0, 2.0)
 ```
 
 ## Features
@@ -248,8 +259,9 @@ The implementation is validated against live C++ libjxl butteraugli via FFI bind
 | Input format | Linear RGB float | sRGB u8 or linear RGB f32 |
 | Bit depth | Any (via float) | 8-bit u8 or f32 |
 | Color space | Linear RGB only | sRGB (auto-converted) or linear RGB |
-| HDR support | Yes | Yes (via `compute_butteraugli_linear`) |
-| Channel layout | Planar (separate R, G, B arrays) | Interleaved (RGBRGB...) |
+| HDR support | Yes | Yes (via `butteraugli_linear`) |
+| Channel layout | Planar (separate R, G, B arrays) | Interleaved RGB via `imgref` |
+| Stride support | Manual | Built-in via `ImgRef::new_stride()` |
 
 ### XYB Color Space Note
 

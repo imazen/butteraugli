@@ -6,7 +6,7 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use butteraugli::{compute_butteraugli, ButteraugliParams, ButteraugliResult, ImageF};
+use butteraugli::{butteraugli, ButteraugliParams, ButteraugliResult, Img, ImgVec, RGB8};
 use clap::{ArgAction, ColorChoice, Parser, ValueEnum};
 use colored::Colorize;
 use image::GenericImageView;
@@ -410,21 +410,29 @@ fn compare_images(
     let ref_rgb = ref_img.to_rgb8();
     let dist_rgb = dist_img.to_rgb8();
 
+    // Convert to RGB8 pixels for butteraugli
+    let ref_pixels: Vec<RGB8> = ref_rgb
+        .pixels()
+        .map(|p| RGB8::new(p.0[0], p.0[1], p.0[2]))
+        .collect();
+    let dist_pixels: Vec<RGB8> = dist_rgb
+        .pixels()
+        .map(|p| RGB8::new(p.0[0], p.0[1], p.0[2]))
+        .collect();
+
+    let ref_imgref = Img::new(ref_pixels, ref_w as usize, ref_h as usize);
+    let dist_imgref = Img::new(dist_pixels, dist_w as usize, dist_h as usize);
+
     // Set up parameters
     let params = ButteraugliParams::default()
         .with_intensity_target(cli.intensity_target)
         .with_hf_asymmetry(cli.hf_asymmetry)
-        .with_xmul(cli.xmul);
+        .with_xmul(cli.xmul)
+        .with_compute_diffmap(cli.diffmap.is_some());
 
     // Compute butteraugli
-    let result = compute_butteraugli(
-        ref_rgb.as_raw(),
-        dist_rgb.as_raw(),
-        ref_w as usize,
-        ref_h as usize,
-        &params,
-    )
-    .map_err(|e| format!("butteraugli failed: {e}"))?;
+    let result = butteraugli(ref_imgref.as_ref(), dist_imgref.as_ref(), &params)
+        .map_err(|e| format!("butteraugli failed: {e}"))?;
 
     Ok((result, ref_w, ref_h))
 }
@@ -441,7 +449,7 @@ fn get_format(cli: &Cli) -> OutputFormat {
     }
 }
 
-fn save_diffmap(diffmap: &ImageF, path: &Path) -> Result<(), String> {
+fn save_diffmap(diffmap: &ImgVec<f32>, path: &Path) -> Result<(), String> {
     let width = diffmap.width();
     let height = diffmap.height();
 
@@ -449,17 +457,16 @@ fn save_diffmap(diffmap: &ImageF, path: &Path) -> Result<(), String> {
     let mut rgb_data = Vec::with_capacity(width * height * 3);
 
     // Find max value for normalization
-    let mut max_val = 0.0f32;
-    for y in 0..height {
-        for x in 0..width {
-            max_val = max_val.max(diffmap.get(x, y));
-        }
-    }
-    let max_val = max_val.max(1.0);
+    let max_val = diffmap
+        .buf()
+        .iter()
+        .copied()
+        .fold(0.0f32, f32::max)
+        .max(1.0);
 
     for y in 0..height {
         for x in 0..width {
-            let val = diffmap.get(x, y);
+            let val = diffmap.buf()[y * width + x];
             let normalized = (val / max_val).clamp(0.0, 1.0);
             let (r, g, b) = heatmap_color(normalized);
             rgb_data.push(r);

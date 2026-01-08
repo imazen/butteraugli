@@ -3,6 +3,7 @@
 //! These types provide efficient storage for floating-point image data
 //! with row-stride support for cache-friendly access patterns.
 
+use imgref::ImgVec;
 use std::ops::{Index, IndexMut};
 
 /// Single-channel floating point image.
@@ -184,6 +185,25 @@ impl ImageF {
     /// Fills the image with a constant value.
     pub fn fill(&mut self, value: f32) {
         self.data.fill(value);
+    }
+
+    /// Converts this image to an `ImgVec<f32>` for return to users.
+    ///
+    /// If the image has padding (stride > width), the data is copied
+    /// to remove the padding. Otherwise, ownership is transferred directly.
+    #[must_use]
+    pub(crate) fn into_imgvec(self) -> ImgVec<f32> {
+        if self.stride == self.width {
+            ImgVec::new(self.data, self.width, self.height)
+        } else {
+            // Copy to remove padding
+            let mut out = Vec::with_capacity(self.width * self.height);
+            for y in 0..self.height {
+                let start = y * self.stride;
+                out.extend_from_slice(&self.data[start..start + self.width]);
+            }
+            ImgVec::new(out, self.width, self.height)
+        }
     }
 }
 

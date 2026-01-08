@@ -123,23 +123,24 @@ checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
 
 [[package]]
 name = "butteraugli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "approx",
  "chrono",
+ "imgref",
  "jpeg-decoder",
- "jpegli-internals-sys",
  "mozjpeg",
  "multiversion",
  "png 0.17.16",
  "proptest",
+ "rgb",
  "simd_aligned",
  "wide",
 ]
 
 [[package]]
 name = "butteraugli-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "butteraugli",
  "clap",
@@ -231,15 +232,6 @@ name = "clap_lex"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
-
-[[package]]
-name = "cmake"
-version = "0.1.57"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75443c44cd6b379beb8c5b45d85d0773baf31cce901fe7bb252f4eff3008ef7d"
-dependencies = [
- "cc",
-]
 
 [[package]]
 name = "colorchoice"
@@ -414,6 +406,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "imgref"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7c5cedc30da3a610cac6b4ba17597bdf7152cf974e8aab3afb3d54455e371c8"
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -442,15 +440,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
 dependencies = [
  "rayon",
-]
-
-[[package]]
-name = "jpegli-internals-sys"
-version = "0.1.0"
-dependencies = [
- "cc",
- "cmake",
- "libc",
 ]
 
 [[package]]
@@ -1175,3 +1164,7 @@ checksum = "e35aee689668bf9bd6f6f3a6c60bb29ba1244b3b43adfd50edd554a371da37d5"
 dependencies = [
  "zune-core",
 ]
+
+[[patch.unused]]
+name = "jpegli-internals-sys"
+version = "0.1.0"

@@ -282,7 +282,7 @@ impl ButteraugliReference {
 
         ButteraugliResult {
             score,
-            diffmap: Some(diffmap),
+            diffmap: Some(diffmap.into_imgvec()),
         }
     }
 
@@ -320,7 +320,7 @@ impl ButteraugliReference {
 
         ButteraugliResult {
             score,
-            diffmap: Some(diffmap),
+            diffmap: Some(diffmap.into_imgvec()),
         }
     }
 }
@@ -948,10 +948,22 @@ mod tests {
                 .expect("should create reference");
         let precomputed_result = reference.compare(&rgb2).expect("should compare");
 
-        // Compute using full method
+        // Compute using new API
+        use crate::{butteraugli, Img, RGB8};
+        let pixels1: Vec<RGB8> = rgb1
+            .chunks_exact(3)
+            .map(|c| RGB8::new(c[0], c[1], c[2]))
+            .collect();
+        let pixels2: Vec<RGB8> = rgb2
+            .chunks_exact(3)
+            .map(|c| RGB8::new(c[0], c[1], c[2]))
+            .collect();
+        let img1 = Img::new(pixels1, width, height);
+        let img2 = Img::new(pixels2, width, height);
+
+        let params = ButteraugliParams::default().with_compute_diffmap(true);
         let full_result =
-            crate::compute_butteraugli(&rgb1, &rgb2, width, height, &ButteraugliParams::default())
-                .expect("should compute");
+            butteraugli(img1.as_ref(), img2.as_ref(), &params).expect("should compute");
 
         // Scores should match exactly
         assert!(
@@ -970,8 +982,9 @@ mod tests {
 
         for y in 0..height {
             for x in 0..width {
-                let pre = precomputed_diffmap.get(x, y);
-                let full = full_diffmap.get(x, y);
+                let idx = y * width + x;
+                let pre = precomputed_diffmap.buf()[idx];
+                let full = full_diffmap.buf()[idx];
                 assert!(
                     (pre - full).abs() < 1e-6,
                     "diffmap mismatch at ({}, {}): precomputed={}, full={}",
@@ -1006,15 +1019,22 @@ mod tests {
                 .expect("should create reference");
         let precomputed_result = reference.compare_linear(&rgb2).expect("should compare");
 
-        // Compute using full method
-        let full_result = crate::compute_butteraugli_linear(
-            &rgb1,
-            &rgb2,
-            width,
-            height,
-            &ButteraugliParams::default(),
-        )
-        .expect("should compute");
+        // Compute using new API
+        use crate::{butteraugli_linear, Img, RGB};
+        let pixels1: Vec<RGB<f32>> = rgb1
+            .chunks_exact(3)
+            .map(|c| RGB::new(c[0], c[1], c[2]))
+            .collect();
+        let pixels2: Vec<RGB<f32>> = rgb2
+            .chunks_exact(3)
+            .map(|c| RGB::new(c[0], c[1], c[2]))
+            .collect();
+        let img1 = Img::new(pixels1, width, height);
+        let img2 = Img::new(pixels2, width, height);
+
+        let full_result =
+            butteraugli_linear(img1.as_ref(), img2.as_ref(), &ButteraugliParams::default())
+                .expect("should compute");
 
         assert!(
             (precomputed_result.score - full_result.score).abs() < 1e-10,
@@ -1046,9 +1066,22 @@ mod tests {
         assert!(reference.half.is_some(), "should have multiresolution data");
 
         let precomputed_result = reference.compare(&rgb2).expect("should compare");
-        let full_result =
-            crate::compute_butteraugli(&rgb1, &rgb2, width, height, &ButteraugliParams::default())
-                .expect("should compute");
+
+        // Compute using new API
+        use crate::{butteraugli, Img, RGB8};
+        let pixels1: Vec<RGB8> = rgb1
+            .chunks_exact(3)
+            .map(|c| RGB8::new(c[0], c[1], c[2]))
+            .collect();
+        let pixels2: Vec<RGB8> = rgb2
+            .chunks_exact(3)
+            .map(|c| RGB8::new(c[0], c[1], c[2]))
+            .collect();
+        let img1 = Img::new(pixels1, width, height);
+        let img2 = Img::new(pixels2, width, height);
+
+        let full_result = butteraugli(img1.as_ref(), img2.as_ref(), &ButteraugliParams::default())
+            .expect("should compute");
 
         assert!(
             (precomputed_result.score - full_result.score).abs() < 1e-10,

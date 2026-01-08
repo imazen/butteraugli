@@ -10,6 +10,8 @@
 
 use crate::blur::{blur_mirrored_5x5, compute_separable5_weights};
 use crate::image::Image3F;
+use imgref::ImgRef;
+use rgb::{RGB, RGB8};
 
 // ============================================================================
 // OpsinAbsorbance coefficients (C++ butteraugli.cc lines 1428-1439)
@@ -350,6 +352,73 @@ pub fn linear_rgb_to_xyb_butteraugli(
             linear.plane_mut(0).set(x, y, rgb[idx]);
             linear.plane_mut(1).set(x, y, rgb[idx + 1]);
             linear.plane_mut(2).set(x, y, rgb[idx + 2]);
+        }
+    }
+
+    // Apply OpsinDynamicsImage
+    opsin_dynamics_image(&linear, intensity_target)
+}
+
+/// Converts an sRGB image from ImgRef<RGB8> to butteraugli XYB.
+///
+/// This function handles stride-aware iteration over the image data.
+///
+/// # Arguments
+/// * `img` - sRGB image reference (supports stride)
+/// * `intensity_target` - Nits for 1.0 value (default 80.0)
+///
+/// # Returns
+/// XYB image (3 planes)
+pub(crate) fn imgref_srgb_to_xyb(img: ImgRef<RGB8>, intensity_target: f32) -> Image3F {
+    let width = img.width();
+    let height = img.height();
+    let lut = &*SRGB_TO_LINEAR_LUT;
+
+    // Convert sRGB u8 to linear RGB Image3F
+    let mut linear = Image3F::new(width, height);
+    let (out_r, out_g, out_b) = linear.planes_mut();
+
+    for (y, row) in img.rows().enumerate() {
+        let row_r = out_r.row_mut(y);
+        let row_g = out_g.row_mut(y);
+        let row_b = out_b.row_mut(y);
+        for (x, px) in row.iter().enumerate() {
+            row_r[x] = lut[px.r as usize];
+            row_g[x] = lut[px.g as usize];
+            row_b[x] = lut[px.b as usize];
+        }
+    }
+
+    // Apply OpsinDynamicsImage
+    opsin_dynamics_image(&linear, intensity_target)
+}
+
+/// Converts a linear RGB image from ImgRef<RGB<f32>> to butteraugli XYB.
+///
+/// This function handles stride-aware iteration over the image data.
+///
+/// # Arguments
+/// * `img` - Linear RGB image reference (supports stride)
+/// * `intensity_target` - Nits for 1.0 value (default 80.0)
+///
+/// # Returns
+/// XYB image (3 planes)
+pub(crate) fn imgref_linear_to_xyb(img: ImgRef<RGB<f32>>, intensity_target: f32) -> Image3F {
+    let width = img.width();
+    let height = img.height();
+
+    // Convert interleaved linear RGB to planar Image3F
+    let mut linear = Image3F::new(width, height);
+    let (out_r, out_g, out_b) = linear.planes_mut();
+
+    for (y, row) in img.rows().enumerate() {
+        let row_r = out_r.row_mut(y);
+        let row_g = out_g.row_mut(y);
+        let row_b = out_b.row_mut(y);
+        for (x, px) in row.iter().enumerate() {
+            row_r[x] = px.r;
+            row_g[x] = px.g;
+            row_b[x] = px.b;
         }
     }
 

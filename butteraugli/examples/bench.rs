@@ -1,4 +1,4 @@
-use butteraugli::{compute_butteraugli, ButteraugliParams};
+use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8};
 use std::time::Instant;
 
 fn main() {
@@ -6,34 +6,36 @@ fn main() {
     let height = 512;
 
     // Create gradient images with small differences
-    let mut rgb1 = vec![0u8; width * height * 3];
-    let mut rgb2 = vec![0u8; width * height * 3];
-
-    for y in 0..height {
-        for x in 0..width {
-            let idx = (y * width + x) * 3;
+    let pixels1: Vec<RGB8> = (0..width * height)
+        .map(|i| {
+            let x = i % width;
             let val = ((x as f32 / width as f32) * 200.0) as u8;
-            rgb1[idx] = val;
-            rgb1[idx + 1] = val;
-            rgb1[idx + 2] = val;
+            RGB8::new(val, val, val)
+        })
+        .collect();
 
+    let pixels2: Vec<RGB8> = (0..width * height)
+        .map(|i| {
+            let x = i % width;
+            let y = i / width;
+            let val = ((x as f32 / width as f32) * 200.0) as u8;
             let val2 = val.saturating_add(((x * y) % 10) as u8);
-            rgb2[idx] = val2;
-            rgb2[idx + 1] = val2;
-            rgb2[idx + 2] = val2;
-        }
-    }
+            RGB8::new(val2, val2, val2)
+        })
+        .collect();
 
+    let img1 = Img::new(pixels1, width, height);
+    let img2 = Img::new(pixels2, width, height);
     let params = ButteraugliParams::default();
 
     // Warmup
-    let _ = compute_butteraugli(&rgb1, &rgb2, width, height, &params);
+    let _ = butteraugli(img1.as_ref(), img2.as_ref(), &params);
 
     // Benchmark
     let iterations = 10;
     let start = Instant::now();
     for _ in 0..iterations {
-        let _ = compute_butteraugli(&rgb1, &rgb2, width, height, &params);
+        let _ = butteraugli(img1.as_ref(), img2.as_ref(), &params);
     }
     let elapsed = start.elapsed();
 

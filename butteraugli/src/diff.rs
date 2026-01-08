@@ -14,7 +14,15 @@ use crate::mask::{
 };
 use crate::opsin::{linear_rgb_to_xyb_butteraugli, srgb_to_xyb_butteraugli};
 use crate::psycho::{separate_frequencies, PsychoImage};
-use crate::{ButteraugliParams, ButteraugliResult};
+use crate::ButteraugliParams;
+use imgref::ImgRef;
+use rgb::{RGB, RGB8};
+
+/// Internal result type for diff module (uses ImageF, not ImgVec).
+pub(crate) struct InternalResult {
+    pub score: f64,
+    pub diffmap: Option<ImageF>,
+}
 
 /// Minimum image dimension for multi-resolution processing.
 /// Images smaller than this are handled without recursion.
@@ -738,13 +746,13 @@ pub fn compute_butteraugli_impl(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
-) -> ButteraugliResult {
+) -> InternalResult {
     assert_eq!(rgb1.len(), width * height * 3);
     assert_eq!(rgb2.len(), width * height * 3);
 
     // Handle identical images case
     if rgb1 == rgb2 {
-        return ButteraugliResult {
+        return InternalResult {
             score: 0.0,
             diffmap: Some(ImageF::new(width, height)),
         };
@@ -760,7 +768,7 @@ pub fn compute_butteraugli_impl(
     // Compute global score
     let score = compute_score_from_diffmap(&diffmap);
 
-    ButteraugliResult {
+    InternalResult {
         score,
         diffmap: Some(diffmap),
     }
@@ -775,13 +783,13 @@ pub fn compute_butteraugli_linear_impl(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
-) -> ButteraugliResult {
+) -> InternalResult {
     assert_eq!(rgb1.len(), width * height * 3);
     assert_eq!(rgb2.len(), width * height * 3);
 
     // Handle identical images case
     if rgb1 == rgb2 {
-        return ButteraugliResult {
+        return InternalResult {
             score: 0.0,
             diffmap: Some(ImageF::new(width, height)),
         };
@@ -797,10 +805,131 @@ pub fn compute_butteraugli_linear_impl(
     // Compute global score
     let score = compute_score_from_diffmap(&diffmap);
 
-    ButteraugliResult {
+    InternalResult {
         score,
         diffmap: Some(diffmap),
     }
+}
+
+/// Computes the diffmap for a single resolution level from XYB images.
+fn compute_diffmap_single_resolution_xyb(
+    xyb1: &Image3F,
+    xyb2: &Image3F,
+    params: &ButteraugliParams,
+) -> ImageF {
+    let width = xyb1.width();
+    let height = xyb1.height();
+
+    // Perform frequency decomposition
+    let ps1 = separate_frequencies(xyb1);
+    let ps2 = separate_frequencies(xyb2);
+
+    // Compute AC differences using Malta filter
+    let mut block_diff_ac =
+        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
+
+    // Compute mask from both PsychoImages (also accumulates some AC differences)
+    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)));
+
+    // Compute DC (LF) differences
+    let mut block_diff_dc = Image3F::new(width, height);
+    for c in 0..3 {
+        for y in 0..height {
+            for x in 0..width {
+                let d = ps1.lf.plane(c).get(x, y) - ps2.lf.plane(c).get(x, y);
+                block_diff_dc
+                    .plane_mut(c)
+                    .set(x, y, d * d * WMUL[6 + c] as f32);
+            }
+        }
+    }
+
+    // Combine channels to final diffmap using MaskY/MaskDcY
+    combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul())
+}
+
+/// Implementation of butteraugli comparison for ImgRef<RGB8>.
+pub(crate) fn compute_butteraugli_imgref(
+    img1: ImgRef<RGB8>,
+    img2: ImgRef<RGB8>,
+    params: &ButteraugliParams,
+    compute_diffmap: bool,
+) -> InternalResult {
+    let width = img1.width();
+    let height = img1.height();
+
+    // Convert ImgRef to contiguous u8 slice (handles stride)
+    let rgb1 = imgref_rgb8_to_slice(img1);
+    let rgb2 = imgref_rgb8_to_slice(img2);
+
+    // Use the existing proven implementation with multiresolution support
+    let mut result = compute_butteraugli_impl(&rgb1, &rgb2, width, height, params);
+
+    // Drop diffmap if not requested
+    if !compute_diffmap {
+        result.diffmap = None;
+    }
+
+    result
+}
+
+/// Implementation of butteraugli comparison for ImgRef<RGB<f32>>.
+pub(crate) fn compute_butteraugli_linear_imgref(
+    img1: ImgRef<RGB<f32>>,
+    img2: ImgRef<RGB<f32>>,
+    params: &ButteraugliParams,
+    compute_diffmap: bool,
+) -> InternalResult {
+    let width = img1.width();
+    let height = img1.height();
+
+    // Convert ImgRef to contiguous f32 slice (handles stride)
+    let rgb1 = imgref_rgbf32_to_slice(img1);
+    let rgb2 = imgref_rgbf32_to_slice(img2);
+
+    // Use the existing proven implementation with multiresolution support
+    let mut result = compute_butteraugli_linear_impl(&rgb1, &rgb2, width, height, params);
+
+    // Drop diffmap if not requested
+    if !compute_diffmap {
+        result.diffmap = None;
+    }
+
+    result
+}
+
+/// Converts ImgRef<RGB8> to a contiguous Vec<u8> in RGB order.
+fn imgref_rgb8_to_slice(img: ImgRef<RGB8>) -> Vec<u8> {
+    let width = img.width();
+    let height = img.height();
+    let mut out = Vec::with_capacity(width * height * 3);
+
+    for row in img.rows() {
+        for px in row {
+            out.push(px.r);
+            out.push(px.g);
+            out.push(px.b);
+        }
+    }
+
+    out
+}
+
+/// Converts ImgRef<RGB<f32>> to a contiguous Vec<f32> in RGB order.
+fn imgref_rgbf32_to_slice(img: ImgRef<RGB<f32>>) -> Vec<f32> {
+    let width = img.width();
+    let height = img.height();
+    let mut out = Vec::with_capacity(width * height * 3);
+
+    for row in img.rows() {
+        for px in row {
+            out.push(px.r);
+            out.push(px.g);
+            out.push(px.b);
+        }
+    }
+
+    out
 }
 
 #[cfg(test)]
