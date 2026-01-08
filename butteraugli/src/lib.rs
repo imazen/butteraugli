@@ -144,6 +144,7 @@ pub mod blur;
 pub mod consts;
 mod diff;
 pub mod image;
+pub mod image_aligned;
 pub mod malta;
 pub mod mask;
 pub mod opsin;

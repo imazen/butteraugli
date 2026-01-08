@@ -45,6 +45,7 @@ multiversion.workspace = true
 # [patch.crates-io]
 # jpegli-internals-sys = { path = "../jpegli-rs/internal/jpegli-internals-sys" }
 jpegli-internals-sys = { version = "0.1", optional = true, features = ["butteraugli"] }
+simd_aligned = "0.6.1"
 
 [dev-dependencies]
 # Image I/O for testing
