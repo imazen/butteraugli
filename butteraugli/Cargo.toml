@@ -27,7 +27,8 @@ exclude = [
 default = ["simd"]
 simd = []
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
-cpp-parity = ["dep:jpegli-internals-sys"]
+# Enable via: cargo test --features cpp-parity (after setting up local path in .cargo/config.toml)
+# cpp-parity = ["dep:jpegli-internals-sys"]
 
 [lints.rust]
 # Allow dead code in test utilities (used by cpp-parity tests not published to crates.io)
@@ -39,10 +40,7 @@ wide.workspace = true
 multiversion.workspace = true
 
 # C++ butteraugli bindings for parity testing (not on crates.io)
-# For local C++ parity testing, add to .cargo/config.toml:
-# [patch.crates-io]
-# jpegli-internals-sys = { path = "../jpegli-rs/internal/jpegli-internals-sys" }
-jpegli-internals-sys = { version = "0.1", optional = true, features = ["butteraugli"] }
+# For local C++ parity testing, add jpegli-internals-sys to .cargo/config.toml
 simd_aligned = "0.6.1"
 
 [dev-dependencies]
