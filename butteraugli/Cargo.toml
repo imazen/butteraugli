@@ -28,6 +28,8 @@ default = ["simd"]
 simd = []
 # Enable unsafe pointer arithmetic for ~2x speedup in Malta filter
 unsafe-perf = []
+# Enable explicit SIMD with unsafe pointer loads for ~3.7x speedup in blur convolution
+unsafe-simd = []
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
 cpp-parity = ["dep:jpegli-internals-sys"]
 
