@@ -164,58 +164,39 @@ fn suppress_x_by_y(in_y: &ImageF, inout_x: &mut ImageF) {
     let width = in_y.width();
     let height = in_y.height();
 
+    use wide::f32x8;
     let s = SUPPRESS_S as f32;
     let one_minus_s = 1.0 - s;
     let yw = SUPPRESS_XY as f32;
+    let s_simd = f32x8::splat(s);
+    let one_minus_s_simd = f32x8::splat(one_minus_s);
+    let yw_simd = f32x8::splat(yw);
 
-    #[cfg(feature = "unsafe-simd")]
-    {
-        use wide::f32x8;
-        let s_simd = f32x8::splat(s);
-        let one_minus_s_simd = f32x8::splat(one_minus_s);
-        let yw_simd = f32x8::splat(yw);
-        let simd_width = width / 8 * 8;
+    for y in 0..height {
+        let row_y = in_y.row(y);
+        let row_x = inout_x.row_mut(y);
 
-        for y in 0..height {
-            let row_y = in_y.row(y);
-            let row_x = inout_x.row_mut(y);
+        // SIMD path: process 8 elements at a time
+        for (i, chunk) in row_x.chunks_exact_mut(8).enumerate() {
+            let x = i * 8;
+            let vy = f32x8::from(<[f32; 8]>::try_from(&row_y[x..x + 8]).unwrap());
+            let vx = f32x8::from(<[f32; 8]>::try_from(&*chunk).unwrap());
 
-            let mut x = 0;
-            while x < simd_width {
-                // SAFETY: x + 8 <= simd_width <= width
-                let vy = unsafe { f32x8::from(*(row_y[x..].as_ptr() as *const [f32; 8])) };
-                let vx = unsafe { f32x8::from(*(row_x[x..].as_ptr() as *const [f32; 8])) };
+            // scaler = (yw / (vy * vy + yw)) * one_minus_s + s
+            let denom = vy * vy + yw_simd;
+            let scaler = (yw_simd / denom) * one_minus_s_simd + s_simd;
+            let result = scaler * vx;
 
-                // scaler = (yw / (vy * vy + yw)) * one_minus_s + s
-                let denom = vy * vy + yw_simd;
-                let scaler = (yw_simd / denom) * one_minus_s_simd + s_simd;
-                let result = scaler * vx;
-
-                let arr: [f32; 8] = result.into();
-                row_x[x..x + 8].copy_from_slice(&arr);
-                x += 8;
-            }
-
-            for x in simd_width..width {
-                let vy = row_y[x];
-                let vx = row_x[x];
-                let scaler = (yw / vy.mul_add(vy, yw)).mul_add(one_minus_s, s);
-                row_x[x] = scaler * vx;
-            }
+            chunk.copy_from_slice(&<[f32; 8]>::from(result));
         }
-    }
 
-    #[cfg(not(feature = "unsafe-simd"))]
-    {
-        for y in 0..height {
-            let row_y = in_y.row(y);
-            let row_x = inout_x.row_mut(y);
-            for x in 0..width {
-                let vy = row_y[x];
-                let vx = row_x[x];
-                let scaler = (yw / vy.mul_add(vy, yw)).mul_add(one_minus_s, s);
-                row_x[x] = scaler * vx;
-            }
+        // Scalar tail
+        let simd_width = width / 8 * 8;
+        for x in simd_width..width {
+            let vy = row_y[x];
+            let vx = row_x[x];
+            let scaler = (yw / vy.mul_add(vy, yw)).mul_add(one_minus_s, s);
+            row_x[x] = scaler * vx;
         }
     }
 }

@@ -30,7 +30,10 @@ fn main() {
     let aligned_create = start.elapsed();
 
     println!("Creation:");
-    println!("  ImageF:        {:?}", unaligned_create / iterations as u32);
+    println!(
+        "  ImageF:        {:?}",
+        unaligned_create / iterations as u32
+    );
     println!("  AlignedImageF: {:?}", aligned_create / iterations as u32);
     println!();
 
@@ -74,8 +77,14 @@ fn main() {
 
     println!("Fill (scalar per-element):");
     println!("  ImageF:        {:?}", unaligned_fill / iterations as u32);
-    println!("  AlignedImageF: {:?}", aligned_fill_scalar / iterations as u32);
-    println!("  AlignedImageF (SIMD): {:?}", aligned_fill_simd / iterations as u32);
+    println!(
+        "  AlignedImageF: {:?}",
+        aligned_fill_scalar / iterations as u32
+    );
+    println!(
+        "  AlignedImageF (SIMD): {:?}",
+        aligned_fill_simd / iterations as u32
+    );
     println!();
 
     // Benchmark copy
@@ -104,8 +113,14 @@ fn main() {
 
     println!("Copy:");
     println!("  ImageF:        {:?}", unaligned_copy / iterations as u32);
-    println!("  AlignedImageF: {:?}", aligned_copy_scalar / iterations as u32);
-    println!("  AlignedImageF (SIMD): {:?}", aligned_copy_simd / iterations as u32);
+    println!(
+        "  AlignedImageF: {:?}",
+        aligned_copy_scalar / iterations as u32
+    );
+    println!(
+        "  AlignedImageF (SIMD): {:?}",
+        aligned_copy_simd / iterations as u32
+    );
     println!();
 
     // Benchmark dot product (sum of products)
@@ -160,9 +175,21 @@ fn main() {
     let aligned_dot_simd = start.elapsed();
 
     println!("Dot product:");
-    println!("  ImageF:        {:?} (sum={})", unaligned_dot / iterations as u32, sum_u);
-    println!("  AlignedImageF: {:?} (sum={})", aligned_dot_scalar / iterations as u32, sum_a);
-    println!("  AlignedImageF (SIMD): {:?} (sum={})", aligned_dot_simd / iterations as u32, sum_simd);
+    println!(
+        "  ImageF:        {:?} (sum={})",
+        unaligned_dot / iterations as u32,
+        sum_u
+    );
+    println!(
+        "  AlignedImageF: {:?} (sum={})",
+        aligned_dot_scalar / iterations as u32,
+        sum_a
+    );
+    println!(
+        "  AlignedImageF (SIMD): {:?} (sum={})",
+        aligned_dot_simd / iterations as u32,
+        sum_simd
+    );
     println!();
 
     // Check alignment

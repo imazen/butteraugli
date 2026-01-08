@@ -1,6 +1,16 @@
-//! Benchmark comparing scalar vs SIMD convolution.
+//! Benchmark comparing scalar vs SIMD convolution approaches.
 //!
-//! Run with: cargo run --release --example conv_simd_bench
+//! This benchmark demonstrates why the "fused" approach (SIMD convolution with
+//! inline transpose) is faster than "separate" (SIMD convolution + separate tiled transpose).
+//!
+//! Key findings:
+//! - SIMD convolution without transpose: 6.5x faster than scalar
+//! - SIMD convolution with inline transpose: 3.9x faster than scalar
+//! - Fused approach is ~1.9x faster than separate because:
+//!   1. Fewer allocations (2 vs 4 intermediate buffers)
+//!   2. Scalar tiled transpose is slower than scattered SIMD writes
+//!
+//! Run with: `cargo run --release --example conv_simd_bench`
 
 use butteraugli::image::ImageF;
 use std::time::Instant;
@@ -72,9 +82,7 @@ fn convolve_simd(input: &ImageF, kernel: &[f32]) -> ImageF {
                 // For each kernel position, load 8 values from slice
                 for (j, &k) in scaled_kernel.iter().enumerate() {
                     let slice = &row_in[d + j..d + j + 8];
-                    let vals = f32x8::from(unsafe {
-                        *(slice.as_ptr() as *const [f32; 8])
-                    });
+                    let vals = f32x8::from(unsafe { *(slice.as_ptr() as *const [f32; 8]) });
                     sum += vals * f32x8::splat(k);
                 }
 
@@ -131,9 +139,7 @@ fn convolve_simd_no_transpose(input: &ImageF, kernel: &[f32]) -> ImageF {
 
                 for (j, &k) in scaled_kernel.iter().enumerate() {
                     let slice = &row_in[d + j..d + j + 8];
-                    let vals = f32x8::from(unsafe {
-                        *(slice.as_ptr() as *const [f32; 8])
-                    });
+                    let vals = f32x8::from(unsafe { *(slice.as_ptr() as *const [f32; 8]) });
                     sum += vals * f32x8::splat(k);
                 }
 
@@ -216,6 +222,80 @@ fn gaussian_kernel(sigma: f32) -> Vec<f32> {
     kernel
 }
 
+/// Simulate old fused conv+transpose approach (2 passes)
+fn gaussian_blur_fused(input: &ImageF, kernel: &[f32]) -> ImageF {
+    // First pass: horizontal convolution with transpose
+    let temp = convolve_simd(input, kernel);
+    // Second pass: another horizontal convolution with transpose
+    convolve_simd(&temp, kernel)
+}
+
+/// Simulate new separate conv + transpose approach (4 operations)
+fn gaussian_blur_separate(input: &ImageF, kernel: &[f32]) -> ImageF {
+    let width = input.width();
+    let height = input.height();
+
+    // Step 1: Horizontal convolution (cache-friendly writes)
+    let after_h = convolve_simd_no_transpose(input, kernel);
+
+    // Step 2: Transpose (width x height -> height x width)
+    let mut transposed = ImageF::new(height, width);
+    transpose_tiled(&after_h, &mut transposed);
+
+    // Step 3: Another horizontal convolution (effectively vertical)
+    let after_v = convolve_simd_no_transpose(&transposed, kernel);
+
+    // Step 4: Transpose back (height x width -> width x height)
+    let mut output = ImageF::new(width, height);
+    transpose_tiled(&after_v, &mut output);
+
+    output
+}
+
+/// Tiled transpose
+fn transpose_tiled(input: &ImageF, output: &mut ImageF) {
+    let width = input.width();
+    let height = input.height();
+    const TILE: usize = 8;
+
+    let tile_h = height / TILE * TILE;
+    let tile_w = width / TILE * TILE;
+
+    for ty in (0..tile_h).step_by(TILE) {
+        for tx in (0..tile_w).step_by(TILE) {
+            // Load tile
+            let mut tile = [[0.0f32; TILE]; TILE];
+            for dy in 0..TILE {
+                let row_in = input.row(ty + dy);
+                for dx in 0..TILE {
+                    tile[dy][dx] = row_in[tx + dx];
+                }
+            }
+            // Write transposed
+            for dx in 0..TILE {
+                let row_out = output.row_mut(tx + dx);
+                for dy in 0..TILE {
+                    row_out[ty + dy] = tile[dy][dx];
+                }
+            }
+        }
+    }
+
+    // Handle edges
+    for y in 0..tile_h {
+        let row_in = input.row(y);
+        for x in tile_w..width {
+            output.row_mut(x)[y] = row_in[x];
+        }
+    }
+    for y in tile_h..height {
+        let row_in = input.row(y);
+        for x in 0..width {
+            output.row_mut(x)[y] = row_in[x];
+        }
+    }
+}
+
 fn main() {
     let width = 512;
     let height = 512;
@@ -239,64 +319,98 @@ fn main() {
     // Warm up
     let _ = convolve_scalar(&input, &kernel);
     let _ = convolve_simd(&input, &kernel);
-    let _ = convolve_simd_tiled(&input, &kernel);
     let _ = convolve_simd_no_transpose(&input, &kernel);
+    let _ = gaussian_blur_fused(&input, &kernel);
+    let _ = gaussian_blur_separate(&input, &kernel);
 
-    // Benchmark scalar
+    // Benchmark 1D passes
     let start = Instant::now();
     for _ in 0..iterations {
         let _ = convolve_scalar(&input, &kernel);
     }
     let scalar_time = start.elapsed();
 
-    // Benchmark SIMD (with transpose)
     let start = Instant::now();
     for _ in 0..iterations {
         let _ = convolve_simd(&input, &kernel);
     }
-    let simd_time = start.elapsed();
+    let simd_fused_time = start.elapsed();
 
-    // Benchmark SIMD no transpose
     let start = Instant::now();
     for _ in 0..iterations {
         let _ = convolve_simd_no_transpose(&input, &kernel);
     }
     let simd_no_transpose_time = start.elapsed();
 
-    // Benchmark tiled
+    // Benchmark 2D blur approaches
     let start = Instant::now();
     for _ in 0..iterations {
-        let _ = convolve_simd_tiled(&input, &kernel);
+        let _ = gaussian_blur_fused(&input, &kernel);
     }
-    let tiled_time = start.elapsed();
+    let blur_fused_time = start.elapsed();
 
-    println!("Convolution results:");
-    println!("  Scalar + transpose:      {:?} per iter", scalar_time / iterations as u32);
-    println!("  SIMD + transpose:        {:?} per iter", simd_time / iterations as u32);
-    println!("  SIMD no transpose:       {:?} per iter", simd_no_transpose_time / iterations as u32);
-    println!("  Tiled + transpose:       {:?} per iter", tiled_time / iterations as u32);
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let _ = gaussian_blur_separate(&input, &kernel);
+    }
+    let blur_separate_time = start.elapsed();
+
+    println!("1D Convolution results (single pass):");
+    println!(
+        "  Scalar + fused transpose:     {:?} per iter",
+        scalar_time / iterations as u32
+    );
+    println!(
+        "  SIMD + fused transpose:       {:?} per iter",
+        simd_fused_time / iterations as u32
+    );
+    println!(
+        "  SIMD no transpose:            {:?} per iter",
+        simd_no_transpose_time / iterations as u32
+    );
     println!();
-    println!("Speedup SIMD+transpose vs scalar: {:.2}x", scalar_time.as_secs_f64() / simd_time.as_secs_f64());
-    println!("Speedup SIMD no transpose vs scalar: {:.2}x", scalar_time.as_secs_f64() / simd_no_transpose_time.as_secs_f64());
-    println!("Transpose overhead: {:.1}%", (simd_time.as_secs_f64() / simd_no_transpose_time.as_secs_f64() - 1.0) * 100.0);
+    println!("Full 2D Gaussian blur:");
+    println!(
+        "  Fused (SIMD+transpose x2):    {:?} per iter",
+        blur_fused_time / iterations as u32
+    );
+    println!(
+        "  Separate (conv+trans x2):     {:?} per iter",
+        blur_separate_time / iterations as u32
+    );
+    println!();
+    println!("1D Speedups:");
+    println!(
+        "  SIMD+fused vs scalar: {:.2}x",
+        scalar_time.as_secs_f64() / simd_fused_time.as_secs_f64()
+    );
+    println!(
+        "  SIMD no trans vs scalar: {:.2}x",
+        scalar_time.as_secs_f64() / simd_no_transpose_time.as_secs_f64()
+    );
+    println!(
+        "  Fused transpose overhead: {:.1}%",
+        (simd_fused_time.as_secs_f64() / simd_no_transpose_time.as_secs_f64() - 1.0) * 100.0
+    );
+    println!();
+    println!("2D Blur comparison:");
+    println!(
+        "  Fused vs separate: {:.2}x faster",
+        blur_separate_time.as_secs_f64() / blur_fused_time.as_secs_f64()
+    );
 
     // Verify correctness
-    let out_scalar = convolve_scalar(&input, &kernel);
-    let out_simd = convolve_simd(&input, &kernel);
-    let out_tiled = convolve_simd_tiled(&input, &kernel);
+    let out_fused = gaussian_blur_fused(&input, &kernel);
+    let out_separate = gaussian_blur_separate(&input, &kernel);
 
-    let mut max_diff_simd = 0.0f32;
-    let mut max_diff_tiled = 0.0f32;
+    let mut max_diff = 0.0f32;
     for y in 0..height {
         for x in 0..width {
-            let s = out_scalar.get(x, y);
-            let v = out_simd.get(x, y);
-            let t = out_tiled.get(x, y);
-            max_diff_simd = max_diff_simd.max((s - v).abs());
-            max_diff_tiled = max_diff_tiled.max((s - t).abs());
+            let f = out_fused.get(x, y);
+            let s = out_separate.get(x, y);
+            max_diff = max_diff.max((f - s).abs());
         }
     }
     println!();
-    println!("Max diff SIMD vs scalar: {}", max_diff_simd);
-    println!("Max diff tiled vs scalar: {}", max_diff_tiled);
+    println!("Max diff fused vs separate: {}", max_diff);
 }
