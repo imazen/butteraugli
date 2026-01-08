@@ -64,6 +64,32 @@
 //! }
 //! ```
 //!
+//! ## Batch Comparison with Precomputed Reference
+//!
+//! When comparing multiple distorted images against the same reference,
+//! use [`ButteraugliReference`] for ~40-50% speedup:
+//!
+//! ```rust
+//! use butteraugli::{ButteraugliReference, ButteraugliParams};
+//!
+//! let width = 32;
+//! let height = 32;
+//! let reference_rgb: Vec<u8> = vec![128; width * height * 3];
+//!
+//! // Precompute reference data once
+//! let reference = ButteraugliReference::new(&reference_rgb, width, height, ButteraugliParams::default())
+//!     .expect("valid image");
+//!
+//! // Compare against multiple distorted images efficiently
+//! for offset in [5, 10, 15] {
+//!     let distorted: Vec<u8> = reference_rgb.iter()
+//!         .map(|&v| v.saturating_add(offset))
+//!         .collect();
+//!     let result = reference.compare(&distorted).expect("valid distorted");
+//!     println!("Offset {}: score = {:.3}", offset, result.score);
+//! }
+//! ```
+//!
 //! ## Features
 //!
 //! - **`simd`** (default): Enable SIMD optimizations via the `wide` crate
@@ -121,6 +147,7 @@ pub mod image;
 pub mod malta;
 pub mod mask;
 pub mod opsin;
+mod precompute;
 pub mod psycho;
 pub mod xyb;
 
@@ -131,6 +158,7 @@ pub mod reference_data;
 
 // Re-export main types and functions
 pub use crate::image::{Image3F, ImageF};
+pub use crate::precompute::ButteraugliReference;
 
 /// Error type for butteraugli operations.
 #[derive(Debug, Clone, PartialEq, Eq)]

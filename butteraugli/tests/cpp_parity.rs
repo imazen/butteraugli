@@ -672,12 +672,7 @@ fn test_edge_blur_live_parity() {
 // ============================================================================
 
 /// Helper: compare Rust vs C++ and return (rust_score, cpp_score, rel_diff)
-fn compare_scores(
-    img_a: &[u8],
-    img_b: &[u8],
-    width: usize,
-    height: usize,
-) -> (f64, f64, f64) {
+fn compare_scores(img_a: &[u8], img_b: &[u8], width: usize, height: usize) -> (f64, f64, f64) {
     let params = ButteraugliParams::default();
     let rust_result =
         compute_butteraugli(img_a, img_b, width, height, &params).expect("butteraugli");
@@ -812,7 +807,12 @@ fn test_synthetic_edge_shift() {
         let edge_v = gen_edge_v(32, 32, 50, 200);
         let edge_h = gen_edge_h(32, 32, 50, 200);
         let (rust, cpp, rel) = compare_scores(&edge_v, &edge_h, 32, 32);
-        println!("edge_v vs edge_h 32x32: Rust={:.4} C++={:.4} diff={:.1}%", rust, cpp, rel * 100.0);
+        println!(
+            "edge_v vs edge_h 32x32: Rust={:.4} C++={:.4} diff={:.1}%",
+            rust,
+            cpp,
+            rel * 100.0
+        );
 
         // Edge vs uniform (should be large difference)
         let uniform = gen_uniform(width, height, 128);
@@ -820,7 +820,11 @@ fn test_synthetic_edge_shift() {
         let (rust, cpp, rel) = compare_scores(&edge, &uniform, width, height);
         println!(
             "edge_v vs uniform {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            width, height, rust, cpp, rel * 100.0
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
     }
 
@@ -850,7 +854,11 @@ fn test_synthetic_uniform_blur() {
         let (rust, cpp, rel) = compare_scores(&uniform, &blurred, width, height);
         println!(
             "uniform vs blur_r1 {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            width, height, rust, cpp, rel * 100.0
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
 
         // Larger blur
@@ -858,7 +866,11 @@ fn test_synthetic_uniform_blur() {
         let (rust, cpp, rel) = compare_scores(&uniform, &blurred3, width, height);
         println!(
             "uniform vs blur_r3 {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            width, height, rust, cpp, rel * 100.0
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
     }
 }
@@ -872,7 +884,11 @@ fn test_synthetic_gradient_blur() {
         let mut data = Vec::with_capacity(width * height * 3);
         for _y in 0..height {
             for x in 0..width {
-                let val = if width > 1 { (x * 255 / (width - 1)) as u8 } else { 128 };
+                let val = if width > 1 {
+                    (x * 255 / (width - 1)) as u8
+                } else {
+                    128
+                };
                 data.push(val);
                 data.push(val);
                 data.push(val);
@@ -887,7 +903,11 @@ fn test_synthetic_gradient_blur() {
         let (rust, cpp, rel) = compare_scores(&gradient, &blurred, width, height);
         println!(
             "gradient vs blur_r1 {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            width, height, rust, cpp, rel * 100.0
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
     }
 }
@@ -919,7 +939,12 @@ fn test_synthetic_edge_blur_radii() {
         let (rust, cpp, rel) = compare_scores(&edge, &blurred, width, height);
         println!(
             "edge vs blur_r{} {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            radius, width, height, rust, cpp, rel * 100.0
+            radius,
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
     }
 }
@@ -949,13 +974,23 @@ fn test_synthetic_edge_contrast() {
     let edge_low = gen_edge_v(width, height, 100, 150);
     let blurred_low = apply_blur(&edge_low, width, height, 1);
     let (rust, cpp, rel) = compare_scores(&edge_low, &blurred_low, width, height);
-    println!("low_contrast_edge vs blur: Rust={:.4} C++={:.4} diff={:.1}%", rust, cpp, rel * 100.0);
+    println!(
+        "low_contrast_edge vs blur: Rust={:.4} C++={:.4} diff={:.1}%",
+        rust,
+        cpp,
+        rel * 100.0
+    );
 
     // High contrast edge + blur
     let edge_high = gen_edge_v(width, height, 20, 235);
     let blurred_high = apply_blur(&edge_high, width, height, 1);
     let (rust, cpp, rel) = compare_scores(&edge_high, &blurred_high, width, height);
-    println!("high_contrast_edge vs blur: Rust={:.4} C++={:.4} diff={:.1}%", rust, cpp, rel * 100.0);
+    println!(
+        "high_contrast_edge vs blur: Rust={:.4} C++={:.4} diff={:.1}%",
+        rust,
+        cpp,
+        rel * 100.0
+    );
 }
 
 /// Test: Random noise patterns
@@ -969,7 +1004,11 @@ fn test_synthetic_random() {
         let (rust, cpp, rel) = compare_scores(&random1, &random2, width, height);
         println!(
             "random1 vs random2 {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            width, height, rust, cpp, rel * 100.0
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
 
         // Random + blur
@@ -977,7 +1016,11 @@ fn test_synthetic_random() {
         let (rust, cpp, rel) = compare_scores(&random1, &blurred, width, height);
         println!(
             "random vs blur {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            width, height, rust, cpp, rel * 100.0
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
     }
 }
@@ -991,7 +1034,11 @@ fn test_synthetic_contrast_distortion() {
         let mut data = Vec::with_capacity(width * height * 3);
         for _y in 0..height {
             for x in 0..width {
-                let val = if width > 1 { (x * 255 / (width - 1)) as u8 } else { 128 };
+                let val = if width > 1 {
+                    (x * 255 / (width - 1)) as u8
+                } else {
+                    128
+                };
                 data.push(val);
                 data.push(val);
                 data.push(val);
@@ -1008,7 +1055,12 @@ fn test_synthetic_contrast_distortion() {
         let (rust, cpp, rel) = compare_scores(&gradient, &contrasted, width, height);
         println!(
             "gradient vs contrast_{:.1} {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            factor, width, height, rust, cpp, rel * 100.0
+            factor,
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
     }
 }
@@ -1040,7 +1092,12 @@ fn test_synthetic_brightness_distortion() {
             let (rust, cpp, rel) = compare_scores(&edge, &brightened, width, height);
             println!(
                 "edge vs brightness+{} {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-                shift, width, height, rust, cpp, rel * 100.0
+                shift,
+                width,
+                height,
+                rust,
+                cpp,
+                rel * 100.0
             );
         }
     }
@@ -1076,7 +1133,11 @@ fn test_synthetic_size_sweep() {
         let (rust, cpp, rel) = compare_scores(&edge, &blurred, size, size);
         println!(
             "edge_blur {}x{}: Rust={:.4} C++={:.4} diff={:.1}%{}",
-            size, size, rust, cpp, rel * 100.0,
+            size,
+            size,
+            rust,
+            cpp,
+            rel * 100.0,
             if rel > 0.10 { " <-- HIGH" } else { "" }
         );
     }
@@ -1089,7 +1150,11 @@ fn test_synthetic_size_sweep() {
         let (rust, cpp, rel) = compare_scores(&edge, &blurred, w, h);
         println!(
             "edge_blur {}x{}: Rust={:.4} C++={:.4} diff={:.1}%{}",
-            w, h, rust, cpp, rel * 100.0,
+            w,
+            h,
+            rust,
+            cpp,
+            rel * 100.0,
             if rel > 0.10 { " <-- HIGH" } else { "" }
         );
     }
@@ -1140,7 +1205,11 @@ fn test_synthetic_dimension_analysis() {
     for (w, h, rust, cpp, rel) in &high_divergence {
         println!(
             "  {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            w, h, rust, cpp, rel * 100.0
+            w,
+            h,
+            rust,
+            cpp,
+            rel * 100.0
         );
     }
 
@@ -1158,7 +1227,11 @@ fn test_synthetic_dimension_analysis() {
         println!("  Unique failing heights: {:?}", height_set);
     }
 
-    println!("\nTotal: {} high, {} low divergence pairs", high_divergence.len(), low_divergence.len());
+    println!(
+        "\nTotal: {} high, {} low divergence pairs",
+        high_divergence.len(),
+        low_divergence.len()
+    );
 }
 
 /// Test: Horizontal vs vertical edge orientation
@@ -1187,7 +1260,11 @@ fn test_synthetic_edge_orientation() {
         let (rust, cpp, rel) = compare_scores(&edge_v, &blurred_v, width, height);
         println!(
             "V_edge+blur {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            width, height, rust, cpp, rel * 100.0
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
 
         // Horizontal edge
@@ -1196,7 +1273,11 @@ fn test_synthetic_edge_orientation() {
         let (rust, cpp, rel) = compare_scores(&edge_h, &blurred_h, width, height);
         println!(
             "H_edge+blur {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            width, height, rust, cpp, rel * 100.0
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
 
         // Diagonal edge
@@ -1205,7 +1286,11 @@ fn test_synthetic_edge_orientation() {
         let (rust, cpp, rel) = compare_scores(&edge_d, &blurred_d, width, height);
         println!(
             "D_edge+blur {}x{}: Rust={:.4} C++={:.4} diff={:.1}%",
-            width, height, rust, cpp, rel * 100.0
+            width,
+            height,
+            rust,
+            cpp,
+            rel * 100.0
         );
     }
 }
@@ -1300,13 +1385,7 @@ fn test_blur_intermediate_parity() {
         // C++ blur
         let mut cpp_blurred = vec![0.0f32; width * height];
         unsafe {
-            butteraugli_blur(
-                input.as_ptr(),
-                width,
-                height,
-                1.5,
-                cpp_blurred.as_mut_ptr(),
-            );
+            butteraugli_blur(input.as_ptr(), width, height, 1.5, cpp_blurred.as_mut_ptr());
         }
 
         // Compare spatially
@@ -1350,7 +1429,13 @@ fn test_blur_intermediate_parity() {
 
         println!(
             "Blur {}x{} (mod4={}): max={:.3e} avg={:.3e} border={:.3e} interior={:.3e}",
-            width, height, width % 4, max_diff, avg_diff, avg_border, avg_interior
+            width,
+            height,
+            width % 4,
+            max_diff,
+            avg_diff,
+            avg_border,
+            avg_interior
         );
 
         // Print row-by-row at edge for failing width
@@ -1360,7 +1445,13 @@ fn test_blur_intermediate_parity() {
                 let x = width / 2;
                 let rust_val = rust_blurred.get(x, y);
                 let cpp_val = cpp_blurred[y * width + x];
-                println!("    y={}: Rust={:.4} C++={:.4} diff={:.4}", y, rust_val, cpp_val, rust_val - cpp_val);
+                println!(
+                    "    y={}: Rust={:.4} C++={:.4} diff={:.4}",
+                    y,
+                    rust_val,
+                    cpp_val,
+                    rust_val - cpp_val
+                );
             }
         }
     }

@@ -481,8 +481,12 @@ fn test_width_dependent_frequency_divergence() {
                 width,
                 height,
                 intensity_target,
-                std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(),
-                std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
                 cpp_hf_x.as_mut_ptr(),
                 cpp_hf_y.as_mut_ptr(),
                 cpp_uhf_x.as_mut_ptr(),
@@ -553,7 +557,7 @@ fn test_malta_diff_map_width_dependent() {
         }
 
         // Compute Malta diff maps
-        let diff_hf = malta_diff_map(&img0, &img1, 1.0, 1.0, 1.0, true);  // LF variant
+        let diff_hf = malta_diff_map(&img0, &img1, 1.0, 1.0, 1.0, true); // LF variant
         let diff_uhf = malta_diff_map(&img0, &img1, 1.0, 1.0, 1.0, false); // HF variant
 
         // Compute statistics
@@ -568,16 +572,26 @@ fn test_malta_diff_map_width_dependent() {
                 let v_uhf = diff_uhf.get(x, y);
                 sum_hf += v_hf;
                 sum_uhf += v_uhf;
-                if v_hf > max_hf { max_hf = v_hf; }
-                if v_uhf > max_uhf { max_uhf = v_uhf; }
+                if v_hf > max_hf {
+                    max_hf = v_hf;
+                }
+                if v_uhf > max_uhf {
+                    max_uhf = v_uhf;
+                }
             }
         }
 
         let mean_hf = sum_hf / (width * height) as f32;
         let mean_uhf = sum_uhf / (width * height) as f32;
 
-        println!("    Malta LF:  sum={:.6} mean={:.8} max={:.6}", sum_hf, mean_hf, max_hf);
-        println!("    Malta HF:  sum={:.6} mean={:.8} max={:.6}", sum_uhf, mean_uhf, max_uhf);
+        println!(
+            "    Malta LF:  sum={:.6} mean={:.8} max={:.6}",
+            sum_hf, mean_hf, max_hf
+        );
+        println!(
+            "    Malta HF:  sum={:.6} mean={:.8} max={:.6}",
+            sum_uhf, mean_uhf, max_uhf
+        );
     }
 }
 
@@ -617,7 +631,8 @@ fn test_diffmap_comparison_width_dependent() {
                 linear2.as_ptr(),
                 width,
                 height,
-                1.0, 1.0,
+                1.0,
+                1.0,
                 intensity_target,
                 &mut cpp_score,
                 cpp_diffmap.as_mut_ptr(),
@@ -649,10 +664,16 @@ fn test_diffmap_comparison_width_dependent() {
                     let cv = cpp_diffmap[y * width + x];
                     sum_rust += rv;
                     sum_cpp += cv;
-                    if rv > max_rust { max_rust = rv; }
-                    if cv > max_cpp { max_cpp = cv; }
+                    if rv > max_rust {
+                        max_rust = rv;
+                    }
+                    if cv > max_cpp {
+                        max_cpp = cv;
+                    }
                     let diff = (rv - cv).abs();
-                    if diff > max_diff { max_diff = diff; }
+                    if diff > max_diff {
+                        max_diff = diff;
+                    }
                 }
             }
 
@@ -660,10 +681,15 @@ fn test_diffmap_comparison_width_dependent() {
             let mean_cpp = sum_cpp / (width * height) as f32;
 
             let rel_diff = ((rust_score as f64 - cpp_score) / cpp_score * 100.0).abs();
-            println!("    Score: Rust={:.6} C++={:.6} diff={:.1}%",
-                rust_score, cpp_score, rel_diff);
+            println!(
+                "    Score: Rust={:.6} C++={:.6} diff={:.1}%",
+                rust_score, cpp_score, rel_diff
+            );
             println!("    Diffmap sum: Rust={:.4} C++={:.4}", sum_rust, sum_cpp);
-            println!("    Diffmap mean: Rust={:.6} C++={:.6}", mean_rust, mean_cpp);
+            println!(
+                "    Diffmap mean: Rust={:.6} C++={:.6}",
+                mean_rust, mean_cpp
+            );
             println!("    Diffmap max: Rust={:.6} C++={:.6}", max_rust, max_cpp);
             println!("    Diffmap max_diff={:.6}", max_diff);
         }
@@ -695,8 +721,8 @@ fn test_embedded_pattern_diffmap_comparison() {
     fn apply_blur_simple(img: &[u8], width: usize, height: usize) -> Vec<u8> {
         // Simple box blur
         let mut out = img.to_vec();
-        for y in 1..height-1 {
-            for x in 1..width-1 {
+        for y in 1..height - 1 {
+            for x in 1..width - 1 {
                 for c in 0..3 {
                     let mut sum = 0u32;
                     for dy in 0..3 {
@@ -747,7 +773,8 @@ fn test_embedded_pattern_diffmap_comparison() {
                 linear2.as_ptr(),
                 width,
                 height,
-                1.0, 1.0,
+                1.0,
+                1.0,
                 intensity_target,
                 &mut cpp_score,
                 std::ptr::null_mut(),
@@ -765,8 +792,10 @@ fn test_embedded_pattern_diffmap_comparison() {
             .expect("Rust butteraugli failed");
 
         let rel_diff = ((rust_result.score as f64 - cpp_score) / cpp_score * 100.0).abs();
-        println!("    Score: Rust={:.6} C++={:.6} diff={:.1}%",
-            rust_result.score, cpp_score, rel_diff);
+        println!(
+            "    Score: Rust={:.6} C++={:.6} diff={:.1}%",
+            rust_result.score, cpp_score, rel_diff
+        );
     }
 }
 
@@ -810,7 +839,12 @@ fn test_embedded_pattern_frequency_bands() {
     let pattern = create_pattern_16x16();
 
     for width in [22, 24] {
-        println!("  Width {} (mod4={}, border={} pixels):", width, width % 4, (width - 16) / 2);
+        println!(
+            "  Width {} (mod4={}, border={} pixels):",
+            width,
+            width % 4,
+            (width - 16) / 2
+        );
 
         let srgb = embed_in_size(&pattern, width, height);
         let linear = srgb_to_linear_rust(&srgb);
@@ -831,8 +865,12 @@ fn test_embedded_pattern_frequency_bands() {
                 width,
                 height,
                 intensity_target,
-                std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(),
-                std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
                 cpp_hf_x.as_mut_ptr(),
                 cpp_hf_y.as_mut_ptr(),
                 cpp_uhf_x.as_mut_ptr(),
@@ -868,8 +906,10 @@ fn test_embedded_pattern_frequency_bands() {
                 }
             }
 
-            println!("    {}: Rust_sum={:.4} C++_sum={:.4} max_diff={:.6}",
-                band_name, rust_sum, cpp_sum, max_diff);
+            println!(
+                "    {}: Rust_sum={:.4} C++_sum={:.4} max_diff={:.6}",
+                band_name, rust_sum, cpp_sum, max_diff
+            );
         }
     }
 }
@@ -943,8 +983,10 @@ fn test_blur_border_handling_sizes() {
             let kernel_radius = (2.25 * sigma).max(1.0) as usize;
             for y in 0..height {
                 for x in 0..width {
-                    let is_border = x < kernel_radius || x >= width - kernel_radius
-                        || y < kernel_radius || y >= height - kernel_radius;
+                    let is_border = x < kernel_radius
+                        || x >= width - kernel_radius
+                        || y < kernel_radius
+                        || y >= height - kernel_radius;
                     if is_border {
                         let diff = (rust_flat[y * width + x] - cpp_blurred[y * width + x]).abs();
                         if diff > border_max_diff {
@@ -1005,7 +1047,12 @@ fn test_xyb_conversion_width_dependent() {
     let pattern = create_pattern_16x16();
 
     for width in [22, 24] {
-        println!("  Width {} (mod4={}, border={} pixels):", width, width % 4, (width - 16) / 2);
+        println!(
+            "  Width {} (mod4={}, border={} pixels):",
+            width,
+            width % 4,
+            (width - 16) / 2
+        );
 
         let srgb = embed_in_size(&pattern, width, height);
         let linear = srgb_to_linear_rust(&srgb);
@@ -1050,8 +1097,8 @@ fn test_xyb_conversion_width_dependent() {
                     }
 
                     // Check border pixels specifically
-                    let is_border = x < border || x >= width - border
-                        || y < border || y >= height - border;
+                    let is_border =
+                        x < border || x >= width - border || y < border || y >= height - border;
                     if is_border && diff > border_max_diff {
                         border_max_diff = diff;
                     }
@@ -1115,9 +1162,7 @@ fn test_xyb_blur_embedded_pattern() {
         let linear = srgb_to_linear_rust(&srgb);
 
         // Convert to single-channel linear Y (use green as proxy)
-        let linear_y: Vec<f32> = (0..width * height)
-            .map(|i| linear[i * 3 + 1])
-            .collect();
+        let linear_y: Vec<f32> = (0..width * height).map(|i| linear[i * 3 + 1]).collect();
 
         // Rust blur with sigma=1.2 - test both with and without padding
         let input_no_pad = ImageF::from_vec(linear_y.clone(), width, height);
@@ -1162,13 +1207,13 @@ fn test_xyb_blur_embedded_pattern() {
         let max_diff_padded = max_abs_diff(&rust_flat_padded, &cpp_blurred);
         let rust_stride_diff = max_abs_diff(&rust_flat_no_pad, &rust_flat_padded);
 
-        println!(
-            "    Blur sigma={:.1}:",
-            sigma_xyb
-        );
+        println!("    Blur sigma={:.1}:", sigma_xyb);
         println!("      no_pad vs C++: max_diff={:.6}", max_diff_no_pad);
         println!("      padded vs C++: max_diff={:.6}", max_diff_padded);
-        println!("      Rust no_pad vs padded: max_diff={:.6}", rust_stride_diff);
+        println!(
+            "      Rust no_pad vs padded: max_diff={:.6}",
+            rust_stride_diff
+        );
 
         // Check specific edge positions where max diff occurs
         if max_diff_padded > 0.0001 {
@@ -1187,7 +1232,8 @@ fn test_xyb_blur_embedded_pattern() {
             let (mx, my) = max_diff_pos;
             println!(
                 "      Max diff at ({},{}): Rust={:.6} C++={:.6}",
-                mx, my,
+                mx,
+                my,
                 rust_flat_padded[my * width + mx],
                 cpp_blurred[my * width + mx]
             );

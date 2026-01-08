@@ -14,6 +14,7 @@ rust-version = "1.85"
 [workspace.dependencies]
 butteraugli = { path = "butteraugli", version = "0.3.1" }
 wide = "0.7"
+multiversion = "0.8"
 clap = { version = "4.5", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1.0", features = ["derive"] }

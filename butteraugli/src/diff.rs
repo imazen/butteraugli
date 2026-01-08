@@ -157,6 +157,11 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
 /// L2 difference (symmetric).
 ///
 /// Computes squared difference weighted by w and adds to diffmap.
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
+))]
 fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     let width = i0.width();
     let height = i0.height();
@@ -184,6 +189,11 @@ fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
 /// * `w_0gt1` - Weight when original > reconstructed (penalize blur)
 /// * `w_0lt1` - Weight when original < reconstructed (penalize artifacts)
 /// * `diffmap` - Output difference map (accumulated)
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
+))]
 fn l2_diff_asymmetric(i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffmap: &mut ImageF) {
     if w_0gt1 == 0.0 && w_0lt1 == 0.0 {
         return;
@@ -421,6 +431,11 @@ fn mask_psycho_image(ps0: &PsychoImage, ps1: &PsychoImage, diff_ac: Option<&mut 
 ///
 /// Matches C++ CombineChannelsToDiffmap (butteraugli.cc lines 1289-1315).
 /// Applies MaskY for AC differences and MaskDcY for DC differences.
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
+))]
 fn combine_channels_to_diffmap(
     mask: &ImageF,
     block_diff_dc: &Image3F,
@@ -478,6 +493,11 @@ fn combine_channels_to_diffmap(
 /// C++ ButteraugliScoreFromDiffmap (butteraugli.cc lines 1952-1962)
 /// returns the maximum value in the diffmap. The diffmap already has
 /// the global scaling applied via MaskY/MaskDcY.
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
+))]
 fn compute_score_from_diffmap(diffmap: &ImageF) -> f64 {
     let width = diffmap.width();
     let height = diffmap.height();

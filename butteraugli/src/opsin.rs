@@ -148,6 +148,11 @@ pub fn opsin_absorbance(r: f32, g: f32, b: f32, clamp: bool) -> (f32, f32, f32) 
 ///
 /// # Returns
 /// XYB image (3 planes)
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
+))]
 pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
     let width = rgb.plane(0).width();
     let height = rgb.plane(0).height();

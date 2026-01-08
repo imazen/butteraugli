@@ -38,6 +38,7 @@ unused_imports = { level = "allow", priority = -1 }
 
 [dependencies]
 wide.workspace = true
+multiversion.workspace = true
 
 # C++ butteraugli bindings for parity testing (not on crates.io)
 # For local C++ parity testing, add to .cargo/config.toml:
