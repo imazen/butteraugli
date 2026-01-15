@@ -9,7 +9,7 @@
 //! This decomposition allows butteraugli to weight different spatial
 //! frequencies according to human visual sensitivity.
 
-use crate::blur::gaussian_blur;
+use crate::blur::{gaussian_blur, gaussian_blur_scratch};
 use crate::consts::{
     ADD_HF_RANGE, ADD_MF_RANGE, BMUL_LF_TO_VALS, MAXCLAMP_HF, MAXCLAMP_UHF, MUL_Y_HF, MUL_Y_UHF,
     REMOVE_HF_RANGE, REMOVE_MF_RANGE, REMOVE_UHF_RANGE, SIGMA_HF, SIGMA_LF, SIGMA_UHF, SUPPRESS_S,
@@ -202,16 +202,22 @@ fn suppress_x_by_y(in_y: &ImageF, inout_x: &mut ImageF) {
 }
 
 /// Separates LF (low frequency) and MF (medium frequency) components.
-fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F) {
+fn separate_lf_and_mf(
+    xyb: &Image3F, 
+    lf: &mut Image3F, 
+    mf: &mut Image3F,
+    scratch: &mut ImageF
+) {
     let sigma = SIGMA_LF as f32;
 
     for i in 0..3 {
         // Extract LF via blur
-        let blurred = gaussian_blur(xyb.plane(i), sigma);
-        lf.plane_mut(i).copy_from(&blurred);
+        // Reuse blurred output directly into LF
+        gaussian_blur_scratch(xyb.plane(i), sigma, scratch, lf.plane_mut(i));
 
         // MF = original - LF
-        subtract(xyb.plane(i), &blurred, mf.plane_mut(i));
+        // We can read from lf.plane(i) because we just wrote to it
+        subtract(xyb.plane(i), lf.plane(i), mf.plane_mut(i));
     }
 
     // Convert LF to vals space
@@ -219,19 +225,24 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F) {
 }
 
 /// Separates MF (medium frequency) and HF (high frequency) components.
-fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
+fn separate_mf_and_hf(
+    mf: &mut Image3F, 
+    hf: &mut [ImageF; 2], 
+    scratch: &mut ImageF,
+    temp: &mut ImageF
+) {
     let width = mf.width();
     let height = mf.height();
     let sigma = SIGMA_HF as f32;
 
     // Process X and Y channels
     for i in 0..2 {
-        // Copy to HF before blurring
+        // Copy to HF before blurring (HF acts as source of original MF)
         hf[i].copy_from(mf.plane(i));
 
-        // Blur MF
-        let blurred = gaussian_blur(mf.plane(i), sigma);
-        mf.plane_mut(i).copy_from(&blurred);
+        // Blur MF (in-place conceptually)
+        // input: hf[i] (copy of original), output: mf.plane_mut(i)
+        gaussian_blur_scratch(&hf[i], sigma, scratch, mf.plane_mut(i));
 
         // HF = original - blurred
         let range = if i == 0 {
@@ -244,6 +255,7 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
             let row_mf = mf.plane_row_mut(i, y);
             let row_hf = hf[i].row_mut(y);
             for x in 0..width {
+                // row_hf currently holds original MF, row_mf holds blurred MF
                 let hf_val = row_hf[x] - row_mf[x];
                 row_hf[x] = hf_val;
 
@@ -257,8 +269,9 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
     }
 
     // Blur B channel only (no HF/UHF for blue)
-    let blurred_b = gaussian_blur(mf.plane(2), sigma);
-    mf.plane_mut(2).copy_from(&blurred_b);
+    // Use temp as input copy
+    temp.copy_from(mf.plane(2));
+    gaussian_blur_scratch(temp, sigma, scratch, mf.plane_mut(2));
 
     // Suppress X by Y in HF (use split borrow to avoid clone)
     let (hf_x, hf_y) = hf.split_at_mut(1);
@@ -266,18 +279,22 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
 }
 
 /// Separates HF (high frequency) and UHF (ultra high frequency) components.
-fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2]) {
+fn separate_hf_and_uhf(
+    hf: &mut [ImageF; 2], 
+    uhf: &mut [ImageF; 2],
+    scratch: &mut ImageF
+) {
     let width = hf[0].width();
     let height = hf[0].height();
     let sigma = SIGMA_UHF as f32;
 
     for i in 0..2 {
-        // Copy to UHF before blurring
+        // Copy to UHF before blurring (UHF holds original HF)
         uhf[i].copy_from(&hf[i]);
 
         // Blur HF
-        let blurred = gaussian_blur(&hf[i], sigma);
-        hf[i].copy_from(&blurred);
+        // input: uhf[i] (original HF), output: hf[i] (blurred HF)
+        gaussian_blur_scratch(&uhf[i], sigma, scratch, &mut hf[i]);
 
         // UHF = original - blurred, with adjustments
         for y in 0..height {
@@ -320,14 +337,20 @@ pub fn separate_frequencies(xyb: &Image3F) -> PsychoImage {
 
     let mut ps = PsychoImage::new(width, height);
 
+    // Scratch buffers for Gaussian blur logic
+    // scratch is transposed (H, W)
+    let mut scratch = ImageF::new(height, width);
+    // temp is normal (W, H)
+    let mut temp = ImageF::new(width, height);
+
     // Separate into LF and MF
-    separate_lf_and_mf(xyb, &mut ps.lf, &mut ps.mf);
+    separate_lf_and_mf(xyb, &mut ps.lf, &mut ps.mf, &mut scratch);
 
     // Separate MF into MF and HF
-    separate_mf_and_hf(&mut ps.mf, &mut ps.hf);
+    separate_mf_and_hf(&mut ps.mf, &mut ps.hf, &mut scratch, &mut temp);
 
     // Separate HF into HF and UHF
-    separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf);
+    separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf, &mut scratch);
 
     ps
 }
