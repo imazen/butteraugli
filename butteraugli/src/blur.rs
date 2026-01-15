@@ -62,6 +62,11 @@ pub fn compute_kernel(sigma: f32) -> Vec<f32> {
 ///
 /// This makes the subsequent vertical pass cache-friendly since it becomes
 /// a horizontal pass on the transposed image.
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
+))]
 fn convolve_horizontal_transpose_to(
     input: &ImageF,
     kernel: &[f32],
