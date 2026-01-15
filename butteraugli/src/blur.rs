@@ -62,18 +62,18 @@ pub fn compute_kernel(sigma: f32) -> Vec<f32> {
 ///
 /// This makes the subsequent vertical pass cache-friendly since it becomes
 /// a horizontal pass on the transposed image.
-#[multiversion::multiversion(targets(
-    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
-    "x86_64+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
-    "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
-))]
-fn convolve_horizontal_transpose(input: &ImageF, kernel: &[f32], border_ratio: f32) -> ImageF {
+fn convolve_horizontal_transpose_to(
+    input: &ImageF,
+    kernel: &[f32],
+    border_ratio: f32,
+    output: &mut ImageF,
+) {
     let width = input.width();
-    let height = input.height();
     let half = kernel.len() / 2;
 
     // Output is transposed: height x width
-    let mut output = ImageF::new(height, width);
+    // assert_eq!(output.width(), input.height());
+    // assert_eq!(output.height(), input.width());
 
     // Compute total weight for interior pixels (no border clipping)
     let weight_no_border: f32 = kernel.iter().sum();
@@ -87,39 +87,28 @@ fn convolve_horizontal_transpose(input: &ImageF, kernel: &[f32], border_ratio: f
 
     // Process left border (x < half)
     for x in 0..border1 {
-        convolve_border_column_h(
-            input,
-            kernel,
-            weight_no_border,
-            border_ratio,
-            x,
-            &mut output,
-        );
+        convolve_border_column_h(input, kernel, weight_no_border, border_ratio, x, output);
     }
 
     // Process interior (no bounds checking needed)
     if border2 > border1 {
-        convolve_interior_simd(input, &scaled_kernel, border1, border2, half, &mut output);
+        convolve_interior_simd(input, &scaled_kernel, border1, border2, half, output);
     }
 
     // Process right border
     for x in border2..width {
-        convolve_border_column_h(
-            input,
-            kernel,
-            weight_no_border,
-            border_ratio,
-            x,
-            &mut output,
-        );
+        convolve_border_column_h(input, kernel, weight_no_border, border_ratio, x, output);
     }
-
-    output
 }
 
 /// SIMD interior convolution with transpose.
 ///
 /// Processes 8 x-positions at a time using f32x8 SIMD operations.
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
+))]
 #[inline]
 fn convolve_interior_simd(
     input: &ImageF,
@@ -227,18 +216,37 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32) -> ImageF {
         return input.clone();
     }
 
+    let mut scratch = ImageF::new(input.height(), input.width());
+    let mut output = ImageF::new(input.width(), input.height());
+    gaussian_blur_impl(input, sigma, &mut scratch, &mut output);
+    output
+}
+
+/// Applies a 2D Gaussian blur using existing buffers.
+///
+/// `scratch` must be (height, width) - transposed dimensions.
+/// `output` must be (width, height) - original dimensions.
+pub fn gaussian_blur_scratch(
+    input: &ImageF,
+    sigma: f32,
+    scratch: &mut ImageF,
+    output: &mut ImageF,
+) {
+    if sigma <= 0.0 {
+        output.copy_from(input);
+        return;
+    }
+    gaussian_blur_impl(input, sigma, scratch, output);
+}
+
+fn gaussian_blur_impl(input: &ImageF, sigma: f32, scratch: &mut ImageF, output: &mut ImageF) {
     let kernel = compute_kernel(sigma);
 
-    // First pass: horizontal convolution with transpose
-    // Result is height×width
-    // Note: We benchmarked separate conv+transpose vs fused, and fused is ~1.9x faster
-    // because the overhead of separate transpose passes + allocations exceeds the
-    // scattered write penalty in the fused approach.
-    let temp = convolve_horizontal_transpose(input, &kernel, 0.0);
+    // First pass: horizontal convolution with transpose (result into scratch)
+    convolve_horizontal_transpose_to(input, &kernel, 0.0, scratch);
 
-    // Second pass: another horizontal convolution with transpose
-    // This is equivalent to vertical convolution, result is width×height (original orientation)
-    convolve_horizontal_transpose(&temp, &kernel, 0.0)
+    // Second pass: another horizontal convolution with transpose (result into output)
+    convolve_horizontal_transpose_to(scratch, &kernel, 0.0, output);
 }
 
 /// Blur with border ratio parameter (matches C++ Blur signature).
@@ -248,8 +256,13 @@ pub fn blur_with_border(input: &ImageF, sigma: f32, border_ratio: f32) -> ImageF
     }
 
     let kernel = compute_kernel(sigma);
-    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio);
-    convolve_horizontal_transpose(&temp, &kernel, border_ratio)
+    // Transposed dimensions
+    let mut temp = ImageF::new(input.height(), input.width());
+    convolve_horizontal_transpose_to(input, &kernel, border_ratio, &mut temp);
+
+    let mut output = ImageF::new(input.width(), input.height());
+    convolve_horizontal_transpose_to(&temp, &kernel, border_ratio, &mut output);
+    output
 }
 
 /// Applies blur in-place (modifies the input image).
@@ -258,8 +271,10 @@ pub fn gaussian_blur_inplace(image: &mut ImageF, sigma: f32) {
         return;
     }
 
-    let blurred = gaussian_blur(image, sigma);
-    image.copy_from(&blurred);
+    let mut scratch = ImageF::new(image.height(), image.width());
+    let mut output = ImageF::new(image.width(), image.height());
+    gaussian_blur_impl(image, sigma, &mut scratch, &mut output);
+    image.copy_from(&output);
 }
 
 /// Mirrors a coordinate outside image bounds.
