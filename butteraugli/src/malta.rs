@@ -906,6 +906,11 @@ pub fn malta_unit_lf(data: &ImageF, x: usize, y: usize) -> f32 {
 ///
 /// # Returns
 /// Block difference AC map
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512bw+avx512cd+avx512dq+avx512vl+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+avx+avx2+bmi1+bmi2+cmpxchg16b+f16c+fma+fxsr+lzcnt+movbe+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3+xsave",
+    "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
+))]
 pub fn malta_diff_map(
     lum0: &ImageF,
     lum1: &ImageF,
@@ -1014,9 +1019,30 @@ pub fn malta_diff_map(
 
             // Interior - fast path with safe slice indexing
             if width > 8 {
-                for x in 4..width - 4 {
-                    let center = center_base + x;
-                    out[x] = if use_lf {
+                let start_x = 4;
+                let end_x = width - 4;
+                let mut x = start_x;
+
+                // SIMD loop
+                let len = end_x - start_x;
+                if len >= 8 {
+                    let simd_end = start_x + (len & !7); // Align to 8
+                    for x_simd in (start_x..simd_end).step_by(8) {
+                        let center_idx = center_base + x_simd;
+                        let val = if use_lf {
+                            malta_unit_lf_interior_simd(data, center_idx, stride)
+                        } else {
+                            malta_unit_interior_simd(data, center_idx, stride)
+                        };
+                        let res_arr: [f32; 8] = val.into();
+                        out[x_simd..x_simd + 8].copy_from_slice(&res_arr);
+                    }
+                    x = simd_end;
+                }
+
+                for x_rem in x..end_x {
+                    let center = center_base + x_rem;
+                    out[x_rem] = if use_lf {
                         malta_unit_lf_interior(data, center, stride)
                     } else {
                         malta_unit_interior(data, center, stride)
@@ -1048,6 +1074,427 @@ pub fn malta_diff_map(
     }
 
     block_diff_ac
+}
+
+#[inline]
+fn malta_unit_interior_simd(data: &[f32], center: usize, stride: usize) -> wide::f32x8 {
+    use wide::f32x8;
+    let xs = stride;
+    let xs2 = xs + xs;
+    let xs3 = xs2 + xs;
+    let xs4 = xs3 + xs;
+
+    let mut retval = f32x8::splat(0.0);
+
+    // Helper macro to load a vector from an offset
+    macro_rules! load_v {
+        ($offset:expr) => {
+            // Safety: we are in the interior, so bounds checks were done at loop entry
+            f32x8::from(
+                <[f32; 8]>::try_from(
+                    &data[(center as isize + $offset as isize) as usize
+                        ..(center as isize + $offset as isize) as usize + 8],
+                )
+                .unwrap(),
+            )
+        };
+    }
+
+    // Pattern 1: x grows, y constant
+    {
+        let sum = load_v!(-4)
+            + load_v!(-3)
+            + load_v!(-2)
+            + load_v!(-1)
+            + load_v!(0)
+            + load_v!(1)
+            + load_v!(2)
+            + load_v!(3)
+            + load_v!(4);
+        retval += sum * sum;
+    }
+
+    // Pattern 2: y grows, x constant
+    {
+        let sum = load_v!(-(xs4 as isize))
+            + load_v!(-(xs3 as isize))
+            + load_v!(-(xs2 as isize))
+            + load_v!(-(xs as isize))
+            + load_v!(0)
+            + load_v!(xs as isize)
+            + load_v!(xs2 as isize)
+            + load_v!(xs3 as isize)
+            + load_v!(xs4 as isize);
+        retval += sum * sum;
+    }
+
+    // Pattern 3: both grow (diagonal \)
+    {
+        let sum = load_v!(-3 - (xs3 as isize))
+            + load_v!(-2 - (xs2 as isize))
+            + load_v!(-1 - (xs as isize))
+            + load_v!(0)
+            + load_v!(1 + (xs as isize))
+            + load_v!(2 + (xs2 as isize))
+            + load_v!(3 + (xs3 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 4: y grows, x shrinks (diagonal /)
+    {
+        let sum = load_v!(3 - (xs3 as isize))
+            + load_v!(2 - (xs2 as isize))
+            + load_v!(1 - (xs as isize))
+            + load_v!(0)
+            + load_v!(-1 + (xs as isize))
+            + load_v!(-2 + (xs2 as isize))
+            + load_v!(-3 + (xs3 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 5: y grows -4 to 4, x shrinks 1 -> -1
+    {
+        let sum = load_v!(1 - (xs4 as isize))
+            + load_v!(1 - (xs3 as isize))
+            + load_v!(1 - (xs2 as isize))
+            + load_v!(-(xs as isize))
+            + load_v!(0)
+            + load_v!(xs as isize)
+            + load_v!(-1 + (xs2 as isize))
+            + load_v!(-1 + (xs3 as isize))
+            + load_v!(-1 + (xs4 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 6: y grows -4 to 4, x grows -1 -> 1
+    {
+        let sum = load_v!(-1 - (xs4 as isize))
+            + load_v!(-1 - (xs3 as isize))
+            + load_v!(-1 - (xs2 as isize))
+            + load_v!(-(xs as isize))
+            + load_v!(0)
+            + load_v!(xs as isize)
+            + load_v!(1 + (xs2 as isize))
+            + load_v!(1 + (xs3 as isize))
+            + load_v!(1 + (xs4 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 7: x grows -4 to 4, y grows -1 to 1
+    {
+        let sum = load_v!(-4 - (xs as isize))
+            + load_v!(-3 - (xs as isize))
+            + load_v!(-2 - (xs as isize))
+            + load_v!(-1)
+            + load_v!(0)
+            + load_v!(1)
+            + load_v!(2 + (xs as isize))
+            + load_v!(3 + (xs as isize))
+            + load_v!(4 + (xs as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 8: x grows -4 to 4, y shrinks 1 to -1
+    {
+        let sum = load_v!(-4 + (xs as isize))
+            + load_v!(-3 + (xs as isize))
+            + load_v!(-2 + (xs as isize))
+            + load_v!(-1)
+            + load_v!(0)
+            + load_v!(1)
+            + load_v!(2 - (xs as isize))
+            + load_v!(3 - (xs as isize))
+            + load_v!(4 - (xs as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 9: steep diagonal (2:1 slope)
+    {
+        let sum = load_v!(-2 - (xs3 as isize))
+            + load_v!(-1 - (xs2 as isize))
+            + load_v!(-1 - (xs as isize))
+            + load_v!(0)
+            + load_v!(1 + (xs as isize))
+            + load_v!(1 + (xs2 as isize))
+            + load_v!(2 + (xs3 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 10: steep diagonal other way
+    {
+        let sum = load_v!(2 - (xs3 as isize))
+            + load_v!(1 - (xs2 as isize))
+            + load_v!(1 - (xs as isize))
+            + load_v!(0)
+            + load_v!(-1 + (xs as isize))
+            + load_v!(-1 + (xs2 as isize))
+            + load_v!(-2 + (xs3 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 11: shallow diagonal (1:2 slope)
+    {
+        let sum = load_v!(-3 - (xs2 as isize))
+            + load_v!(-2 - (xs as isize))
+            + load_v!(-1 - (xs as isize))
+            + load_v!(0)
+            + load_v!(1 + (xs as isize))
+            + load_v!(2 + (xs as isize))
+            + load_v!(3 + (xs2 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 12: shallow diagonal other way
+    {
+        let sum = load_v!(3 - (xs2 as isize))
+            + load_v!(2 - (xs as isize))
+            + load_v!(1 - (xs as isize))
+            + load_v!(0)
+            + load_v!(-1 + (xs as isize))
+            + load_v!(-2 + (xs as isize))
+            + load_v!(-3 + (xs2 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 13: curved line pattern
+    {
+        let sum = load_v!(-4 + (xs as isize))
+            + load_v!(-3 + (xs as isize))
+            + load_v!(-2 + (xs as isize))
+            + load_v!(-1)
+            + load_v!(0)
+            + load_v!(1)
+            + load_v!(2 - (xs as isize))
+            + load_v!(3 - (xs as isize))
+            + load_v!(4 - (xs as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 14: curved line other direction
+    {
+        let sum = load_v!(-4 - (xs as isize))
+            + load_v!(-3 - (xs as isize))
+            + load_v!(-2 - (xs as isize))
+            + load_v!(-1)
+            + load_v!(0)
+            + load_v!(1)
+            + load_v!(2 + (xs as isize))
+            + load_v!(3 + (xs as isize))
+            + load_v!(4 + (xs as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 15: very shallow curve
+    {
+        let sum = load_v!(-1 - (xs4 as isize))
+            + load_v!(-1 - (xs3 as isize))
+            + load_v!(-1 - (xs2 as isize))
+            + load_v!(-(xs as isize))
+            + load_v!(0)
+            + load_v!(xs as isize)
+            + load_v!(1 + (xs2 as isize))
+            + load_v!(1 + (xs3 as isize))
+            + load_v!(1 + (xs4 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 16: very shallow curve other direction
+    {
+        let sum = load_v!(1 - (xs4 as isize))
+            + load_v!(1 - (xs3 as isize))
+            + load_v!(1 - (xs2 as isize))
+            + load_v!(-(xs as isize))
+            + load_v!(0)
+            + load_v!(xs as isize)
+            + load_v!(-1 + (xs2 as isize))
+            + load_v!(-1 + (xs3 as isize))
+            + load_v!(-1 + (xs4 as isize));
+        retval += sum * sum;
+    }
+
+    retval
+}
+
+#[inline]
+fn malta_unit_lf_interior_simd(data: &[f32], center: usize, stride: usize) -> wide::f32x8 {
+    use wide::f32x8;
+    let xs = stride;
+    let xs2 = xs + xs;
+    let xs3 = xs2 + xs;
+    let xs4 = xs3 + xs;
+
+    let mut retval = f32x8::splat(0.0);
+
+    // Helper macro to load a vector from an offset
+    macro_rules! load_v {
+        ($offset:expr) => {
+            f32x8::from(
+                <[f32; 8]>::try_from(
+                    &data[(center as isize + $offset as isize) as usize
+                        ..(center as isize + $offset as isize) as usize + 8],
+                )
+                .unwrap(),
+            )
+        };
+    }
+
+    // Pattern 1: x grows, y constant
+    {
+        let sum = load_v!(-4) + load_v!(-2) + load_v!(0) + load_v!(2) + load_v!(4);
+        retval += sum * sum;
+    }
+
+    // Pattern 2: y grows, x constant
+    {
+        let sum = load_v!(-(xs4 as isize))
+            + load_v!(-(xs2 as isize))
+            + load_v!(0)
+            + load_v!(xs2 as isize)
+            + load_v!(xs4 as isize);
+        retval += sum * sum;
+    }
+
+    // Pattern 3: both grow
+    {
+        let sum = load_v!(-3 - (xs3 as isize))
+            + load_v!(-2 - (xs2 as isize))
+            + load_v!(0)
+            + load_v!(2 + (xs2 as isize))
+            + load_v!(3 + (xs3 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 4: y grows, x shrinks
+    {
+        let sum = load_v!(3 - (xs3 as isize))
+            + load_v!(2 - (xs2 as isize))
+            + load_v!(0)
+            + load_v!(-2 + (xs2 as isize))
+            + load_v!(-3 + (xs3 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 5: y grows, x shifts 1 to -1
+    {
+        let sum = load_v!(1 - (xs4 as isize))
+            + load_v!(1 - (xs2 as isize))
+            + load_v!(0)
+            + load_v!(-1 + (xs2 as isize))
+            + load_v!(-1 + (xs4 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 6: y grows, x shifts -1 to 1
+    {
+        let sum = load_v!(-1 - (xs4 as isize))
+            + load_v!(-1 - (xs2 as isize))
+            + load_v!(0)
+            + load_v!(1 + (xs2 as isize))
+            + load_v!(1 + (xs4 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 7: x grows, y shifts -1 to 1
+    {
+        let sum = load_v!(-4 - (xs as isize))
+            + load_v!(-2 - (xs as isize))
+            + load_v!(0)
+            + load_v!(2 + (xs as isize))
+            + load_v!(4 + (xs as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 8: x grows, y shifts 1 to -1
+    {
+        let sum = load_v!(-4 + (xs as isize))
+            + load_v!(-2 + (xs as isize))
+            + load_v!(0)
+            + load_v!(2 - (xs as isize))
+            + load_v!(4 - (xs as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 9: steep slope
+    {
+        let sum = load_v!(-2 - (xs3 as isize))
+            + load_v!(-1 - (xs2 as isize))
+            + load_v!(0)
+            + load_v!(1 + (xs2 as isize))
+            + load_v!(2 + (xs3 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 10: steep slope other way
+    {
+        let sum = load_v!(2 - (xs3 as isize))
+            + load_v!(1 - (xs2 as isize))
+            + load_v!(0)
+            + load_v!(-1 + (xs2 as isize))
+            + load_v!(-2 + (xs3 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 11: shallow slope
+    {
+        let sum = load_v!(-3 - (xs2 as isize))
+            + load_v!(-2 - (xs as isize))
+            + load_v!(0)
+            + load_v!(2 + (xs as isize))
+            + load_v!(3 + (xs2 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 12: shallow slope other way
+    {
+        let sum = load_v!(3 - (xs2 as isize))
+            + load_v!(2 - (xs as isize))
+            + load_v!(0)
+            + load_v!(-2 + (xs as isize))
+            + load_v!(-3 + (xs2 as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 13: curved path
+    {
+        let sum = load_v!(-4 + 2 * (xs as isize))
+            + load_v!(-2 + (xs as isize))
+            + load_v!(0)
+            + load_v!(2 - (xs as isize))
+            + load_v!(4 - 2 * (xs as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 14: curved other direction
+    {
+        let sum = load_v!(-4 - 2 * (xs as isize))
+            + load_v!(-2 - (xs as isize))
+            + load_v!(0)
+            + load_v!(2 + (xs as isize))
+            + load_v!(4 + 2 * (xs as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 15: vertical with shift
+    {
+        let sum = load_v!(-2 - 4 * (xs as isize))
+            + load_v!(-1 - 2 * (xs as isize))
+            + load_v!(0)
+            + load_v!(1 + 2 * (xs as isize))
+            + load_v!(2 + 4 * (xs as isize));
+        retval += sum * sum;
+    }
+
+    // Pattern 16: vertical other shift
+    {
+        let sum = load_v!(2 - 4 * (xs as isize))
+            + load_v!(1 - 2 * (xs as isize))
+            + load_v!(0)
+            + load_v!(-1 + 2 * (xs as isize))
+            + load_v!(-2 + 4 * (xs as isize));
+        retval += sum * sum;
+    }
+
+    retval
 }
 
 #[cfg(test)]
