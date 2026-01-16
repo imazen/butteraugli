@@ -156,6 +156,8 @@ pub fn opsin_absorbance(r: f32, g: f32, b: f32, clamp: bool) -> (f32, f32, f32) 
     "x86_64+cmpxchg16b+fxsr+popcnt+sse+sse2+sse3+sse4.1+sse4.2+ssse3",
 ))]
 pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
+    use wide::f32x8;
+
     let width = rgb.plane(0).width();
     let height = rgb.plane(0).height();
 
@@ -169,27 +171,35 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
 
     // Create output XYB image
     let mut xyb = Image3F::new(width, height);
-    let min_val = 1e-4_f32;
 
-    // Pre-cast matrix coefficients to f32
-    let mixi0 = MIXI0 as f32;
-    let mixi1 = MIXI1 as f32;
-    let mixi2 = MIXI2 as f32;
-    let mixi3 = MIXI3 as f32;
-    let mixi4 = MIXI4 as f32;
-    let mixi5 = MIXI5 as f32;
-    let mixi6 = MIXI6 as f32;
-    let mixi7 = MIXI7 as f32;
-    let mixi8 = MIXI8 as f32;
-    let mixi9 = MIXI9 as f32;
-    let mixi10 = MIXI10 as f32;
-    let mixi11 = MIXI11 as f32;
+    // Pre-cast matrix coefficients to f32 SIMD vectors
+    let intensity_target_v = f32x8::splat(intensity_target);
+    let min_val_v = f32x8::splat(1e-4);
+    let mixi0_v = f32x8::splat(MIXI0 as f32);
+    let mixi1_v = f32x8::splat(MIXI1 as f32);
+    let mixi2_v = f32x8::splat(MIXI2 as f32);
+    let mixi3_v = f32x8::splat(MIXI3 as f32);
+    let mixi4_v = f32x8::splat(MIXI4 as f32);
+    let mixi5_v = f32x8::splat(MIXI5 as f32);
+    let mixi6_v = f32x8::splat(MIXI6 as f32);
+    let mixi7_v = f32x8::splat(MIXI7 as f32);
+    let mixi8_v = f32x8::splat(MIXI8 as f32);
+    let mixi9_v = f32x8::splat(MIXI9 as f32);
+    let mixi10_v = f32x8::splat(MIXI10 as f32);
+    let mixi11_v = f32x8::splat(MIXI11 as f32);
+
+    let min_01_v = f32x8::splat(MIN_01);
+    let min_2_v = f32x8::splat(MIN_2);
 
     // Get mutable references to all three planes using split borrow
     let (plane_x, plane_y, plane_b) = xyb.planes_mut();
 
+    let chunks = width / 8;
+    // Calculate end of SIMD processing
+    let simd_width = chunks * 8;
+
     for y in 0..height {
-        // Get row slices for cache-friendly access
+        // Get row slices
         let row_r = rgb.plane(0).row(y);
         let row_g = rgb.plane(1).row(y);
         let row_b = rgb.plane(2).row(y);
@@ -197,13 +207,73 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
         let row_blur_g = blurred_g.row(y);
         let row_blur_b = blurred_b.row(y);
 
-        // Get output row slices (safe split borrow via planes_mut)
         let out_x = plane_x.row_mut(y);
         let out_y = plane_y.row_mut(y);
         let out_b = plane_b.row_mut(y);
 
-        for x in 0..width {
-            // Get RGB values scaled by intensity target
+        // Process SIMD chunks
+        for i in 0..chunks {
+            let x = i * 8;
+
+            // Load 8 pixels
+            let r =
+                f32x8::from(<[f32; 8]>::try_from(&row_r[x..x + 8]).unwrap()) * intensity_target_v;
+            let g =
+                f32x8::from(<[f32; 8]>::try_from(&row_g[x..x + 8]).unwrap()) * intensity_target_v;
+            let b =
+                f32x8::from(<[f32; 8]>::try_from(&row_b[x..x + 8]).unwrap()) * intensity_target_v;
+
+            let blurred_r_val = f32x8::from(<[f32; 8]>::try_from(&row_blur_r[x..x + 8]).unwrap())
+                * intensity_target_v;
+            let blurred_g_val = f32x8::from(<[f32; 8]>::try_from(&row_blur_g[x..x + 8]).unwrap())
+                * intensity_target_v;
+            let blurred_b_val = f32x8::from(<[f32; 8]>::try_from(&row_blur_b[x..x + 8]).unwrap())
+                * intensity_target_v;
+
+            // Step 2: Calculate sensitivity
+            let pre0 = (mixi0_v * blurred_r_val
+                + mixi1_v * blurred_g_val
+                + mixi2_v * blurred_b_val
+                + mixi3_v)
+                .max(min_01_v)
+                .max(min_val_v);
+            let pre1 = (mixi4_v * blurred_r_val
+                + mixi5_v * blurred_g_val
+                + mixi6_v * blurred_b_val
+                + mixi7_v)
+                .max(min_01_v)
+                .max(min_val_v);
+            let pre2 = (mixi8_v * blurred_r_val
+                + mixi9_v * blurred_g_val
+                + mixi10_v * blurred_b_val
+                + mixi11_v)
+                .max(min_2_v)
+                .max(min_val_v);
+
+            let sensitivity0 = (gamma_simd(pre0) / pre0).max(min_val_v);
+            let sensitivity1 = (gamma_simd(pre1) / pre1).max(min_val_v);
+            let sensitivity2 = (gamma_simd(pre2) / pre2).max(min_val_v);
+
+            // Step 3: Apply sensitivity to original RGB
+            let cur0 =
+                ((mixi0_v * r + mixi1_v * g + mixi2_v * b + mixi3_v) * sensitivity0).max(min_01_v);
+            let cur1 =
+                ((mixi4_v * r + mixi5_v * g + mixi6_v * b + mixi7_v) * sensitivity1).max(min_01_v);
+            let cur2 =
+                ((mixi8_v * r + mixi9_v * g + mixi10_v * b + mixi11_v) * sensitivity2).max(min_2_v);
+
+            // Step 4: Convert to XYB
+            let val_x = cur0 - cur1;
+            let val_y = cur0 + cur1;
+            let val_b = cur2;
+
+            out_x[x..x + 8].copy_from_slice(&<[f32; 8]>::from(val_x));
+            out_y[x..x + 8].copy_from_slice(&<[f32; 8]>::from(val_y));
+            out_b[x..x + 8].copy_from_slice(&<[f32; 8]>::from(val_b));
+        }
+
+        // Scalar tail
+        for x in simd_width..width {
             let r = row_r[x] * intensity_target;
             let g = row_g[x] * intensity_target;
             let b = row_b[x] * intensity_target;
@@ -212,31 +282,39 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
             let blurred_g_val = row_blur_g[x] * intensity_target;
             let blurred_b_val = row_blur_b[x] * intensity_target;
 
-            // Step 2: Calculate sensitivity based on blurred image
-            // Inline opsin_absorbance for performance
-            let pre0 =
-                (mixi0 * blurred_r_val + mixi1 * blurred_g_val + mixi2 * blurred_b_val + mixi3)
-                    .max(MIN_01)
-                    .max(min_val);
-            let pre1 =
-                (mixi4 * blurred_r_val + mixi5 * blurred_g_val + mixi6 * blurred_b_val + mixi7)
-                    .max(MIN_01)
-                    .max(min_val);
-            let pre2 =
-                (mixi8 * blurred_r_val + mixi9 * blurred_g_val + mixi10 * blurred_b_val + mixi11)
-                    .max(MIN_2)
-                    .max(min_val);
+            let pre0 = (MIXI0 as f32 * blurred_r_val
+                + MIXI1 as f32 * blurred_g_val
+                + MIXI2 as f32 * blurred_b_val
+                + MIXI3 as f32)
+                .max(MIN_01)
+                .max(1e-4);
+            let pre1 = (MIXI4 as f32 * blurred_r_val
+                + MIXI5 as f32 * blurred_g_val
+                + MIXI6 as f32 * blurred_b_val
+                + MIXI7 as f32)
+                .max(MIN_01)
+                .max(1e-4);
+            let pre2 = (MIXI8 as f32 * blurred_r_val
+                + MIXI9 as f32 * blurred_g_val
+                + MIXI10 as f32 * blurred_b_val
+                + MIXI11 as f32)
+                .max(MIN_2)
+                .max(1e-4);
 
-            let sensitivity0 = (gamma(pre0) / pre0).max(min_val);
-            let sensitivity1 = (gamma(pre1) / pre1).max(min_val);
-            let sensitivity2 = (gamma(pre2) / pre2).max(min_val);
+            let sensitivity0 = (gamma(pre0) / pre0).max(1e-4);
+            let sensitivity1 = (gamma(pre1) / pre1).max(1e-4);
+            let sensitivity2 = (gamma(pre2) / pre2).max(1e-4);
 
-            // Step 3: Apply sensitivity to original RGB
-            let cur0 = ((mixi0 * r + mixi1 * g + mixi2 * b + mixi3) * sensitivity0).max(MIN_01);
-            let cur1 = ((mixi4 * r + mixi5 * g + mixi6 * b + mixi7) * sensitivity1).max(MIN_01);
-            let cur2 = ((mixi8 * r + mixi9 * g + mixi10 * b + mixi11) * sensitivity2).max(MIN_2);
+            let cur0 = ((MIXI0 as f32 * r + MIXI1 as f32 * g + MIXI2 as f32 * b + MIXI3 as f32)
+                * sensitivity0)
+                .max(MIN_01);
+            let cur1 = ((MIXI4 as f32 * r + MIXI5 as f32 * g + MIXI6 as f32 * b + MIXI7 as f32)
+                * sensitivity1)
+                .max(MIN_01);
+            let cur2 = ((MIXI8 as f32 * r + MIXI9 as f32 * g + MIXI10 as f32 * b + MIXI11 as f32)
+                * sensitivity2)
+                .max(MIN_2);
 
-            // Step 4: Convert to XYB (direct write using split borrows)
             out_x[x] = cur0 - cur1;
             out_y[x] = cur0 + cur1;
             out_b[x] = cur2;
@@ -424,6 +502,64 @@ pub(crate) fn imgref_linear_to_xyb(img: ImgRef<RGB<f32>>, intensity_target: f32)
 
     // Apply OpsinDynamicsImage
     opsin_dynamics_image(&linear, intensity_target)
+}
+
+fn fast_log2f_simd(x: wide::f32x8) -> wide::f32x8 {
+    use wide::f32x8;
+    use wide::i32x8;
+
+    // (2,2) rational polynomial coefficients from C++
+    const P0: f32 = -1.8503833400518310E-06;
+    const P1: f32 = 1.4287160470083755;
+    const P2: f32 = 7.4245873327820566E-01;
+
+    const Q0: f32 = 9.9032814277590719E-01;
+    const Q1: f32 = 1.0096718572241148;
+    const Q2: f32 = 1.7409343003366853E-01;
+
+    // We need to operate on bits for exponent extraction
+    let x_bits: i32x8 = unsafe { std::mem::transmute(x) };
+
+    // Range reduction to [-1/3, 1/3] - subtract 2/3 (0x3f2aaaab in float)
+    let magic = i32x8::splat(0x3f2aaaab_u32 as i32);
+    let exp_bits = x_bits - magic;
+    let exp_shifted: i32x8 = exp_bits >> 23;
+
+    let mantissa_bits = x_bits - (exp_shifted << 23);
+    let mantissa: f32x8 = unsafe { std::mem::transmute(mantissa_bits) };
+
+    // Convert integer exponent to float
+    let exp_val: f32x8 = exp_shifted.round_float();
+
+    let m = mantissa - f32x8::splat(1.0);
+
+    let p2_v = f32x8::splat(P2);
+    let p1_v = f32x8::splat(P1);
+    let p0_v = f32x8::splat(P0);
+
+    let q2_v = f32x8::splat(Q2);
+    let q1_v = f32x8::splat(Q1);
+    let q0_v = f32x8::splat(Q0);
+
+    let yp = p2_v * m + p1_v;
+    let yp = yp * m + p0_v;
+
+    let yq = q2_v * m + q1_v;
+    let yq = yq * m + q0_v;
+
+    yp / yq + exp_val
+}
+
+fn gamma_simd(v: wide::f32x8) -> wide::f32x8 {
+    use wide::f32x8;
+    const K_RET_MUL: f32 = 19.245_013_259_874_995 * K_INV_LOG2E;
+    const K_RET_ADD: f32 = -23.160_462_398_057_55;
+    const K_BIAS: f32 = 9.971_063_576_929_914_5;
+
+    let v = v.max(f32x8::splat(0.0));
+    let biased = v + f32x8::splat(K_BIAS);
+    let log = fast_log2f_simd(biased);
+    f32x8::splat(K_RET_MUL) * log + f32x8::splat(K_RET_ADD)
 }
 
 #[cfg(test)]
