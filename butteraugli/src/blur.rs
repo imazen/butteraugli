@@ -153,8 +153,7 @@ fn convolve_interior_avx512(
 ) {
     use magetypes::f32x16;
     let height = input.height();
-    let interior_width = border2 - border1;
-    let simd_chunks = interior_width / 16;
+    let simd_chunks = (border2 - border1) / 16;
 
     for y in 0..height {
         let row_in = input.row(y);
@@ -206,8 +205,7 @@ fn convolve_interior_avx2(
 ) {
     use magetypes::f32x8;
     let height = input.height();
-    let interior_width = border2 - border1;
-    let simd_chunks = interior_width / 8;
+    let simd_chunks = (border2 - border1) / 8;
 
     for y in 0..height {
         let row_in = input.row(y);
@@ -328,16 +326,12 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32) -> ImageF {
 
     // First pass: horizontal convolution with transpose
     // Result is height×width
-    // Note: We benchmarked separate conv+transpose vs fused, and fused is ~1.9x faster
-    // because the overhead of separate transpose passes + allocations exceeds the
-    // scattered write penalty in the fused approach.
     let temp = convolve_horizontal_transpose(input, &kernel, 0.0);
 
     // Second pass: another horizontal convolution with transpose
     // This is equivalent to vertical convolution, result is width×height (original orientation)
     convolve_horizontal_transpose(&temp, &kernel, 0.0)
 }
-
 /// Blur with border ratio parameter (matches C++ Blur signature).
 pub fn blur_with_border(input: &ImageF, sigma: f32, border_ratio: f32) -> ImageF {
     if sigma <= 0.0 {
