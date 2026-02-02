@@ -5,7 +5,14 @@
 //!
 //! Run with: `cargo test --test reference_parity`
 
-use butteraugli::{compute_butteraugli, reference_data, ButteraugliParams};
+use butteraugli::{butteraugli, reference_data, ButteraugliParams, Img, RGB8};
+
+/// Convert RGB byte slice to Vec<RGB8>
+fn rgb_bytes_to_pixels(rgb: &[u8]) -> Vec<RGB8> {
+    rgb.chunks_exact(3)
+        .map(|c| RGB8::new(c[0], c[1], c[2]))
+        .collect()
+}
 
 // ============================================================================
 // Image Generation Functions (must match capture_cpp_reference.rs exactly)
@@ -711,9 +718,14 @@ fn test_reference_case(case: &reference_data::ReferenceCase, tolerance: f64) {
         }
     };
 
+    let pixels_a = rgb_bytes_to_pixels(&img_a);
+    let pixels_b = rgb_bytes_to_pixels(&img_b);
+    let img_a = Img::new(pixels_a, case.width, case.height);
+    let img_b = Img::new(pixels_b, case.width, case.height);
+
     let params = ButteraugliParams::default()
         .with_intensity_target(reference_data::REFERENCE_INTENSITY_TARGET);
-    let result = compute_butteraugli(&img_a, &img_b, case.width, case.height, &params)
+    let result = butteraugli(img_a.as_ref(), img_b.as_ref(), &params)
         .expect("valid test input");
 
     let score_diff = (result.score - case.expected_score).abs();
@@ -755,9 +767,13 @@ fn test_all_reference_cases_loose() {
         }
 
         let (img_a, img_b) = generate_image_pair(case.name, case.width, case.height).unwrap();
+        let pixels_a = rgb_bytes_to_pixels(&img_a);
+        let pixels_b = rgb_bytes_to_pixels(&img_b);
+        let img_a = Img::new(pixels_a, case.width, case.height);
+        let img_b = Img::new(pixels_b, case.width, case.height);
         let params = ButteraugliParams::default()
             .with_intensity_target(reference_data::REFERENCE_INTENSITY_TARGET);
-        let result = compute_butteraugli(&img_a, &img_b, case.width, case.height, &params)
+        let result = butteraugli(img_a.as_ref(), img_b.as_ref(), &params)
             .expect("valid test input");
 
         let score_diff = (result.score - case.expected_score).abs();

@@ -6,9 +6,16 @@
 
 mod common;
 
-use butteraugli::{compute_butteraugli, ButteraugliParams, BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD};
+use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8, BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+/// Convert RGB byte slice to Vec<RGB8>
+fn rgb_bytes_to_pixels(rgb: &[u8]) -> Vec<RGB8> {
+    rgb.chunks_exact(3)
+        .map(|c| RGB8::new(c[0], c[1], c[2]))
+        .collect()
+}
 
 /// Load a PNG file and return RGB data.
 fn load_png(path: &Path) -> Option<(Vec<u8>, usize, usize)> {
@@ -48,9 +55,11 @@ fn test_identical_images_score_zero() {
     let height = 64;
     // Create a gradient test image
     let rgb: Vec<u8> = (0..width * height * 3).map(|i| (i % 256) as u8).collect();
+    let pixels = rgb_bytes_to_pixels(&rgb);
+    let img = Img::new(pixels, width, height);
 
     let params = ButteraugliParams::default();
-    let result = compute_butteraugli(&rgb, &rgb, width, height, &params).expect("valid input");
+    let result = butteraugli(img.as_ref(), img.as_ref(), &params).expect("valid input");
 
     assert!(
         result.score < 0.001,
@@ -74,8 +83,13 @@ fn test_small_difference_low_score() {
         rgb2[i * 3 + 2] = 130;
     }
 
+    let pixels1 = rgb_bytes_to_pixels(&rgb1);
+    let pixels2 = rgb_bytes_to_pixels(&rgb2);
+    let img1 = Img::new(pixels1, width, height);
+    let img2 = Img::new(pixels2, width, height);
+
     let params = ButteraugliParams::default();
-    let result = compute_butteraugli(&rgb1, &rgb2, width, height, &params).expect("valid input");
+    let result = butteraugli(img1.as_ref(), img2.as_ref(), &params).expect("valid input");
 
     // Small differences should be below the "good" threshold
     assert!(
@@ -117,8 +131,13 @@ fn test_large_difference_nonzero_score() {
         }
     }
 
+    let pixels1 = rgb_bytes_to_pixels(&rgb1);
+    let pixels2 = rgb_bytes_to_pixels(&rgb2);
+    let img1 = Img::new(pixels1, width, height);
+    let img2 = Img::new(pixels2, width, height);
+
     let params = ButteraugliParams::default();
-    let result = compute_butteraugli(&rgb1, &rgb2, width, height, &params).expect("valid input");
+    let result = butteraugli(img1.as_ref(), img2.as_ref(), &params).expect("valid input");
 
     // Inverse checkerboards should produce visible difference
     // Note: exact threshold depends on implementation
@@ -140,11 +159,13 @@ fn test_score_monotonicity_with_quality() {
         return;
     };
     if !path.exists() {
-        eprintln!("Skipping test: test image not found at {:?}", path);
+        eprintln!("Skipping test: test image not found at {path:?}");
         return;
     }
 
     let (original, width, height) = load_png(&path).expect("Failed to load test image");
+    let original_pixels = rgb_bytes_to_pixels(&original);
+    let img_original = Img::new(original_pixels, width, height);
 
     let qualities = [50, 70, 90];
     let mut prev_score = f64::MAX;
@@ -155,30 +176,25 @@ fn test_score_monotonicity_with_quality() {
         let decoded = decode_jpeg(&jpeg_data);
 
         if decoded.len() != original.len() {
-            eprintln!(
-                "Size mismatch after roundtrip, skipping quality {}",
-                quality
-            );
+            eprintln!("Size mismatch after roundtrip, skipping quality {quality}");
             continue;
         }
 
-        let params = ButteraugliParams::default();
-        let result =
-            compute_butteraugli(&original, &decoded, width, height, &params).expect("valid input");
+        let decoded_pixels = rgb_bytes_to_pixels(&decoded);
+        let img_decoded = Img::new(decoded_pixels, width, height);
 
-        println!(
-            "Quality {}: butteraugli score = {:.4}",
-            quality, result.score
-        );
+        let params = ButteraugliParams::default();
+        let result = butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params)
+            .expect("valid input");
+
+        println!("Quality {quality}: butteraugli score = {:.4}", result.score);
 
         // Higher quality should give lower score
         if quality > 50 {
             assert!(
                 result.score <= prev_score * 1.5, // Allow some variance
-                "Higher quality {} should give lower or similar score, got {} vs {}",
-                quality,
+                "Higher quality {quality} should give lower or similar score, got {} vs {prev_score}",
                 result.score,
-                prev_score
             );
         }
         prev_score = result.score;
@@ -196,9 +212,14 @@ fn test_score_symmetry() {
         .map(|i| ((i + 50) % 256) as u8)
         .collect();
 
+    let pixels1 = rgb_bytes_to_pixels(&rgb1);
+    let pixels2 = rgb_bytes_to_pixels(&rgb2);
+    let img1 = Img::new(pixels1, width, height);
+    let img2 = Img::new(pixels2, width, height);
+
     let params = ButteraugliParams::default();
-    let result1 = compute_butteraugli(&rgb1, &rgb2, width, height, &params).expect("valid input");
-    let result2 = compute_butteraugli(&rgb2, &rgb1, width, height, &params).expect("valid input");
+    let result1 = butteraugli(img1.as_ref(), img2.as_ref(), &params).expect("valid input");
+    let result2 = butteraugli(img2.as_ref(), img1.as_ref(), &params).expect("valid input");
 
     // Scores should be identical or very close
     let diff = (result1.score - result2.score).abs();
@@ -218,8 +239,13 @@ fn test_diffmap_dimensions() {
     let rgb1: Vec<u8> = vec![100; width * height * 3];
     let rgb2: Vec<u8> = vec![150; width * height * 3];
 
-    let params = ButteraugliParams::default();
-    let result = compute_butteraugli(&rgb1, &rgb2, width, height, &params).expect("valid input");
+    let pixels1 = rgb_bytes_to_pixels(&rgb1);
+    let pixels2 = rgb_bytes_to_pixels(&rgb2);
+    let img1 = Img::new(pixels1, width, height);
+    let img2 = Img::new(pixels2, width, height);
+
+    let params = ButteraugliParams::default().with_compute_diffmap(true);
+    let result = butteraugli(img1.as_ref(), img2.as_ref(), &params).expect("valid input");
 
     let diffmap = result.diffmap.expect("Should produce diffmap");
     assert_eq!(diffmap.width(), width);
@@ -235,11 +261,13 @@ fn test_jpegli_roundtrip_butteraugli() {
         return;
     };
     if !path.exists() {
-        eprintln!("Skipping test: test image not found at {:?}", path);
+        eprintln!("Skipping test: test image not found at {path:?}");
         return;
     }
 
     let (original, width, height) = load_png(&path).expect("Failed to load test image");
+    let original_pixels = rgb_bytes_to_pixels(&original);
+    let img_original = Img::new(original_pixels, width, height);
 
     // Test at various quality levels
     for quality in [50, 70, 85, 95] {
@@ -247,17 +275,19 @@ fn test_jpegli_roundtrip_butteraugli() {
         let decoded = decode_jpeg(&jpeg_data);
 
         if decoded.len() != original.len() {
-            eprintln!("Size mismatch at Q{}, skipping", quality);
+            eprintln!("Size mismatch at Q{quality}, skipping");
             continue;
         }
 
+        let decoded_pixels = rgb_bytes_to_pixels(&decoded);
+        let img_decoded = Img::new(decoded_pixels, width, height);
+
         let params = ButteraugliParams::default();
-        let result =
-            compute_butteraugli(&original, &decoded, width, height, &params).expect("valid input");
+        let result = butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params)
+            .expect("valid input");
 
         println!(
-            "Q{}: size={} bytes, butteraugli={:.4}",
-            quality,
+            "Q{quality}: size={} bytes, butteraugli={:.4}",
             jpeg_data.len(),
             result.score
         );
@@ -266,8 +296,7 @@ fn test_jpegli_roundtrip_butteraugli() {
         if quality >= 85 {
             assert!(
                 result.score < BUTTERAUGLI_BAD,
-                "Q{} should have acceptable butteraugli score, got {}",
-                quality,
+                "Q{quality} should have acceptable butteraugli score, got {}",
                 result.score
             );
         }
@@ -294,14 +323,19 @@ fn test_cpp_butteraugli_comparison() {
     }
 
     let (original, width, height) = load_png(&path).expect("Failed to load");
+    let original_pixels = rgb_bytes_to_pixels(&original);
+    let img_original = Img::new(original_pixels, width, height);
 
     // Encode with Rust jpegli, decode, measure with Rust butteraugli
     let jpeg_data = encode_jpeg(&original, width as u32, height as u32, 85);
     let decoded = decode_jpeg(&jpeg_data);
 
+    let decoded_pixels = rgb_bytes_to_pixels(&decoded);
+    let img_decoded = Img::new(decoded_pixels, width, height);
+
     let params = ButteraugliParams::default();
-    let rust_result =
-        compute_butteraugli(&original, &decoded, width, height, &params).expect("valid input");
+    let rust_result = butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params)
+        .expect("valid input");
     println!("Rust butteraugli: {:.4}", rust_result.score);
 
     // TODO: Call C++ butteraugli for comparison

@@ -1159,12 +1159,7 @@ mod tests {
                 let diff = (window_result - interior_result).abs();
                 assert!(
                     diff < 1e-6,
-                    "HF mismatch at ({}, {}): window={}, interior={}, diff={}",
-                    x,
-                    y,
-                    window_result,
-                    interior_result,
-                    diff
+                    "HF mismatch at ({x}, {y}): window={window_result}, interior={interior_result}, diff={diff}"
                 );
             }
         }
@@ -1179,12 +1174,7 @@ mod tests {
                 let diff = (window_result - interior_result).abs();
                 assert!(
                     diff < 1e-6,
-                    "LF mismatch at ({}, {}): window={}, interior={}, diff={}",
-                    x,
-                    y,
-                    window_result,
-                    interior_result,
-                    diff
+                    "LF mismatch at ({x}, {y}): window={window_result}, interior={interior_result}, diff={diff}"
                 );
             }
         }

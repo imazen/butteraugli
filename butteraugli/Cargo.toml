@@ -36,6 +36,8 @@ internals = []
 # Allow dead code in test utilities (used by cpp-parity tests not published to crates.io)
 dead_code = { level = "allow", priority = -1 }
 unused_imports = { level = "allow", priority = -1 }
+# cpp-parity tests check for a feature not published to crates.io
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cpp-parity"))'] }
 
 [dependencies]
 wide.workspace = true

@@ -987,11 +987,7 @@ mod tests {
                 let full = full_diffmap.buf()[idx];
                 assert!(
                     (pre - full).abs() < 1e-6,
-                    "diffmap mismatch at ({}, {}): precomputed={}, full={}",
-                    x,
-                    y,
-                    pre,
-                    full
+                    "diffmap mismatch at ({x}, {y}): precomputed={pre}, full={full}"
                 );
             }
         }

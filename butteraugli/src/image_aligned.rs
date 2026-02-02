@@ -277,6 +277,6 @@ mod tests {
         let img = AlignedImageF::new(100, 50);
         // Check that SIMD row access works
         let row = img.row_simd(0);
-        assert!(row.len() >= (100 + 7) / 8); // Ceiling division
+        assert!(row.len() >= 100_usize.div_ceil(8));
     }
 }
