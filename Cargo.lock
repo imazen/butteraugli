@@ -77,6 +77,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "archmage"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c9fb5c235b8c9ee09d8f332472c32a1dae6cc4ed0bfb819651b438f9cec923c"
+dependencies = [
+ "archmage-macros",
+ "bytemuck",
+]
+
+[[package]]
+name = "archmage-macros"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f6d4d20f79dde36c8d0d7ddd4bd6ea2ebd4aafa3119fd3bd831e6b30af3f251"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -126,9 +147,11 @@ name = "butteraugli"
 version = "0.4.0"
 dependencies = [
  "approx",
+ "archmage",
  "chrono",
  "imgref",
  "jpeg-decoder",
+ "magetypes",
  "mozjpeg",
  "multiversed",
  "multiversion",
@@ -476,6 +499,15 @@ name = "log"
 version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+
+[[package]]
+name = "magetypes"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53fa0cae2666f149edd3f3125af3fcec52dd37efd129809676976f7f8ec8ddeb"
+dependencies = [
+ "archmage",
+]
 
 [[package]]
 name = "memchr"

@@ -165,13 +165,85 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
 /// L2 difference (symmetric).
 ///
 /// Computes squared difference weighted by w and adds to diffmap.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
 fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    use wide::f32x8;
+    #[cfg(target_arch = "x86_64")]
+    {
+        use archmage::{SimdToken, X64V3Token, X64V4Token};
+
+        // Try AVX-512 first (16 floats at a time)
+        if let Some(token) = X64V4Token::summon() {
+            l2_diff_avx512(i0, i1, w, diffmap, token);
+            return;
+        }
+
+        // Fall back to AVX2 (8 floats at a time)
+        if let Some(token) = X64V3Token::summon() {
+            l2_diff_avx2(i0, i1, w, diffmap, token);
+            return;
+        }
+    }
+
+    // Scalar fallback
+    l2_diff_scalar(i0, i1, w, diffmap);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn l2_diff_avx512(
+    i0: &ImageF,
+    i1: &ImageF,
+    w: f32,
+    diffmap: &mut ImageF,
+    token: archmage::X64V4Token,
+) {
+    use magetypes::f32x16;
 
     let width = i0.width();
     let height = i0.height();
-    let w_simd = f32x8::splat(w);
+    let w_simd = f32x16::splat(token, w);
+
+    for y in 0..height {
+        let row0 = i0.row(y);
+        let row1 = i1.row(y);
+        let row_diff = diffmap.row_mut(y);
+
+        // SIMD path: process 16 elements at a time
+        let chunks = row_diff.len() / 16;
+        for i in 0..chunks {
+            let x = i * 16;
+            let v0 = f32x16::load(token, row0[x..x + 16].try_into().unwrap());
+            let v1 = f32x16::load(token, row1[x..x + 16].try_into().unwrap());
+            let curr = f32x16::load(token, row_diff[x..x + 16].try_into().unwrap());
+
+            let diff = v0 - v1;
+            let result = diff * diff * w_simd + curr;
+
+            result.store((&mut row_diff[x..x + 16]).try_into().unwrap());
+        }
+
+        // Scalar tail
+        let simd_width = chunks * 16;
+        for x in simd_width..width {
+            let diff = row0[x] - row1[x];
+            row_diff[x] += diff * diff * w;
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn l2_diff_avx2(
+    i0: &ImageF,
+    i1: &ImageF,
+    w: f32,
+    diffmap: &mut ImageF,
+    token: archmage::X64V3Token,
+) {
+    use magetypes::f32x8;
+
+    let width = i0.width();
+    let height = i0.height();
+    let w_simd = f32x8::splat(token, w);
 
     for y in 0..height {
         let row0 = i0.row(y);
@@ -179,21 +251,39 @@ fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
         let row_diff = diffmap.row_mut(y);
 
         // SIMD path: process 8 elements at a time
-        for (i, chunk) in row_diff.chunks_exact_mut(8).enumerate() {
+        let chunks = row_diff.len() / 8;
+        for i in 0..chunks {
             let x = i * 8;
-            let v0 = f32x8::from(<[f32; 8]>::try_from(&row0[x..x + 8]).unwrap());
-            let v1 = f32x8::from(<[f32; 8]>::try_from(&row1[x..x + 8]).unwrap());
-            let curr = f32x8::from(<[f32; 8]>::try_from(&*chunk).unwrap());
+            let v0 = f32x8::load(token, row0[x..x + 8].try_into().unwrap());
+            let v1 = f32x8::load(token, row1[x..x + 8].try_into().unwrap());
+            let curr = f32x8::load(token, row_diff[x..x + 8].try_into().unwrap());
 
             let diff = v0 - v1;
             let result = diff * diff * w_simd + curr;
 
-            chunk.copy_from_slice(&<[f32; 8]>::from(result));
+            result.store((&mut row_diff[x..x + 8]).try_into().unwrap());
         }
 
         // Scalar tail
-        let simd_width = width / 8 * 8;
+        let simd_width = chunks * 8;
         for x in simd_width..width {
+            let diff = row0[x] - row1[x];
+            row_diff[x] += diff * diff * w;
+        }
+    }
+}
+
+#[inline]
+fn l2_diff_scalar(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
+    let width = i0.width();
+    let height = i0.height();
+
+    for y in 0..height {
+        let row0 = i0.row(y);
+        let row1 = i1.row(y);
+        let row_diff = diffmap.row_mut(y);
+
+        for x in 0..width {
             let diff = row0[x] - row1[x];
             row_diff[x] += diff * diff * w;
         }
