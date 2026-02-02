@@ -41,7 +41,8 @@
 //!
 //! ## Features
 //!
-//! - **`simd`** (default): Enable SIMD optimizations via the `wide` crate
+//! - **`cli`**: Command-line tool (adds clap, image, serde_json)
+//! - **`internals`**: Expose internal modules for testing/benchmarking (unstable API)
 //!
 //! ## References
 //!

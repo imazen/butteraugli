@@ -24,8 +24,7 @@ exclude = [
 ]
 
 [features]
-default = ["simd"]
-simd = []
+default = []
 # Expose internal modules for testing/benchmarking. Not a stable API.
 internals = []
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
@@ -42,6 +41,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cpp-parit
 [dependencies]
 wide.workspace = true
 multiversion.workspace = true
+multiversed.workspace = true
 imgref.workspace = true
 rgb.workspace = true
 
