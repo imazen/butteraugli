@@ -26,7 +26,9 @@
 //! ```
 
 use crate::image::{Image3F, ImageF};
-use crate::opsin::{linear_rgb_to_xyb_butteraugli, srgb_to_xyb_butteraugli};
+use crate::opsin::{
+    linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli, srgb_to_xyb_butteraugli,
+};
 use crate::psycho::{separate_frequencies, PsychoImage};
 use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult};
 
@@ -192,6 +194,80 @@ impl ButteraugliReference {
         })
     }
 
+    /// Creates a new reference from planar linear RGB data.
+    ///
+    /// Takes three separate channel slices (R, G, B) with the given stride.
+    /// This avoids the interleave/de-interleave overhead when the caller
+    /// already has planar data (e.g., from an encoder's reconstruction buffer).
+    ///
+    /// # Arguments
+    /// * `r`, `g`, `b` - Per-channel planar data (stride * height elements each)
+    /// * `width` - Image width in pixels
+    /// * `height` - Image height in pixels
+    /// * `stride` - Pixels per row (>= width, for alignment padding)
+    /// * `params` - Butteraugli parameters
+    pub fn new_linear_planar(
+        r: &[f32],
+        g: &[f32],
+        b: &[f32],
+        width: usize,
+        height: usize,
+        stride: usize,
+        params: ButteraugliParams,
+    ) -> Result<Self, ButteraugliError> {
+        if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
+            return Err(ButteraugliError::InvalidDimensions { width, height });
+        }
+
+        let min_size = stride * height;
+        if r.len() < min_size || g.len() < min_size || b.len() < min_size {
+            return Err(ButteraugliError::InvalidBufferSize {
+                expected: min_size,
+                actual: r.len().min(g.len()).min(b.len()),
+            });
+        }
+
+        // Precompute full resolution
+        let xyb = linear_planar_to_xyb_butteraugli(
+            r,
+            g,
+            b,
+            width,
+            height,
+            stride,
+            params.intensity_target(),
+        );
+        let psycho = separate_frequencies(&xyb);
+        let full = ScaleData { xyb, psycho };
+
+        // Precompute half resolution if image is large enough
+        // For the planar path, we subsample each channel separately
+        let half = if !params.single_resolution()
+            && width >= MIN_SIZE_FOR_SUBSAMPLE
+            && height >= MIN_SIZE_FOR_SUBSAMPLE
+        {
+            let (sub_r, sub_g, sub_b, sw, sh) =
+                subsample_planar_rgb_2x(r, g, b, width, height, stride);
+            let sub_xyb =
+                linear_planar_to_xyb_butteraugli(&sub_r, &sub_g, &sub_b, sw, sh, sw, params.intensity_target());
+            let sub_psycho = separate_frequencies(&sub_xyb);
+            Some(ScaleData {
+                xyb: sub_xyb,
+                psycho: sub_psycho,
+            })
+        } else {
+            None
+        };
+
+        Ok(Self {
+            full,
+            half,
+            width,
+            height,
+            params,
+        })
+    }
+
     /// Compare a distorted sRGB image against the precomputed reference.
     ///
     /// This is faster than `compute_butteraugli` when comparing multiple
@@ -236,6 +312,32 @@ impl ButteraugliReference {
         }
 
         Ok(self.compare_linear_impl(rgb))
+    }
+
+    /// Compare a distorted planar linear RGB image against the precomputed reference.
+    ///
+    /// Takes three separate channel slices with stride, avoiding the
+    /// interleave/de-interleave overhead of `compare_linear`.
+    ///
+    /// # Arguments
+    /// * `r`, `g`, `b` - Per-channel planar data (stride * height elements each)
+    /// * `stride` - Pixels per row (>= width)
+    pub fn compare_linear_planar(
+        &self,
+        r: &[f32],
+        g: &[f32],
+        b: &[f32],
+        stride: usize,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        let min_size = stride * self.height;
+        if r.len() < min_size || g.len() < min_size || b.len() < min_size {
+            return Err(ButteraugliError::InvalidBufferSize {
+                expected: min_size,
+                actual: r.len().min(g.len()).min(b.len()),
+            });
+        }
+
+        Ok(self.compare_linear_planar_impl(r, g, b, stride))
     }
 
     /// Width of the reference image.
@@ -314,6 +416,56 @@ impl ButteraugliReference {
             let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, self.width, self.height);
             let sub_xyb =
                 linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, self.params.intensity_target());
+            let sub_ps2 = separate_frequencies(&sub_xyb);
+
+            let sub_diffmap =
+                compute_diffmap_with_precomputed(&half.psycho, &sub_ps2, sw, sh, &self.params);
+
+            add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
+        }
+
+        let score = compute_score_from_diffmap(&diffmap);
+
+        ButteraugliResult {
+            score,
+            diffmap: Some(diffmap.into_imgvec()),
+        }
+    }
+
+    /// Internal comparison implementation for planar linear RGB input.
+    fn compare_linear_planar_impl(
+        &self,
+        r: &[f32],
+        g: &[f32],
+        b: &[f32],
+        stride: usize,
+    ) -> ButteraugliResult {
+        let xyb2 = linear_planar_to_xyb_butteraugli(
+            r,
+            g,
+            b,
+            self.width,
+            self.height,
+            stride,
+            self.params.intensity_target(),
+        );
+        let ps2 = separate_frequencies(&xyb2);
+
+        let mut diffmap = compute_diffmap_with_precomputed(
+            &self.full.psycho,
+            &ps2,
+            self.width,
+            self.height,
+            &self.params,
+        );
+
+        if let Some(ref half) = self.half {
+            let (sub_r, sub_g, sub_b, sw, sh) =
+                subsample_planar_rgb_2x(r, g, b, self.width, self.height, stride);
+            let sub_xyb = linear_planar_to_xyb_butteraugli(
+                &sub_r, &sub_g, &sub_b, sw, sh, sw,
+                self.params.intensity_target(),
+            );
             let sub_ps2 = separate_frequencies(&sub_xyb);
 
             let sub_diffmap =
@@ -789,6 +941,54 @@ fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32
     }
 
     (output, out_width, out_height)
+}
+
+/// Subsamples planar linear RGB by 2x for multi-resolution processing.
+fn subsample_planar_rgb_2x(
+    r: &[f32],
+    g: &[f32],
+    b: &[f32],
+    width: usize,
+    height: usize,
+    stride: usize,
+) -> (Vec<f32>, Vec<f32>, Vec<f32>, usize, usize) {
+    let out_width = width.div_ceil(2);
+    let out_height = height.div_ceil(2);
+    let mut out_r = vec![0.0f32; out_width * out_height];
+    let mut out_g = vec![0.0f32; out_width * out_height];
+    let mut out_b = vec![0.0f32; out_width * out_height];
+
+    for oy in 0..out_height {
+        for ox in 0..out_width {
+            let mut rs = 0.0f32;
+            let mut gs = 0.0f32;
+            let mut bs = 0.0f32;
+            let mut count = 0.0f32;
+
+            for dy in 0..2 {
+                for dx in 0..2 {
+                    let ix = ox * 2 + dx;
+                    let iy = oy * 2 + dy;
+                    if ix < width && iy < height {
+                        let idx = iy * stride + ix;
+                        rs += r[idx];
+                        gs += g[idx];
+                        bs += b[idx];
+                        count += 1.0;
+                    }
+                }
+            }
+
+            if count > 0.0 {
+                let out_idx = oy * out_width + ox;
+                out_r[out_idx] = rs / count;
+                out_g[out_idx] = gs / count;
+                out_b[out_idx] = bs / count;
+            }
+        }
+    }
+
+    (out_r, out_g, out_b, out_width, out_height)
 }
 
 #[cfg(test)]

@@ -358,6 +358,53 @@ pub fn linear_rgb_to_xyb_butteraugli(
     opsin_dynamics_image(&linear, intensity_target)
 }
 
+/// Converts planar linear RGB f32 data to butteraugli XYB.
+///
+/// Takes three separate channel slices (R, G, B) each of size width*height,
+/// with the given stride (pixels per row, may be > width for alignment).
+/// This avoids the interleave/de-interleave overhead of the interleaved API.
+///
+/// # Arguments
+/// * `r`, `g`, `b` - Per-channel planar data (stride * height elements each)
+/// * `width` - Image width in pixels
+/// * `height` - Image height in pixels
+/// * `stride` - Pixels per row (>= width)
+/// * `intensity_target` - Nits for 1.0 value (default 80.0)
+///
+/// # Returns
+/// XYB image (3 planes)
+pub fn linear_planar_to_xyb_butteraugli(
+    r: &[f32],
+    g: &[f32],
+    b: &[f32],
+    width: usize,
+    height: usize,
+    stride: usize,
+    intensity_target: f32,
+) -> Image3F {
+    assert!(stride >= width);
+    assert!(r.len() >= stride * height);
+    assert!(g.len() >= stride * height);
+    assert!(b.len() >= stride * height);
+
+    // Copy planar data directly into Image3F (respecting source stride)
+    let mut linear = Image3F::new(width, height);
+    let (out_r, out_g, out_b) = linear.planes_mut();
+
+    for y in 0..height {
+        let src_offset = y * stride;
+        let row_r = out_r.row_mut(y);
+        let row_g = out_g.row_mut(y);
+        let row_b = out_b.row_mut(y);
+        row_r.copy_from_slice(&r[src_offset..src_offset + width]);
+        row_g.copy_from_slice(&g[src_offset..src_offset + width]);
+        row_b.copy_from_slice(&b[src_offset..src_offset + width]);
+    }
+
+    // Apply OpsinDynamicsImage
+    opsin_dynamics_image(&linear, intensity_target)
+}
+
 /// Converts an sRGB image from ImgRef<RGB8> to butteraugli XYB.
 ///
 /// This function handles stride-aware iteration over the image data.
