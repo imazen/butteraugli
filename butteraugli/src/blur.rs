@@ -68,7 +68,7 @@ fn convolve_horizontal_transpose(input: &ImageF, kernel: &[f32], border_ratio: f
     let half = kernel.len() / 2;
 
     // Output is transposed: height x width
-    let mut output = ImageF::new(height, width);
+    let mut output = ImageF::from_pool_dirty(height, width);
 
     // Compute total weight for interior pixels (no border clipping)
     let weight_no_border: f32 = kernel.iter().sum();
@@ -330,7 +330,9 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32) -> ImageF {
 
     // Second pass: another horizontal convolution with transpose
     // This is equivalent to vertical convolution, result is width×height (original orientation)
-    convolve_horizontal_transpose(&temp, &kernel, 0.0)
+    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0);
+    temp.recycle();
+    result
 }
 /// Blur with border ratio parameter (matches C++ Blur signature).
 pub fn blur_with_border(input: &ImageF, sigma: f32, border_ratio: f32) -> ImageF {
@@ -340,7 +342,9 @@ pub fn blur_with_border(input: &ImageF, sigma: f32, border_ratio: f32) -> ImageF
 
     let kernel = compute_kernel(sigma);
     let temp = convolve_horizontal_transpose(input, &kernel, border_ratio);
-    convolve_horizontal_transpose(&temp, &kernel, border_ratio)
+    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio);
+    temp.recycle();
+    result
 }
 
 /// Applies blur in-place (modifies the input image).
@@ -351,6 +355,7 @@ pub fn gaussian_blur_inplace(image: &mut ImageF, sigma: f32) {
 
     let blurred = gaussian_blur(image, sigma);
     image.copy_from(&blurred);
+    blurred.recycle();
 }
 
 /// Mirrors a coordinate outside image bounds.
@@ -421,7 +426,7 @@ fn blur_mirrored_5x5_avx512(
     let iheight = height as i32;
 
     // Temporary for horizontal pass (NOT transposed for SIMD efficiency)
-    let mut temp = ImageF::new(width, height);
+    let mut temp = ImageF::from_pool_dirty(width, height);
 
     // Horizontal pass - SIMD for interior, scalar for borders
     let border = 2.min(width);
@@ -479,7 +484,7 @@ fn blur_mirrored_5x5_avx512(
     }
 
     // Vertical pass - process in column-major order (cache-unfriendly but necessary)
-    let mut output = ImageF::new(width, height);
+    let mut output = ImageF::from_pool_dirty(width, height);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
@@ -517,6 +522,7 @@ fn blur_mirrored_5x5_avx512(
         }
     }
 
+    temp.recycle();
     output
 }
 
@@ -543,7 +549,7 @@ fn blur_mirrored_5x5_avx2(
     let iwidth = width as i32;
     let iheight = height as i32;
 
-    let mut temp = ImageF::new(width, height);
+    let mut temp = ImageF::from_pool_dirty(width, height);
 
     let border = 2.min(width);
     let interior_end = if width > 4 { width - 2 } else { 0 };
@@ -601,7 +607,7 @@ fn blur_mirrored_5x5_avx2(
     }
 
     // Vertical pass
-    let mut output = ImageF::new(width, height);
+    let mut output = ImageF::from_pool_dirty(width, height);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
@@ -636,6 +642,7 @@ fn blur_mirrored_5x5_avx2(
         }
     }
 
+    temp.recycle();
     output
 }
 
@@ -651,7 +658,7 @@ fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3]) -> ImageF {
     let iwidth = width as i32;
     let iheight = height as i32;
 
-    let mut temp = ImageF::new(height, width);
+    let mut temp = ImageF::from_pool_dirty(height, width);
 
     for y in 0..height {
         let row = input.row(y);
@@ -667,7 +674,7 @@ fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3]) -> ImageF {
         }
     }
 
-    let mut output = ImageF::new(width, height);
+    let mut output = ImageF::from_pool_dirty(width, height);
     for x in 0..width {
         let col = temp.row(x);
         for y in 0..height {
@@ -682,6 +689,7 @@ fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3]) -> ImageF {
         }
     }
 
+    temp.recycle();
     output
 }
 
@@ -709,7 +717,7 @@ pub fn blur_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
     ];
 
     // Temporary for horizontal pass (transposed)
-    let mut temp = ImageF::new(height, width);
+    let mut temp = ImageF::from_pool_dirty(height, width);
 
     // Horizontal pass with fast interior
     let border = 2.min(width);
@@ -770,7 +778,7 @@ pub fn blur_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
 
     // Vertical pass (on transposed data, so it's another horizontal pass)
     // Result goes back to original orientation
-    let mut output = ImageF::new(width, height);
+    let mut output = ImageF::from_pool_dirty(width, height);
 
     let h_border = 2.min(height);
     let h_interior_end = if height > 2 { height - 2 } else { 0 };
@@ -829,6 +837,7 @@ pub fn blur_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
         }
     }
 
+    temp.recycle();
     output
 }
 

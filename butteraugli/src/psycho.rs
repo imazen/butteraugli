@@ -197,6 +197,7 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F) {
 
         // MF = original - LF
         subtract(xyb.plane(i), &blurred, mf.plane_mut(i));
+        blurred.recycle();
     }
 
     // Convert LF to vals space
@@ -217,6 +218,7 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
         // Blur MF
         let blurred = gaussian_blur(mf.plane(i), sigma);
         mf.plane_mut(i).copy_from(&blurred);
+        blurred.recycle();
 
         // HF = original - blurred
         let range = if i == 0 {
@@ -244,6 +246,7 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
     // Blur B channel only (no HF/UHF for blue)
     let blurred_b = gaussian_blur(mf.plane(2), sigma);
     mf.plane_mut(2).copy_from(&blurred_b);
+    blurred_b.recycle();
 
     // Suppress X by Y in HF (use split borrow to avoid clone)
     let (hf_x, hf_y) = hf.split_at_mut(1);
@@ -263,6 +266,7 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2]) {
         // Blur HF
         let blurred = gaussian_blur(&hf[i], sigma);
         hf[i].copy_from(&blurred);
+        blurred.recycle();
 
         // UHF = original - blurred, with adjustments
         for y in 0..height {

@@ -239,6 +239,9 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
         }
     }
 
+    blurred_r.recycle();
+    blurred_g.recycle();
+    blurred_b.recycle();
     xyb
 }
 

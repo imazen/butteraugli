@@ -191,19 +191,21 @@ pub fn compute_mask(mask0: &ImageF, mask1: &ImageF, mut diff_ac: Option<&mut Ima
     let height = mask0.height();
 
     // DiffPrecompute for mask0
-    let mut diff0 = ImageF::new(width, height);
+    let mut diff0 = ImageF::from_pool_dirty(width, height);
     diff_precompute(mask0, MASK_MUL, MASK_BIAS, &mut diff0);
 
     // DiffPrecompute for mask1
-    let mut diff1 = ImageF::new(width, height);
+    let mut diff1 = ImageF::from_pool_dirty(width, height);
     diff_precompute(mask1, MASK_MUL, MASK_BIAS, &mut diff1);
 
     // Blur diff0 and diff1
     let blurred0 = gaussian_blur(&diff0, MASK_RADIUS);
     let blurred1 = gaussian_blur(&diff1, MASK_RADIUS);
+    diff0.recycle();
+    diff1.recycle();
 
     // FuzzyErosion on blurred0
-    let mut eroded0 = ImageF::new(width, height);
+    let mut eroded0 = ImageF::from_pool_dirty(width, height);
     fuzzy_erosion(&blurred0, &mut eroded0);
 
     // Final mask computation
@@ -221,6 +223,9 @@ pub fn compute_mask(mask0: &ImageF, mask1: &ImageF, mut diff_ac: Option<&mut Ima
         }
     }
 
+    blurred0.recycle();
+    blurred1.recycle();
+    eroded0.recycle();
     mask
 }
 

@@ -4,7 +4,14 @@
 //! with row-stride support for cache-friendly access patterns.
 
 use imgref::ImgVec;
+use std::cell::RefCell;
 use std::ops::{Index, IndexMut};
+
+// Thread-local buffer pool to avoid repeated mmap/munmap for large ImageF buffers.
+// At 8K resolution, each ImageF is ~127MB — pooling avoids kernel overhead.
+thread_local! {
+    static BUFFER_POOL: RefCell<Vec<Vec<f32>>> = const { RefCell::new(Vec::new()) };
+}
 
 /// Single-channel floating point image.
 ///
@@ -163,6 +170,108 @@ impl ImageF {
     #[inline]
     pub fn data_mut(&mut self) -> &mut [f32] {
         &mut self.data
+    }
+
+    /// Creates a new image using a pooled buffer if available.
+    ///
+    /// The buffer is zero-filled. When done with the image, call `.recycle()`
+    /// to return the buffer to the pool instead of freeing it.
+    #[must_use]
+    pub fn from_pool(width: usize, height: usize) -> Self {
+        let stride = (width + 15) & !15;
+        let needed = stride * height;
+
+        let data = BUFFER_POOL.with(|pool| {
+            let mut pool = pool.borrow_mut();
+            // Find smallest buffer that fits
+            let mut best_idx = None;
+            let mut best_excess = usize::MAX;
+            for (i, buf) in pool.iter().enumerate() {
+                let cap = buf.len();
+                if cap >= needed && cap - needed < best_excess {
+                    best_idx = Some(i);
+                    best_excess = cap - needed;
+                }
+            }
+            if let Some(idx) = best_idx {
+                let mut buf = pool.swap_remove(idx);
+                buf.resize(needed, 0.0);
+                buf.fill(0.0);
+                buf
+            } else {
+                vec![0.0; needed]
+            }
+        });
+
+        Self {
+            data,
+            width,
+            height,
+            stride,
+        }
+    }
+
+    /// Creates a new image using a pooled buffer if available, WITHOUT zero-filling.
+    ///
+    /// The buffer may contain stale data from a previous use. Only use this when
+    /// the caller will overwrite every pixel (e.g., blur output buffers).
+    #[must_use]
+    pub fn from_pool_dirty(width: usize, height: usize) -> Self {
+        let stride = (width + 15) & !15;
+        let needed = stride * height;
+
+        let data = BUFFER_POOL.with(|pool| {
+            let mut pool = pool.borrow_mut();
+            let mut best_idx = None;
+            let mut best_excess = usize::MAX;
+            for (i, buf) in pool.iter().enumerate() {
+                let cap = buf.len();
+                if cap >= needed && cap - needed < best_excess {
+                    best_idx = Some(i);
+                    best_excess = cap - needed;
+                }
+            }
+            if let Some(idx) = best_idx {
+                let mut buf = pool.swap_remove(idx);
+                buf.truncate(needed);
+                // Extend with zeros only if buffer was too small (shouldn't happen
+                // given the selection criteria, but handle gracefully)
+                if buf.len() < needed {
+                    buf.resize(needed, 0.0);
+                }
+                buf
+            } else {
+                vec![0.0; needed]
+            }
+        });
+
+        Self {
+            data,
+            width,
+            height,
+            stride,
+        }
+    }
+
+    /// Returns the internal buffer to the thread-local pool for reuse.
+    ///
+    /// If the pool is full (32 buffers), the buffer is dropped normally.
+    /// Forgetting to call this is not a bug — the buffer is freed as usual.
+    pub fn recycle(self) {
+        let data = self.data;
+        BUFFER_POOL.with(|pool| {
+            let mut pool = pool.borrow_mut();
+            if pool.len() < 32 {
+                pool.push(data);
+            }
+        });
+    }
+
+    /// Clears the thread-local buffer pool, freeing all cached buffers.
+    pub fn clear_pool() {
+        BUFFER_POOL.with(|pool| {
+            pool.borrow_mut().clear();
+        });
     }
 
     /// Checks if two images have the same dimensions.
