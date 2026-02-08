@@ -122,15 +122,12 @@ fn subtract(a: &ImageF, b: &ImageF, out: &mut ImageF) {
 fn xyb_low_freq_to_vals(lf: &mut Image3F) {
     let width = lf.width();
     let height = lf.height();
-
-    // Collect all computed values first, then write back
-    // This avoids borrow checker issues with multiple mutable borrows
-    let mut new_vals = vec![(0.0f32, 0.0f32, 0.0f32); width * height];
+    let (p0, p1, p2) = lf.planes_mut();
 
     for y in 0..height {
-        let row_x = lf.plane_row(0, y);
-        let row_y = lf.plane_row(1, y);
-        let row_b = lf.plane_row(2, y);
+        let row_x = p0.row_mut(y);
+        let row_y = p1.row_mut(y);
+        let row_b = p2.row_mut(y);
 
         for x in 0..width {
             let vx = row_x[x];
@@ -138,21 +135,9 @@ fn xyb_low_freq_to_vals(lf: &mut Image3F) {
             let vb = row_b[x];
 
             let b = (Y_TO_B_MUL_LF_TO_VALS as f32).mul_add(vy, vb);
-            let val_b = b * BMUL_LF_TO_VALS as f32;
-            let val_x = vx * XMUL_LF_TO_VALS as f32;
-            let val_y = vy * YMUL_LF_TO_VALS as f32;
-
-            new_vals[y * width + x] = (val_x, val_y, val_b);
-        }
-    }
-
-    // Write back the computed values
-    for y in 0..height {
-        for x in 0..width {
-            let (vx, vy, vb) = new_vals[y * width + x];
-            lf.plane_mut(0).set(x, y, vx);
-            lf.plane_mut(1).set(x, y, vy);
-            lf.plane_mut(2).set(x, y, vb);
+            row_b[x] = b * BMUL_LF_TO_VALS as f32;
+            row_x[x] = vx * XMUL_LF_TO_VALS as f32;
+            row_y[x] = vy * YMUL_LF_TO_VALS as f32;
         }
     }
 }
