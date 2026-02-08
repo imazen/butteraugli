@@ -483,42 +483,85 @@ fn blur_mirrored_5x5_avx512(
         }
     }
 
-    // Vertical pass - process in column-major order (cache-unfriendly but necessary)
+    // Vertical pass - row-major with SIMD on x dimension (cache-friendly)
     let mut output = ImageF::from_pool_dirty(width, height);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
-    for x in 0..width {
-        // Top border
-        for y in 0..v_border {
-            let iy = y as i32;
-            let v_m2 = temp.get(x, mirror(iy - 2, iheight));
-            let v_m1 = temp.get(x, mirror(iy - 1, iheight));
-            let v_0 = temp.get(x, y);
-            let v_p1 = temp.get(x, mirror(iy + 1, iheight));
-            let v_p2 = temp.get(x, mirror(iy + 2, iheight));
-            output.set(x, y, v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2);
+    // Top border rows
+    for y in 0..v_border {
+        let iy = y as i32;
+        let rm2 = temp.row(mirror(iy - 2, iheight));
+        let rm1 = temp.row(mirror(iy - 1, iheight));
+        let r0 = temp.row(y);
+        let rp1 = temp.row(mirror(iy + 1, iheight));
+        let rp2 = temp.row(mirror(iy + 2, iheight));
+        let out = output.row_mut(y);
+        let mut x = 0;
+        while x + 16 <= width {
+            let vm2 = f32x16::load(token, (&rm2[x..x + 16]).try_into().unwrap());
+            let vm1 = f32x16::load(token, (&rm1[x..x + 16]).try_into().unwrap());
+            let v0 = f32x16::load(token, (&r0[x..x + 16]).try_into().unwrap());
+            let vp1 = f32x16::load(token, (&rp1[x..x + 16]).try_into().unwrap());
+            let vp2 = f32x16::load(token, (&rp2[x..x + 16]).try_into().unwrap());
+            let sum = v0 * w0_v + (vm1 + vp1) * w1_v + (vm2 + vp2) * w2_v;
+            sum.store((&mut out[x..x + 16]).try_into().unwrap());
+            x += 16;
         }
-
-        // Interior
-        for y in v_border..v_interior_end {
-            let v_m2 = temp.get(x, y - 2);
-            let v_m1 = temp.get(x, y - 1);
-            let v_0 = temp.get(x, y);
-            let v_p1 = temp.get(x, y + 1);
-            let v_p2 = temp.get(x, y + 2);
-            output.set(x, y, v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2);
+        while x < width {
+            out[x] = r0[x] * w0 + (rm1[x] + rp1[x]) * w1 + (rm2[x] + rp2[x]) * w2;
+            x += 1;
         }
+    }
 
-        // Bottom border
-        for y in v_interior_end..height {
-            let iy = y as i32;
-            let v_m2 = temp.get(x, mirror(iy - 2, iheight));
-            let v_m1 = temp.get(x, mirror(iy - 1, iheight));
-            let v_0 = temp.get(x, y);
-            let v_p1 = temp.get(x, mirror(iy + 1, iheight));
-            let v_p2 = temp.get(x, mirror(iy + 2, iheight));
-            output.set(x, y, v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2);
+    // Interior rows (no mirror needed)
+    for y in v_border..v_interior_end {
+        let rm2 = temp.row(y - 2);
+        let rm1 = temp.row(y - 1);
+        let r0 = temp.row(y);
+        let rp1 = temp.row(y + 1);
+        let rp2 = temp.row(y + 2);
+        let out = output.row_mut(y);
+        let mut x = 0;
+        while x + 16 <= width {
+            let vm2 = f32x16::load(token, (&rm2[x..x + 16]).try_into().unwrap());
+            let vm1 = f32x16::load(token, (&rm1[x..x + 16]).try_into().unwrap());
+            let v0 = f32x16::load(token, (&r0[x..x + 16]).try_into().unwrap());
+            let vp1 = f32x16::load(token, (&rp1[x..x + 16]).try_into().unwrap());
+            let vp2 = f32x16::load(token, (&rp2[x..x + 16]).try_into().unwrap());
+            let sum = v0 * w0_v + (vm1 + vp1) * w1_v + (vm2 + vp2) * w2_v;
+            sum.store((&mut out[x..x + 16]).try_into().unwrap());
+            x += 16;
+        }
+        while x < width {
+            out[x] = r0[x] * w0 + (rm1[x] + rp1[x]) * w1 + (rm2[x] + rp2[x]) * w2;
+            x += 1;
+        }
+    }
+
+    // Bottom border rows
+    for y in v_interior_end..height {
+        let iy = y as i32;
+        let rm2 = temp.row(mirror(iy - 2, iheight));
+        let rm1 = temp.row(mirror(iy - 1, iheight));
+        let r0 = temp.row(y);
+        let rp1 = temp.row(mirror(iy + 1, iheight));
+        let rp2 = temp.row(mirror(iy + 2, iheight));
+        let out = output.row_mut(y);
+        let mut x = 0;
+        while x + 16 <= width {
+            let vm2 = f32x16::load(token, (&rm2[x..x + 16]).try_into().unwrap());
+            let vm1 = f32x16::load(token, (&rm1[x..x + 16]).try_into().unwrap());
+            let v0 = f32x16::load(token, (&r0[x..x + 16]).try_into().unwrap());
+            let vp1 = f32x16::load(token, (&rp1[x..x + 16]).try_into().unwrap());
+            let vp2 = f32x16::load(token, (&rp2[x..x + 16]).try_into().unwrap());
+            let sum = v0 * w0_v + (vm1 + vp1) * w1_v + (vm2 + vp2) * w2_v;
+            sum.store((&mut out[x..x + 16]).try_into().unwrap());
+            x += 16;
+        }
+        while x < width {
+            out[x] = r0[x] * w0 + (rm1[x] + rp1[x]) * w1 + (rm2[x] + rp2[x]) * w2;
+            x += 1;
         }
     }
 
@@ -606,39 +649,82 @@ fn blur_mirrored_5x5_avx2(
         }
     }
 
-    // Vertical pass
+    // Vertical pass - row-major with SIMD on x dimension (cache-friendly)
     let mut output = ImageF::from_pool_dirty(width, height);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
-    for x in 0..width {
-        for y in 0..v_border {
-            let iy = y as i32;
-            let v_m2 = temp.get(x, mirror(iy - 2, iheight));
-            let v_m1 = temp.get(x, mirror(iy - 1, iheight));
-            let v_0 = temp.get(x, y);
-            let v_p1 = temp.get(x, mirror(iy + 1, iheight));
-            let v_p2 = temp.get(x, mirror(iy + 2, iheight));
-            output.set(x, y, v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2);
+    for y in 0..v_border {
+        let iy = y as i32;
+        let rm2 = temp.row(mirror(iy - 2, iheight));
+        let rm1 = temp.row(mirror(iy - 1, iheight));
+        let r0 = temp.row(y);
+        let rp1 = temp.row(mirror(iy + 1, iheight));
+        let rp2 = temp.row(mirror(iy + 2, iheight));
+        let out = output.row_mut(y);
+        let mut x = 0;
+        while x + 8 <= width {
+            let vm2 = f32x8::load(token, (&rm2[x..x + 8]).try_into().unwrap());
+            let vm1 = f32x8::load(token, (&rm1[x..x + 8]).try_into().unwrap());
+            let v0 = f32x8::load(token, (&r0[x..x + 8]).try_into().unwrap());
+            let vp1 = f32x8::load(token, (&rp1[x..x + 8]).try_into().unwrap());
+            let vp2 = f32x8::load(token, (&rp2[x..x + 8]).try_into().unwrap());
+            let sum = v0 * w0_v + (vm1 + vp1) * w1_v + (vm2 + vp2) * w2_v;
+            sum.store((&mut out[x..x + 8]).try_into().unwrap());
+            x += 8;
         }
-
-        for y in v_border..v_interior_end {
-            let v_m2 = temp.get(x, y - 2);
-            let v_m1 = temp.get(x, y - 1);
-            let v_0 = temp.get(x, y);
-            let v_p1 = temp.get(x, y + 1);
-            let v_p2 = temp.get(x, y + 2);
-            output.set(x, y, v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2);
+        while x < width {
+            out[x] = r0[x] * w0 + (rm1[x] + rp1[x]) * w1 + (rm2[x] + rp2[x]) * w2;
+            x += 1;
         }
+    }
 
-        for y in v_interior_end..height {
-            let iy = y as i32;
-            let v_m2 = temp.get(x, mirror(iy - 2, iheight));
-            let v_m1 = temp.get(x, mirror(iy - 1, iheight));
-            let v_0 = temp.get(x, y);
-            let v_p1 = temp.get(x, mirror(iy + 1, iheight));
-            let v_p2 = temp.get(x, mirror(iy + 2, iheight));
-            output.set(x, y, v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2);
+    for y in v_border..v_interior_end {
+        let rm2 = temp.row(y - 2);
+        let rm1 = temp.row(y - 1);
+        let r0 = temp.row(y);
+        let rp1 = temp.row(y + 1);
+        let rp2 = temp.row(y + 2);
+        let out = output.row_mut(y);
+        let mut x = 0;
+        while x + 8 <= width {
+            let vm2 = f32x8::load(token, (&rm2[x..x + 8]).try_into().unwrap());
+            let vm1 = f32x8::load(token, (&rm1[x..x + 8]).try_into().unwrap());
+            let v0 = f32x8::load(token, (&r0[x..x + 8]).try_into().unwrap());
+            let vp1 = f32x8::load(token, (&rp1[x..x + 8]).try_into().unwrap());
+            let vp2 = f32x8::load(token, (&rp2[x..x + 8]).try_into().unwrap());
+            let sum = v0 * w0_v + (vm1 + vp1) * w1_v + (vm2 + vp2) * w2_v;
+            sum.store((&mut out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+        while x < width {
+            out[x] = r0[x] * w0 + (rm1[x] + rp1[x]) * w1 + (rm2[x] + rp2[x]) * w2;
+            x += 1;
+        }
+    }
+
+    for y in v_interior_end..height {
+        let iy = y as i32;
+        let rm2 = temp.row(mirror(iy - 2, iheight));
+        let rm1 = temp.row(mirror(iy - 1, iheight));
+        let r0 = temp.row(y);
+        let rp1 = temp.row(mirror(iy + 1, iheight));
+        let rp2 = temp.row(mirror(iy + 2, iheight));
+        let out = output.row_mut(y);
+        let mut x = 0;
+        while x + 8 <= width {
+            let vm2 = f32x8::load(token, (&rm2[x..x + 8]).try_into().unwrap());
+            let vm1 = f32x8::load(token, (&rm1[x..x + 8]).try_into().unwrap());
+            let v0 = f32x8::load(token, (&r0[x..x + 8]).try_into().unwrap());
+            let vp1 = f32x8::load(token, (&rp1[x..x + 8]).try_into().unwrap());
+            let vp2 = f32x8::load(token, (&rp2[x..x + 8]).try_into().unwrap());
+            let sum = v0 * w0_v + (vm1 + vp1) * w1_v + (vm2 + vp2) * w2_v;
+            sum.store((&mut out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+        while x < width {
+            out[x] = r0[x] * w0 + (rm1[x] + rp1[x]) * w1 + (rm2[x] + rp2[x]) * w2;
+            x += 1;
         }
     }
 
