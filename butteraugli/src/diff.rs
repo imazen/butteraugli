@@ -680,7 +680,10 @@ fn compute_diffmap_multiresolution(
 
     // First compute subdiffmap at half resolution (if image is large enough)
     let mut sub_diffmap = None;
-    if width >= MIN_SIZE_FOR_SUBSAMPLE && height >= MIN_SIZE_FOR_SUBSAMPLE {
+    if !params.single_resolution()
+        && width >= MIN_SIZE_FOR_SUBSAMPLE
+        && height >= MIN_SIZE_FOR_SUBSAMPLE
+    {
         let (sub_rgb1, sw, sh) = subsample_rgb_2x(rgb1, width, height);
         let (sub_rgb2, _, _) = subsample_rgb_2x(rgb2, width, height);
 
@@ -793,7 +796,10 @@ fn compute_diffmap_multiresolution_linear(
 
     // First compute subdiffmap at half resolution (if image is large enough)
     let mut sub_diffmap = None;
-    if width >= MIN_SIZE_FOR_SUBSAMPLE && height >= MIN_SIZE_FOR_SUBSAMPLE {
+    if !params.single_resolution()
+        && width >= MIN_SIZE_FOR_SUBSAMPLE
+        && height >= MIN_SIZE_FOR_SUBSAMPLE
+    {
         let (sub_rgb1, sw, sh) = subsample_linear_rgb_2x(rgb1, width, height);
         let (sub_rgb2, _, _) = subsample_linear_rgb_2x(rgb2, width, height);
 

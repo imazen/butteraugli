@@ -106,7 +106,10 @@ impl ButteraugliReference {
         let full = ScaleData { xyb, psycho };
 
         // Precompute half resolution if image is large enough
-        let half = if width >= MIN_SIZE_FOR_SUBSAMPLE && height >= MIN_SIZE_FOR_SUBSAMPLE {
+        let half = if !params.single_resolution()
+            && width >= MIN_SIZE_FOR_SUBSAMPLE
+            && height >= MIN_SIZE_FOR_SUBSAMPLE
+        {
             let (sub_rgb, sw, sh) = subsample_rgb_2x(rgb, width, height);
             let sub_xyb = srgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target());
             let sub_psycho = separate_frequencies(&sub_xyb);
@@ -164,7 +167,10 @@ impl ButteraugliReference {
         let full = ScaleData { xyb, psycho };
 
         // Precompute half resolution if image is large enough
-        let half = if width >= MIN_SIZE_FOR_SUBSAMPLE && height >= MIN_SIZE_FOR_SUBSAMPLE {
+        let half = if !params.single_resolution()
+            && width >= MIN_SIZE_FOR_SUBSAMPLE
+            && height >= MIN_SIZE_FOR_SUBSAMPLE
+        {
             let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
             let sub_xyb =
                 linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target());

@@ -217,6 +217,7 @@ pub struct ButteraugliParams {
     xmul: f32,
     intensity_target: f32,
     compute_diffmap: bool,
+    single_resolution: bool,
 }
 
 impl Default for ButteraugliParams {
@@ -226,6 +227,7 @@ impl Default for ButteraugliParams {
             xmul: 1.0,
             intensity_target: 80.0,
             compute_diffmap: false,
+            single_resolution: false,
         }
     }
 }
@@ -291,6 +293,23 @@ impl ButteraugliParams {
     #[must_use]
     pub fn compute_diffmap(&self) -> bool {
         self.compute_diffmap
+    }
+
+    /// Skip the half-resolution pass for faster approximate results.
+    ///
+    /// The half-resolution pass contributes ~15% weight to the final diffmap.
+    /// Skipping it saves ~25% of computation. Useful for encoder tuning loops
+    /// where precise scores aren't needed.
+    #[must_use]
+    pub fn with_single_resolution(mut self, single_resolution: bool) -> Self {
+        self.single_resolution = single_resolution;
+        self
+    }
+
+    /// Returns whether single-resolution mode is enabled.
+    #[must_use]
+    pub fn single_resolution(&self) -> bool {
+        self.single_resolution
     }
 }
 
