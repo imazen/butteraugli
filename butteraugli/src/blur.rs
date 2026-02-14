@@ -143,6 +143,7 @@ fn convolve_interior_v4(
 ) {
     use magetypes::simd::f32x16;
     let height = input.height();
+    let kernel_len = scaled_kernel.len();
     let simd_chunks = (border2 - border1) / 16;
 
     for y in 0..height {
@@ -152,16 +153,16 @@ fn convolve_interior_v4(
         for chunk_idx in 0..simd_chunks {
             let x = border1 + chunk_idx * 16;
             let d = x - half;
-            let mut sum = f32x16::splat(token, 0.0);
+            // Pre-slice covers all loads for this chunk (one bounds check)
+            let base = &row_in[d..d + kernel_len + 15];
+            let mut sum = f32x16::zero(token);
 
-            // For each kernel position, load 16 values and accumulate
             for (j, &k) in scaled_kernel.iter().enumerate() {
-                let arr: [f32; 16] = row_in[d + j..d + j + 16].try_into().unwrap();
-                sum += f32x16::from_array(token, arr) * f32x16::splat(token, k);
+                let loaded = f32x16::from_slice(token, &base[j..]);
+                sum = loaded.mul_add(f32x16::splat(token, k), sum);
             }
 
-            // Store results (transposed write)
-            let results: [f32; 16] = sum.into();
+            let results = sum.to_array();
             for (i, &val) in results.iter().enumerate() {
                 output.set(y, x + i, val);
             }
@@ -171,11 +172,11 @@ fn convolve_interior_v4(
         let simd_end = border1 + simd_chunks * 16;
         for x in simd_end..border2 {
             let d = x - half;
-            let sum: f32 = scaled_kernel
+            let base = &row_in[d..d + kernel_len];
+            let sum: f32 = base
                 .iter()
-                .enumerate()
-                .map(|(j, &k)| row_in[d + j] * k)
-                .sum();
+                .zip(scaled_kernel)
+                .fold(0.0f32, |acc, (&r, &k)| r.mul_add(k, acc));
             output.set(y, x, sum);
         }
     }
@@ -195,6 +196,7 @@ fn convolve_interior_v3(
 ) {
     use magetypes::simd::f32x8;
     let height = input.height();
+    let kernel_len = scaled_kernel.len();
     let simd_chunks = (border2 - border1) / 8;
 
     for y in 0..height {
@@ -204,16 +206,16 @@ fn convolve_interior_v3(
         for chunk_idx in 0..simd_chunks {
             let x = border1 + chunk_idx * 8;
             let d = x - half;
-            let mut sum = f32x8::splat(token, 0.0);
+            // Pre-slice covers all loads for this chunk (one bounds check)
+            let base = &row_in[d..d + kernel_len + 7];
+            let mut sum = f32x8::zero(token);
 
-            // For each kernel position, load 8 values and accumulate
             for (j, &k) in scaled_kernel.iter().enumerate() {
-                let arr: [f32; 8] = row_in[d + j..d + j + 8].try_into().unwrap();
-                sum += f32x8::from_array(token, arr) * f32x8::splat(token, k);
+                let loaded = f32x8::from_slice(token, &base[j..]);
+                sum = loaded.mul_add(f32x8::splat(token, k), sum);
             }
 
-            // Store results (transposed write)
-            let results: [f32; 8] = sum.into();
+            let results = sum.to_array();
             for (i, &val) in results.iter().enumerate() {
                 output.set(y, x + i, val);
             }
@@ -223,11 +225,11 @@ fn convolve_interior_v3(
         let simd_end = border1 + simd_chunks * 8;
         for x in simd_end..border2 {
             let d = x - half;
-            let sum: f32 = scaled_kernel
+            let base = &row_in[d..d + kernel_len];
+            let sum: f32 = base
                 .iter()
-                .enumerate()
-                .map(|(j, &k)| row_in[d + j] * k)
-                .sum();
+                .zip(scaled_kernel)
+                .fold(0.0f32, |acc, (&r, &k)| r.mul_add(k, acc));
             output.set(y, x, sum);
         }
     }
@@ -245,15 +247,16 @@ fn convolve_interior_scalar(
     output: &mut ImageF,
 ) {
     let height = input.height();
+    let kernel_len = scaled_kernel.len();
     for y in 0..height {
         let row_in = input.row(y);
         for x in border1..border2 {
             let d = x - half;
-            let sum: f32 = scaled_kernel
+            let base = &row_in[d..d + kernel_len];
+            let sum: f32 = base
                 .iter()
-                .enumerate()
-                .map(|(j, &k)| row_in[d + j] * k)
-                .sum();
+                .zip(scaled_kernel)
+                .fold(0.0f32, |acc, (&r, &k)| r.mul_add(k, acc));
             output.set(y, x, sum);
         }
     }
