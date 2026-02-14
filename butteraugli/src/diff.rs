@@ -173,35 +173,17 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
 ///
 /// Computes squared difference weighted by w and adds to diffmap.
 fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use archmage::{SimdToken, X64V3Token, X64V4Token};
-
-        // Try AVX-512 first (16 floats at a time)
-        if let Some(token) = X64V4Token::summon() {
-            l2_diff_avx512(i0, i1, w, diffmap, token);
-            return;
-        }
-
-        // Fall back to AVX2 (8 floats at a time)
-        if let Some(token) = X64V3Token::summon() {
-            l2_diff_avx2(i0, i1, w, diffmap, token);
-            return;
-        }
-    }
-
-    // Scalar fallback
-    l2_diff_scalar(i0, i1, w, diffmap);
+    archmage::incant!(l2_diff(i0, i1, w, diffmap));
 }
 
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
-fn l2_diff_avx512(
+fn l2_diff_v4(
+    token: archmage::X64V4Token,
     i0: &ImageF,
     i1: &ImageF,
     w: f32,
     diffmap: &mut ImageF,
-    token: archmage::X64V4Token,
 ) {
     use magetypes::simd::f32x16;
 
@@ -239,12 +221,12 @@ fn l2_diff_avx512(
 
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
-fn l2_diff_avx2(
+fn l2_diff_v3(
+    token: archmage::X64V3Token,
     i0: &ImageF,
     i1: &ImageF,
     w: f32,
     diffmap: &mut ImageF,
-    token: archmage::X64V3Token,
 ) {
     use magetypes::simd::f32x8;
 
@@ -280,8 +262,7 @@ fn l2_diff_avx2(
     }
 }
 
-#[inline]
-fn l2_diff_scalar(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
+fn l2_diff_scalar(_token: archmage::ScalarToken, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     let width = i0.width();
     let height = i0.height();
 

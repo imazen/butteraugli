@@ -61,7 +61,6 @@ pub fn compute_kernel(sigma: f32) -> Vec<f32> {
 ///
 /// This makes the subsequent vertical pass cache-friendly since it becomes
 /// a horizontal pass on the transposed image.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
 fn convolve_horizontal_transpose(
     input: &ImageF,
     kernel: &[f32],
@@ -99,7 +98,7 @@ fn convolve_horizontal_transpose(
 
     // Process interior (no bounds checking needed)
     if border2 > border1 {
-        convolve_interior_simd(input, &scaled_kernel, border1, border2, half, &mut output);
+        convolve_interior(input, &scaled_kernel, border1, border2, half, &mut output);
     }
 
     // Process right border
@@ -121,7 +120,7 @@ fn convolve_horizontal_transpose(
 ///
 /// Dispatches to AVX-512 (f32x16), AVX2 (f32x8), or scalar based on CPU.
 #[inline]
-fn convolve_interior_simd(
+fn convolve_interior(
     input: &ImageF,
     scaled_kernel: &[f32],
     border1: usize,
@@ -129,32 +128,20 @@ fn convolve_interior_simd(
     half: usize,
     output: &mut ImageF,
 ) {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use archmage::{SimdToken, X64V3Token, X64V4Token};
-        if let Some(token) = X64V4Token::summon() {
-            convolve_interior_avx512(input, scaled_kernel, border1, border2, half, output, token);
-            return;
-        }
-        if let Some(token) = X64V3Token::summon() {
-            convolve_interior_avx2(input, scaled_kernel, border1, border2, half, output, token);
-            return;
-        }
-    }
-    convolve_interior_scalar(input, scaled_kernel, border1, border2, half, output);
+    archmage::incant!(convolve_interior(input, scaled_kernel, border1, border2, half, output));
 }
 
 /// AVX-512 interior convolution with f32x16 (16 floats at a time).
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
-fn convolve_interior_avx512(
+fn convolve_interior_v4(
+    token: archmage::X64V4Token,
     input: &ImageF,
     scaled_kernel: &[f32],
     border1: usize,
     border2: usize,
     half: usize,
     output: &mut ImageF,
-    token: archmage::X64V4Token,
 ) {
     use magetypes::simd::f32x16;
     let height = input.height();
@@ -199,14 +186,14 @@ fn convolve_interior_avx512(
 /// AVX2 interior convolution with f32x8 (8 floats at a time).
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
-fn convolve_interior_avx2(
+fn convolve_interior_v3(
+    token: archmage::X64V3Token,
     input: &ImageF,
     scaled_kernel: &[f32],
     border1: usize,
     border2: usize,
     half: usize,
     output: &mut ImageF,
-    token: archmage::X64V3Token,
 ) {
     use magetypes::simd::f32x8;
     let height = input.height();
@@ -249,8 +236,8 @@ fn convolve_interior_avx2(
 }
 
 /// Scalar fallback for interior convolution.
-#[inline]
 fn convolve_interior_scalar(
+    _token: archmage::ScalarToken,
     input: &ImageF,
     scaled_kernel: &[f32],
     border1: usize,
@@ -397,27 +384,15 @@ fn mirror(mut x: i32, size: i32) -> usize {
 /// This matches C++ Separable5 which is used when kernel size == 5.
 /// SIMD-optimized for interior pixels.
 pub fn blur_mirrored_5x5(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use archmage::{SimdToken, X64V3Token, X64V4Token};
-
-        if let Some(token) = X64V4Token::summon() {
-            return blur_mirrored_5x5_avx512(input, weights, token, pool);
-        }
-        if let Some(token) = X64V3Token::summon() {
-            return blur_mirrored_5x5_avx2(input, weights, token, pool);
-        }
-    }
-
-    blur_mirrored_5x5_scalar(input, weights, pool)
+    archmage::incant!(blur_mirrored_5x5(input, weights, pool))
 }
 
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
-fn blur_mirrored_5x5_avx512(
+fn blur_mirrored_5x5_v4(
+    token: archmage::X64V4Token,
     input: &ImageF,
     weights: &[f32; 3],
-    token: archmage::X64V4Token,
     pool: &BufferPool,
 ) -> ImageF {
     use magetypes::simd::f32x16;
@@ -582,10 +557,10 @@ fn blur_mirrored_5x5_avx512(
 
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
-fn blur_mirrored_5x5_avx2(
+fn blur_mirrored_5x5_v3(
+    token: archmage::X64V3Token,
     input: &ImageF,
     weights: &[f32; 3],
-    token: archmage::X64V3Token,
     pool: &BufferPool,
 ) -> ImageF {
     use magetypes::simd::f32x8;
@@ -744,8 +719,7 @@ fn blur_mirrored_5x5_avx2(
     output
 }
 
-#[inline]
-fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
+fn blur_mirrored_5x5_scalar(_token: archmage::ScalarToken, input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
     let width = input.width();
     let height = input.height();
 
