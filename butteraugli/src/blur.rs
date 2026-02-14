@@ -61,12 +61,23 @@ pub fn compute_kernel(sigma: f32) -> Vec<f32> {
 ///
 /// This makes the subsequent vertical pass cache-friendly since it becomes
 /// a horizontal pass on the transposed image.
-fn convolve_horizontal_transpose(
+///
+/// The interior dispatch function `F` is provided by the caller, allowing
+/// the dispatch decision to be hoisted to the outermost blur function.
+/// When called from an `#[arcane]` context, `F` should be a `#[rite]` function
+/// so LLVM can inline the SIMD kernel into the full blur pipeline.
+#[allow(clippy::inline_always)]
+#[inline(always)]
+fn convolve_horizontal_transpose<F>(
     input: &ImageF,
     kernel: &[f32],
     border_ratio: f32,
     pool: &BufferPool,
-) -> ImageF {
+    interior_fn: F,
+) -> ImageF
+where
+    F: Fn(&ImageF, &[f32], usize, usize, usize, &mut ImageF),
+{
     let width = input.width();
     let height = input.height();
     let half = kernel.len() / 2;
@@ -98,7 +109,7 @@ fn convolve_horizontal_transpose(
 
     // Process interior (no bounds checking needed)
     if border2 > border1 {
-        convolve_interior(input, &scaled_kernel, border1, border2, half, &mut output);
+        interior_fn(input, &scaled_kernel, border1, border2, half, &mut output);
     }
 
     // Process right border
@@ -116,24 +127,9 @@ fn convolve_horizontal_transpose(
     output
 }
 
-/// SIMD interior convolution with transpose.
-///
-/// Dispatches to AVX-512 (f32x16), AVX2 (f32x8), or scalar based on CPU.
-#[inline]
-fn convolve_interior(
-    input: &ImageF,
-    scaled_kernel: &[f32],
-    border1: usize,
-    border2: usize,
-    half: usize,
-    output: &mut ImageF,
-) {
-    archmage::incant!(convolve_interior(input, scaled_kernel, border1, border2, half, output));
-}
-
 /// AVX-512 interior convolution with f32x16 (16 floats at a time).
 #[cfg(target_arch = "x86_64")]
-#[archmage::arcane]
+#[archmage::rite]
 fn convolve_interior_v4(
     token: archmage::X64V4Token,
     input: &ImageF,
@@ -185,7 +181,7 @@ fn convolve_interior_v4(
 
 /// AVX2 interior convolution with f32x8 (8 floats at a time).
 #[cfg(target_arch = "x86_64")]
-#[archmage::arcane]
+#[archmage::rite]
 fn convolve_interior_v3(
     token: archmage::X64V3Token,
     input: &ImageF,
@@ -236,8 +232,9 @@ fn convolve_interior_v3(
 }
 
 /// Scalar fallback for interior convolution.
+#[allow(clippy::inline_always)]
+#[inline(always)]
 fn convolve_interior_scalar(
-    _token: archmage::ScalarToken,
     input: &ImageF,
     scaled_kernel: &[f32],
     border1: usize,
@@ -313,19 +310,59 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     if sigma <= 0.0 {
         return input.clone();
     }
+    archmage::incant!(gaussian_blur_dispatch(input, sigma, pool))
+}
 
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn gaussian_blur_dispatch_v4(
+    token: archmage::X64V4Token,
+    input: &ImageF,
+    sigma: f32,
+    pool: &BufferPool,
+) -> ImageF {
     let kernel = compute_kernel(sigma);
-
-    // First pass: horizontal convolution with transpose
-    // Result is height×width
-    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool);
-
-    // Second pass: another horizontal convolution with transpose
-    // This is equivalent to vertical convolution, result is width×height (original orientation)
-    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool);
+    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
+        convolve_interior_v4(token, inp, sk, b1, b2, h, out);
+    };
+    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, interior);
+    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, interior);
     temp.recycle(pool);
     result
 }
+
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn gaussian_blur_dispatch_v3(
+    token: archmage::X64V3Token,
+    input: &ImageF,
+    sigma: f32,
+    pool: &BufferPool,
+) -> ImageF {
+    let kernel = compute_kernel(sigma);
+    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
+        convolve_interior_v3(token, inp, sk, b1, b2, h, out);
+    };
+    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, interior);
+    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, interior);
+    temp.recycle(pool);
+    result
+}
+
+fn gaussian_blur_dispatch_scalar(
+    _token: archmage::ScalarToken,
+    input: &ImageF,
+    sigma: f32,
+    pool: &BufferPool,
+) -> ImageF {
+    let kernel = compute_kernel(sigma);
+    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, convolve_interior_scalar);
+    let result =
+        convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, convolve_interior_scalar);
+    temp.recycle(pool);
+    result
+}
+
 /// Blur with border ratio parameter (matches C++ Blur signature).
 pub fn blur_with_border(
     input: &ImageF,
@@ -336,10 +373,64 @@ pub fn blur_with_border(
     if sigma <= 0.0 {
         return input.clone();
     }
+    archmage::incant!(blur_with_border_dispatch(input, sigma, border_ratio, pool))
+}
 
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn blur_with_border_dispatch_v4(
+    token: archmage::X64V4Token,
+    input: &ImageF,
+    sigma: f32,
+    border_ratio: f32,
+    pool: &BufferPool,
+) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool);
-    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool);
+    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
+        convolve_interior_v4(token, inp, sk, b1, b2, h, out);
+    };
+    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool, interior);
+    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, interior);
+    temp.recycle(pool);
+    result
+}
+
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn blur_with_border_dispatch_v3(
+    token: archmage::X64V3Token,
+    input: &ImageF,
+    sigma: f32,
+    border_ratio: f32,
+    pool: &BufferPool,
+) -> ImageF {
+    let kernel = compute_kernel(sigma);
+    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
+        convolve_interior_v3(token, inp, sk, b1, b2, h, out);
+    };
+    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool, interior);
+    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, interior);
+    temp.recycle(pool);
+    result
+}
+
+fn blur_with_border_dispatch_scalar(
+    _token: archmage::ScalarToken,
+    input: &ImageF,
+    sigma: f32,
+    border_ratio: f32,
+    pool: &BufferPool,
+) -> ImageF {
+    let kernel = compute_kernel(sigma);
+    let temp =
+        convolve_horizontal_transpose(input, &kernel, border_ratio, pool, convolve_interior_scalar);
+    let result = convolve_horizontal_transpose(
+        &temp,
+        &kernel,
+        border_ratio,
+        pool,
+        convolve_interior_scalar,
+    );
     temp.recycle(pool);
     result
 }
