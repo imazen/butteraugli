@@ -248,8 +248,15 @@ impl ButteraugliReference {
         {
             let (sub_r, sub_g, sub_b, sw, sh) =
                 subsample_planar_rgb_2x(r, g, b, width, height, stride);
-            let sub_xyb =
-                linear_planar_to_xyb_butteraugli(&sub_r, &sub_g, &sub_b, sw, sh, sw, params.intensity_target());
+            let sub_xyb = linear_planar_to_xyb_butteraugli(
+                &sub_r,
+                &sub_g,
+                &sub_b,
+                sw,
+                sh,
+                sw,
+                params.intensity_target(),
+            );
             let sub_psycho = separate_frequencies(&sub_xyb);
             Some(ScaleData {
                 xyb: sub_xyb,
@@ -463,7 +470,12 @@ impl ButteraugliReference {
             let (sub_r, sub_g, sub_b, sw, sh) =
                 subsample_planar_rgb_2x(r, g, b, self.width, self.height, stride);
             let sub_xyb = linear_planar_to_xyb_butteraugli(
-                &sub_r, &sub_g, &sub_b, sw, sh, sw,
+                &sub_r,
+                &sub_g,
+                &sub_b,
+                sw,
+                sh,
+                sw,
                 self.params.intensity_target(),
             );
             let sub_ps2 = separate_frequencies(&sub_xyb);

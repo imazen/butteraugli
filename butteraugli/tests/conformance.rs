@@ -6,7 +6,7 @@
 
 mod common;
 
-use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8, BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD};
+use butteraugli::{butteraugli, ButteraugliParams, Img, BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD, RGB8};
 use std::fs;
 use std::path::Path;
 
@@ -184,8 +184,8 @@ fn test_score_monotonicity_with_quality() {
         let img_decoded = Img::new(decoded_pixels, width, height);
 
         let params = ButteraugliParams::default();
-        let result = butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params)
-            .expect("valid input");
+        let result =
+            butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params).expect("valid input");
 
         println!("Quality {quality}: butteraugli score = {:.4}", result.score);
 
@@ -283,8 +283,8 @@ fn test_jpegli_roundtrip_butteraugli() {
         let img_decoded = Img::new(decoded_pixels, width, height);
 
         let params = ButteraugliParams::default();
-        let result = butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params)
-            .expect("valid input");
+        let result =
+            butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params).expect("valid input");
 
         println!(
             "Q{quality}: size={} bytes, butteraugli={:.4}",
@@ -334,8 +334,8 @@ fn test_cpp_butteraugli_comparison() {
     let img_decoded = Img::new(decoded_pixels, width, height);
 
     let params = ButteraugliParams::default();
-    let rust_result = butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params)
-        .expect("valid input");
+    let rust_result =
+        butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params).expect("valid input");
     println!("Rust butteraugli: {:.4}", rust_result.score);
 
     // TODO: Call C++ butteraugli for comparison
