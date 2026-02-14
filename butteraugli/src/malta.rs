@@ -25,8 +25,12 @@ macro_rules! w {
 ///
 /// Takes a 9x9 window centered on the target pixel and returns
 /// the sum of squared responses for 16 orientation patterns.
+///
+/// When `use_google_patterns` is true, patterns 13-16 use the original
+/// 8-sample S-curves from google/butteraugli instead of the 9-sample
+/// duplicates of patterns 8,7,6,5 used in libjxl.
 #[inline]
-fn malta_unit_window(window: &[f32; 81]) -> f32 {
+fn malta_unit_window(window: &[f32; 81], use_google_patterns: bool) -> f32 {
     let mut retval = 0.0f32;
 
     // Pattern 1: x grows, y constant (horizontal line)
@@ -185,60 +189,118 @@ fn malta_unit_window(window: &[f32; 81]) -> f32 {
         retval += sum * sum;
     }
 
-    // Pattern 13: curved line pattern (same as 8)
-    {
-        let sum = w!(window, -4, 1)
-            + w!(window, -3, 1)
-            + w!(window, -2, 1)
-            + w!(window, -1, 0)
-            + w!(window, 0, 0)
-            + w!(window, 1, 0)
-            + w!(window, 2, -1)
-            + w!(window, 3, -1)
-            + w!(window, 4, -1);
-        retval += sum * sum;
-    }
+    if use_google_patterns {
+        // Patterns 13-16: google/butteraugli S-curves (8 samples each)
 
-    // Pattern 14: curved line other direction (same as 7)
-    {
-        let sum = w!(window, -4, -1)
-            + w!(window, -3, -1)
-            + w!(window, -2, -1)
-            + w!(window, -1, 0)
-            + w!(window, 0, 0)
-            + w!(window, 1, 0)
-            + w!(window, 2, 1)
-            + w!(window, 3, 1)
-            + w!(window, 4, 1);
-        retval += sum * sum;
-    }
+        // Pattern 13: S-curve
+        {
+            let sum = w!(window, -4, 2)
+                + w!(window, -3, 2)
+                + w!(window, -2, 1)
+                + w!(window, -1, 1)
+                + w!(window, 0, 0)
+                + w!(window, 1, 0)
+                + w!(window, 2, -1)
+                + w!(window, 3, -1);
+            retval += sum * sum;
+        }
 
-    // Pattern 15: very shallow curve (same as 6)
-    {
-        let sum = w!(window, -1, -4)
-            + w!(window, -1, -3)
-            + w!(window, -1, -2)
-            + w!(window, 0, -1)
-            + w!(window, 0, 0)
-            + w!(window, 0, 1)
-            + w!(window, 1, 2)
-            + w!(window, 1, 3)
-            + w!(window, 1, 4);
-        retval += sum * sum;
-    }
+        // Pattern 14: S-curve mirrored vertically
+        {
+            let sum = w!(window, -4, -2)
+                + w!(window, -3, -2)
+                + w!(window, -2, -1)
+                + w!(window, -1, -1)
+                + w!(window, 0, 0)
+                + w!(window, 1, 0)
+                + w!(window, 2, 1)
+                + w!(window, 3, 1);
+            retval += sum * sum;
+        }
 
-    // Pattern 16: very shallow curve other direction (same as 5)
-    {
-        let sum = w!(window, 1, -4)
-            + w!(window, 1, -3)
-            + w!(window, 1, -2)
-            + w!(window, 0, -1)
-            + w!(window, 0, 0)
-            + w!(window, 0, 1)
-            + w!(window, -1, 2)
-            + w!(window, -1, 3)
-            + w!(window, -1, 4);
-        retval += sum * sum;
+        // Pattern 15: S-curve rotated 90°
+        {
+            let sum = w!(window, -2, -4)
+                + w!(window, -2, -3)
+                + w!(window, -1, -2)
+                + w!(window, -1, -1)
+                + w!(window, 0, 0)
+                + w!(window, 0, 1)
+                + w!(window, 1, 2)
+                + w!(window, 1, 3);
+            retval += sum * sum;
+        }
+
+        // Pattern 16: S-curve rotated 90° mirrored
+        {
+            let sum = w!(window, 2, -4)
+                + w!(window, 2, -3)
+                + w!(window, 1, -2)
+                + w!(window, 1, -1)
+                + w!(window, 0, 0)
+                + w!(window, 0, 1)
+                + w!(window, -1, 2)
+                + w!(window, -1, 3);
+            retval += sum * sum;
+        }
+    } else {
+        // Patterns 13-16: libjxl duplicates of 8,7,6,5 (9 samples each)
+
+        // Pattern 13: curved line pattern (same as 8)
+        {
+            let sum = w!(window, -4, 1)
+                + w!(window, -3, 1)
+                + w!(window, -2, 1)
+                + w!(window, -1, 0)
+                + w!(window, 0, 0)
+                + w!(window, 1, 0)
+                + w!(window, 2, -1)
+                + w!(window, 3, -1)
+                + w!(window, 4, -1);
+            retval += sum * sum;
+        }
+
+        // Pattern 14: curved line other direction (same as 7)
+        {
+            let sum = w!(window, -4, -1)
+                + w!(window, -3, -1)
+                + w!(window, -2, -1)
+                + w!(window, -1, 0)
+                + w!(window, 0, 0)
+                + w!(window, 1, 0)
+                + w!(window, 2, 1)
+                + w!(window, 3, 1)
+                + w!(window, 4, 1);
+            retval += sum * sum;
+        }
+
+        // Pattern 15: very shallow curve (same as 6)
+        {
+            let sum = w!(window, -1, -4)
+                + w!(window, -1, -3)
+                + w!(window, -1, -2)
+                + w!(window, 0, -1)
+                + w!(window, 0, 0)
+                + w!(window, 0, 1)
+                + w!(window, 1, 2)
+                + w!(window, 1, 3)
+                + w!(window, 1, 4);
+            retval += sum * sum;
+        }
+
+        // Pattern 16: very shallow curve other direction (same as 5)
+        {
+            let sum = w!(window, 1, -4)
+                + w!(window, 1, -3)
+                + w!(window, 1, -2)
+                + w!(window, 0, -1)
+                + w!(window, 0, 0)
+                + w!(window, 0, 1)
+                + w!(window, -1, 2)
+                + w!(window, -1, 3)
+                + w!(window, -1, 4);
+            retval += sum * sum;
+        }
     }
 
     retval
@@ -458,7 +520,12 @@ fn extract_window(data: &ImageF, x: usize, y: usize) -> [f32; 81] {
 /// Uses direct slice indexing instead of pointer arithmetic.
 /// Caller must ensure the pixel is at least 4 pixels from all borders.
 #[inline]
-fn malta_unit_interior(data: &[f32], center: usize, stride: usize) -> f32 {
+fn malta_unit_interior(
+    data: &[f32],
+    center: usize,
+    stride: usize,
+    use_google_patterns: bool,
+) -> f32 {
     let xs = stride;
     let xs2 = xs + xs;
     let xs3 = xs2 + xs;
@@ -630,60 +697,118 @@ fn malta_unit_interior(data: &[f32], center: usize, stride: usize) -> f32 {
         retval += sum * sum;
     }
 
-    // Pattern 13: curved line pattern
-    {
-        let sum = data[center - 4 + xs]
-            + data[center - 3 + xs]
-            + data[center - 2 + xs]
-            + data[center - 1]
-            + data[center]
-            + data[center + 1]
-            + data[center + 2 - xs]
-            + data[center + 3 - xs]
-            + data[center + 4 - xs];
-        retval += sum * sum;
-    }
+    if use_google_patterns {
+        // Patterns 13-16: google/butteraugli S-curves (8 samples each)
 
-    // Pattern 14: curved line other direction
-    {
-        let sum = data[center - 4 - xs]
-            + data[center - 3 - xs]
-            + data[center - 2 - xs]
-            + data[center - 1]
-            + data[center]
-            + data[center + 1]
-            + data[center + 2 + xs]
-            + data[center + 3 + xs]
-            + data[center + 4 + xs];
-        retval += sum * sum;
-    }
+        // Pattern 13: S-curve
+        {
+            let sum = data[center + xs2 - 4]
+                + data[center + xs2 - 3]
+                + data[center + xs - 2]
+                + data[center + xs - 1]
+                + data[center]
+                + data[center + 1]
+                + data[center - xs + 2]
+                + data[center - xs + 3];
+            retval += sum * sum;
+        }
 
-    // Pattern 15: very shallow curve
-    {
-        let sum = data[center - xs4 - 1]
-            + data[center - xs3 - 1]
-            + data[center - xs2 - 1]
-            + data[center - xs]
-            + data[center]
-            + data[center + xs]
-            + data[center + xs2 + 1]
-            + data[center + xs3 + 1]
-            + data[center + xs4 + 1];
-        retval += sum * sum;
-    }
+        // Pattern 14: S-curve mirrored vertically
+        {
+            let sum = data[center - xs2 - 4]
+                + data[center - xs2 - 3]
+                + data[center - xs - 2]
+                + data[center - xs - 1]
+                + data[center]
+                + data[center + 1]
+                + data[center + xs + 2]
+                + data[center + xs + 3];
+            retval += sum * sum;
+        }
 
-    // Pattern 16: very shallow curve other direction
-    {
-        let sum = data[center - xs4 + 1]
-            + data[center - xs3 + 1]
-            + data[center - xs2 + 1]
-            + data[center - xs]
-            + data[center]
-            + data[center + xs]
-            + data[center + xs2 - 1]
-            + data[center + xs3 - 1]
-            + data[center + xs4 - 1];
-        retval += sum * sum;
+        // Pattern 15: S-curve rotated 90°
+        {
+            let sum = data[center - xs4 - 2]
+                + data[center - xs3 - 2]
+                + data[center - xs2 - 1]
+                + data[center - xs - 1]
+                + data[center]
+                + data[center + xs]
+                + data[center + xs2 + 1]
+                + data[center + xs3 + 1];
+            retval += sum * sum;
+        }
+
+        // Pattern 16: S-curve rotated 90° mirrored
+        {
+            let sum = data[center - xs4 + 2]
+                + data[center - xs3 + 2]
+                + data[center - xs2 + 1]
+                + data[center - xs + 1]
+                + data[center]
+                + data[center + xs]
+                + data[center + xs2 - 1]
+                + data[center + xs3 - 1];
+            retval += sum * sum;
+        }
+    } else {
+        // Patterns 13-16: libjxl duplicates of 8,7,6,5 (9 samples each)
+
+        // Pattern 13: curved line pattern (same as 8)
+        {
+            let sum = data[center - 4 + xs]
+                + data[center - 3 + xs]
+                + data[center - 2 + xs]
+                + data[center - 1]
+                + data[center]
+                + data[center + 1]
+                + data[center + 2 - xs]
+                + data[center + 3 - xs]
+                + data[center + 4 - xs];
+            retval += sum * sum;
+        }
+
+        // Pattern 14: curved line other direction (same as 7)
+        {
+            let sum = data[center - 4 - xs]
+                + data[center - 3 - xs]
+                + data[center - 2 - xs]
+                + data[center - 1]
+                + data[center]
+                + data[center + 1]
+                + data[center + 2 + xs]
+                + data[center + 3 + xs]
+                + data[center + 4 + xs];
+            retval += sum * sum;
+        }
+
+        // Pattern 15: very shallow curve (same as 6)
+        {
+            let sum = data[center - xs4 - 1]
+                + data[center - xs3 - 1]
+                + data[center - xs2 - 1]
+                + data[center - xs]
+                + data[center]
+                + data[center + xs]
+                + data[center + xs2 + 1]
+                + data[center + xs3 + 1]
+                + data[center + xs4 + 1];
+            retval += sum * sum;
+        }
+
+        // Pattern 16: very shallow curve other direction (same as 5)
+        {
+            let sum = data[center - xs4 + 1]
+                + data[center - xs3 + 1]
+                + data[center - xs2 + 1]
+                + data[center - xs]
+                + data[center]
+                + data[center + xs]
+                + data[center + xs2 - 1]
+                + data[center + xs3 - 1]
+                + data[center + xs4 - 1];
+            retval += sum * sum;
+        }
     }
 
     retval
@@ -876,10 +1001,13 @@ fn malta_unit_lf_interior(data: &[f32], center: usize, stride: usize) -> f32 {
 ///
 /// Applies 16 different line kernels in various orientations centered at (x,y)
 /// and returns the sum of squared responses.
-pub fn malta_unit(data: &ImageF, x: usize, y: usize) -> f32 {
+///
+/// When `use_google_patterns` is true, patterns 13-16 use the original
+/// 8-sample S-curves from google/butteraugli.
+pub fn malta_unit(data: &ImageF, x: usize, y: usize, use_google_patterns: bool) -> f32 {
     // Use window copy approach - compiler can optimize fixed-size array access
     let window = extract_window(data, x, y);
-    malta_unit_window(&window)
+    malta_unit_window(&window, use_google_patterns)
 }
 
 /// Malta filter for LF band (5 samples per line, 16 orientations).
@@ -913,6 +1041,7 @@ pub fn malta_diff_map(
     w_0lt1: f64,
     norm1: f64,
     use_lf: bool,
+    use_google_patterns: bool,
 ) -> ImageF {
     let width = lum0.width();
     let height = lum0.height();
@@ -992,7 +1121,7 @@ pub fn malta_diff_map(
             out[x] = if use_lf {
                 malta_unit_lf(&diffs, x, y)
             } else {
-                malta_unit(&diffs, x, y)
+                malta_unit(&diffs, x, y, use_google_patterns)
             };
         }
     }
@@ -1008,7 +1137,7 @@ pub fn malta_diff_map(
                 out[x] = if use_lf {
                     malta_unit_lf(&diffs, x, y)
                 } else {
-                    malta_unit(&diffs, x, y)
+                    malta_unit(&diffs, x, y, use_google_patterns)
                 };
             }
 
@@ -1019,7 +1148,7 @@ pub fn malta_diff_map(
                     out[x] = if use_lf {
                         malta_unit_lf_interior(data, center, stride)
                     } else {
-                        malta_unit_interior(data, center, stride)
+                        malta_unit_interior(data, center, stride, use_google_patterns)
                     };
                 }
             }
@@ -1029,7 +1158,7 @@ pub fn malta_diff_map(
                 out[x] = if use_lf {
                     malta_unit_lf(&diffs, x, y)
                 } else {
-                    malta_unit(&diffs, x, y)
+                    malta_unit(&diffs, x, y, use_google_patterns)
                 };
             }
         }
@@ -1042,7 +1171,7 @@ pub fn malta_diff_map(
             out[x] = if use_lf {
                 malta_unit_lf(&diffs, x, y)
             } else {
-                malta_unit(&diffs, x, y)
+                malta_unit(&diffs, x, y, use_google_patterns)
             };
         }
     }
@@ -1058,7 +1187,7 @@ mod tests {
     fn test_malta_uniform() {
         // Uniform image should have high Malta response (edge detection)
         let img = ImageF::filled(32, 32, 1.0);
-        let center = malta_unit(&img, 16, 16);
+        let center = malta_unit(&img, 16, 16, false);
         // 16 patterns × (9 samples × 1.0)² = 16 × 81 = 1296 for interior
         assert!(center > 0.0, "Malta should be positive for uniform image");
     }
@@ -1076,8 +1205,8 @@ mod tests {
                 }
             }
         }
-        let edge = malta_unit(&img, 16, 16); // On the edge
-        let uniform = malta_unit(&img, 8, 16); // In uniform region
+        let edge = malta_unit(&img, 16, 16, false); // On the edge
+        let uniform = malta_unit(&img, 8, 16, false); // In uniform region
 
         // Edge detection patterns should differ
         assert!(
@@ -1089,7 +1218,7 @@ mod tests {
     #[test]
     fn test_malta_diff_map_identical() {
         let img = ImageF::filled(32, 32, 0.5);
-        let result = malta_diff_map(&img, &img, 1.0, 1.0, 1.0, false);
+        let result = malta_diff_map(&img, &img, 1.0, 1.0, 1.0, false, false);
 
         // Identical images should have zero Malta diff
         let mut sum = 0.0;
@@ -1105,7 +1234,7 @@ mod tests {
     fn test_malta_lf_smaller() {
         // LF variant uses fewer samples, should have different magnitude
         let img = ImageF::filled(32, 32, 1.0);
-        let hf = malta_unit(&img, 16, 16);
+        let hf = malta_unit(&img, 16, 16, false);
         let lf = malta_unit_lf(&img, 16, 16);
 
         // Both should be positive
@@ -1127,7 +1256,7 @@ mod tests {
         }
 
         // Test an interior point using both paths
-        let fast_result = malta_unit(&img2, 16, 16);
+        let fast_result = malta_unit(&img2, 16, 16, false);
 
         // Force slow path by using border coordinates
         // We can't easily force slow path for interior, but we can verify
@@ -1137,7 +1266,7 @@ mod tests {
 
     #[test]
     fn test_interior_vs_window() {
-        // Verify safe interior functions match window approach
+        // Verify safe interior functions match window approach for both variants
         let mut img = ImageF::new(32, 32);
         for y in 0..32 {
             for x in 0..32 {
@@ -1149,17 +1278,32 @@ mod tests {
         let data = img.data();
         let stride = img.stride();
 
-        // Test HF (malta_unit) at various interior points
+        // Test HF (malta_unit) at various interior points — libjxl variant
         for y in 5..27 {
             for x in 5..27 {
-                let window_result = malta_unit(&img, x, y);
+                let window_result = malta_unit(&img, x, y, false);
                 let center = y * stride + x;
-                let interior_result = malta_unit_interior(data, center, stride);
+                let interior_result = malta_unit_interior(data, center, stride, false);
 
                 let diff = (window_result - interior_result).abs();
                 assert!(
                     diff < 1e-6,
-                    "HF mismatch at ({x}, {y}): window={window_result}, interior={interior_result}, diff={diff}"
+                    "HF libjxl mismatch at ({x}, {y}): window={window_result}, interior={interior_result}, diff={diff}"
+                );
+            }
+        }
+
+        // Test HF (malta_unit) at various interior points — google variant
+        for y in 5..27 {
+            for x in 5..27 {
+                let window_result = malta_unit(&img, x, y, true);
+                let center = y * stride + x;
+                let interior_result = malta_unit_interior(data, center, stride, true);
+
+                let diff = (window_result - interior_result).abs();
+                assert!(
+                    diff < 1e-6,
+                    "HF google mismatch at ({x}, {y}): window={window_result}, interior={interior_result}, diff={diff}"
                 );
             }
         }
@@ -1178,5 +1322,25 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_google_vs_libjxl_differ() {
+        // Google and libjxl patterns should produce different results on non-uniform data
+        let mut img = ImageF::new(32, 32);
+        for y in 0..32 {
+            for x in 0..32 {
+                img.set(x, y, ((x * 7 + y * 13) % 100) as f32 * 0.01);
+            }
+        }
+
+        let libjxl = malta_unit(&img, 16, 16, false);
+        let google = malta_unit(&img, 16, 16, true);
+
+        // They share patterns 1-12 but differ in 13-16
+        assert!(
+            (libjxl - google).abs() > 1e-6,
+            "Google and libjxl patterns should differ on non-uniform data: libjxl={libjxl}, google={google}"
+        );
     }
 }

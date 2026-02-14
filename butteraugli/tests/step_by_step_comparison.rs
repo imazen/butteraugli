@@ -557,8 +557,8 @@ fn test_malta_diff_map_width_dependent() {
         }
 
         // Compute Malta diff maps
-        let diff_hf = malta_diff_map(&img0, &img1, 1.0, 1.0, 1.0, true); // LF variant
-        let diff_uhf = malta_diff_map(&img0, &img1, 1.0, 1.0, 1.0, false); // HF variant
+        let diff_hf = malta_diff_map(&img0, &img1, 1.0, 1.0, 1.0, true, false); // LF variant
+        let diff_uhf = malta_diff_map(&img0, &img1, 1.0, 1.0, 1.0, false, false); // HF variant
 
         // Compute statistics
         let mut sum_hf = 0.0f32;

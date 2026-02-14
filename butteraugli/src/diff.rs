@@ -14,7 +14,7 @@ use crate::mask::{
 };
 use crate::opsin::{linear_rgb_to_xyb_butteraugli, srgb_to_xyb_butteraugli};
 use crate::psycho::{separate_frequencies, PsychoImage};
-use crate::ButteraugliParams;
+use crate::{ButteraugliParams, MaltaVariant};
 use imgref::ImgRef;
 use rgb::{RGB, RGB8};
 
@@ -358,9 +358,11 @@ fn compute_psycho_diff_malta(
     ps1: &PsychoImage,
     hf_asymmetry: f32,
     _xmul: f32,
+    malta_variant: MaltaVariant,
 ) -> Image3F {
     let width = ps0.width();
     let height = ps0.height();
+    let use_google_patterns = malta_variant == MaltaVariant::StandaloneGoogle;
 
     // Block diff AC accumulates Malta and L2 differences
     let mut block_diff_ac = Image3F::new(width, height);
@@ -374,6 +376,7 @@ fn compute_psycho_diff_malta(
         W_UHF_MALTA / hf_asymmetry as f64,
         NORM1_UHF,
         false, // use full Malta
+        use_google_patterns,
     );
     for y in 0..height {
         for x in 0..width {
@@ -390,6 +393,7 @@ fn compute_psycho_diff_malta(
         W_UHF_MALTA_X / hf_asymmetry as f64,
         NORM1_UHF_X,
         false,
+        use_google_patterns,
     );
     for y in 0..height {
         for x in 0..width {
@@ -401,7 +405,7 @@ fn compute_psycho_diff_malta(
     // Apply Malta LF filter for HF
     let sqrt_hf_asym = hf_asymmetry.sqrt();
 
-    // HF Y channel
+    // HF Y channel (LF Malta — google patterns don't affect LF variant)
     let hf_y_diff = malta_diff_map(
         &ps0.hf[1],
         &ps1.hf[1],
@@ -409,6 +413,7 @@ fn compute_psycho_diff_malta(
         W_HF_MALTA / sqrt_hf_asym as f64,
         NORM1_HF,
         true, // use LF Malta
+        false,
     );
     for y in 0..height {
         for x in 0..width {
@@ -417,7 +422,7 @@ fn compute_psycho_diff_malta(
         }
     }
 
-    // HF X channel
+    // HF X channel (LF Malta)
     let hf_x_diff = malta_diff_map(
         &ps0.hf[0],
         &ps1.hf[0],
@@ -425,6 +430,7 @@ fn compute_psycho_diff_malta(
         W_HF_MALTA_X / sqrt_hf_asym as f64,
         NORM1_HF_X,
         true,
+        false,
     );
     for y in 0..height {
         for x in 0..width {
@@ -442,6 +448,7 @@ fn compute_psycho_diff_malta(
         W_MF_MALTA,
         NORM1_MF,
         true,
+        false,
     );
     for y in 0..height {
         for x in 0..width {
@@ -458,6 +465,7 @@ fn compute_psycho_diff_malta(
         W_MF_MALTA_X,
         NORM1_MF_X,
         true,
+        false,
     );
     for y in 0..height {
         for x in 0..width {
@@ -635,7 +643,7 @@ fn compute_diffmap_single_resolution(
 
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
-        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
+        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul(), params.malta_variant());
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
     // This matches C++ MaskPsychoImage which calls CombineChannelsForMasking + Mask
@@ -758,7 +766,7 @@ fn compute_diffmap_single_resolution_linear(
 
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
-        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
+        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul(), params.malta_variant());
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
     let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);
@@ -909,7 +917,7 @@ fn compute_diffmap_single_resolution_xyb(
 
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
-        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
+        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul(), params.malta_variant());
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
     let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);
