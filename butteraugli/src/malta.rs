@@ -531,169 +531,173 @@ fn malta_unit_interior(
     let xs3 = xs2 + xs;
     let xs4 = xs3 + xs;
 
-    // Safety invariant: center must have at least 4*stride + 4 elements on each side
-    // This is guaranteed by the caller (malta_diff_map) which only calls this for interior pixels
-    debug_assert!(center >= xs4 + 4, "center too close to start of data");
-    debug_assert!(
-        center + xs4 + 4 < data.len(),
-        "center too close to end of data"
-    );
+    // Pre-validate full access range: center ± (4*stride + 4)
+    let reach = xs4 + 4;
+    assert!(center >= reach && center + reach < data.len());
 
+    // SAFETY: all accesses are within [center-reach, center+reach], bounds-checked above.
+    macro_rules! at {
+        ($off:expr) => {
+            unsafe { *data.get_unchecked(($off) as usize) }
+        };
+    }
+
+    let c = center;
     let mut retval = 0.0f32;
 
     // Pattern 1: x grows, y constant (horizontal line)
     {
-        let sum = data[center - 4]
-            + data[center - 3]
-            + data[center - 2]
-            + data[center - 1]
-            + data[center]
-            + data[center + 1]
-            + data[center + 2]
-            + data[center + 3]
-            + data[center + 4];
+        let sum = at!(c - 4)
+            + at!(c - 3)
+            + at!(c - 2)
+            + at!(c - 1)
+            + at!(c)
+            + at!(c + 1)
+            + at!(c + 2)
+            + at!(c + 3)
+            + at!(c + 4);
         retval += sum * sum;
     }
 
     // Pattern 2: y grows, x constant (vertical line)
     {
-        let sum = data[center - xs4]
-            + data[center - xs3]
-            + data[center - xs2]
-            + data[center - xs]
-            + data[center]
-            + data[center + xs]
-            + data[center + xs2]
-            + data[center + xs3]
-            + data[center + xs4];
+        let sum = at!(c - xs4)
+            + at!(c - xs3)
+            + at!(c - xs2)
+            + at!(c - xs)
+            + at!(c)
+            + at!(c + xs)
+            + at!(c + xs2)
+            + at!(c + xs3)
+            + at!(c + xs4);
         retval += sum * sum;
     }
 
     // Pattern 3: both grow (diagonal \)
     {
-        let sum = data[center - xs3 - 3]
-            + data[center - xs2 - 2]
-            + data[center - xs - 1]
-            + data[center]
-            + data[center + xs + 1]
-            + data[center + xs2 + 2]
-            + data[center + xs3 + 3];
+        let sum = at!(c - xs3 - 3)
+            + at!(c - xs2 - 2)
+            + at!(c - xs - 1)
+            + at!(c)
+            + at!(c + xs + 1)
+            + at!(c + xs2 + 2)
+            + at!(c + xs3 + 3);
         retval += sum * sum;
     }
 
     // Pattern 4: y grows, x shrinks (diagonal /)
     {
-        let sum = data[center - xs3 + 3]
-            + data[center - xs2 + 2]
-            + data[center - xs + 1]
-            + data[center]
-            + data[center + xs - 1]
-            + data[center + xs2 - 2]
-            + data[center + xs3 - 3];
+        let sum = at!(c - xs3 + 3)
+            + at!(c - xs2 + 2)
+            + at!(c - xs + 1)
+            + at!(c)
+            + at!(c + xs - 1)
+            + at!(c + xs2 - 2)
+            + at!(c + xs3 - 3);
         retval += sum * sum;
     }
 
     // Pattern 5: y grows -4 to 4, x shrinks 1 -> -1
     {
-        let sum = data[center - xs4 + 1]
-            + data[center - xs3 + 1]
-            + data[center - xs2 + 1]
-            + data[center - xs]
-            + data[center]
-            + data[center + xs]
-            + data[center + xs2 - 1]
-            + data[center + xs3 - 1]
-            + data[center + xs4 - 1];
+        let sum = at!(c - xs4 + 1)
+            + at!(c - xs3 + 1)
+            + at!(c - xs2 + 1)
+            + at!(c - xs)
+            + at!(c)
+            + at!(c + xs)
+            + at!(c + xs2 - 1)
+            + at!(c + xs3 - 1)
+            + at!(c + xs4 - 1);
         retval += sum * sum;
     }
 
     // Pattern 6: y grows -4 to 4, x grows -1 -> 1
     {
-        let sum = data[center - xs4 - 1]
-            + data[center - xs3 - 1]
-            + data[center - xs2 - 1]
-            + data[center - xs]
-            + data[center]
-            + data[center + xs]
-            + data[center + xs2 + 1]
-            + data[center + xs3 + 1]
-            + data[center + xs4 + 1];
+        let sum = at!(c - xs4 - 1)
+            + at!(c - xs3 - 1)
+            + at!(c - xs2 - 1)
+            + at!(c - xs)
+            + at!(c)
+            + at!(c + xs)
+            + at!(c + xs2 + 1)
+            + at!(c + xs3 + 1)
+            + at!(c + xs4 + 1);
         retval += sum * sum;
     }
 
     // Pattern 7: x grows -4 to 4, y grows -1 to 1
     {
-        let sum = data[center - 4 - xs]
-            + data[center - 3 - xs]
-            + data[center - 2 - xs]
-            + data[center - 1]
-            + data[center]
-            + data[center + 1]
-            + data[center + 2 + xs]
-            + data[center + 3 + xs]
-            + data[center + 4 + xs];
+        let sum = at!(c - 4 - xs)
+            + at!(c - 3 - xs)
+            + at!(c - 2 - xs)
+            + at!(c - 1)
+            + at!(c)
+            + at!(c + 1)
+            + at!(c + 2 + xs)
+            + at!(c + 3 + xs)
+            + at!(c + 4 + xs);
         retval += sum * sum;
     }
 
     // Pattern 8: x grows -4 to 4, y shrinks 1 to -1
     {
-        let sum = data[center - 4 + xs]
-            + data[center - 3 + xs]
-            + data[center - 2 + xs]
-            + data[center - 1]
-            + data[center]
-            + data[center + 1]
-            + data[center + 2 - xs]
-            + data[center + 3 - xs]
-            + data[center + 4 - xs];
+        let sum = at!(c - 4 + xs)
+            + at!(c - 3 + xs)
+            + at!(c - 2 + xs)
+            + at!(c - 1)
+            + at!(c)
+            + at!(c + 1)
+            + at!(c + 2 - xs)
+            + at!(c + 3 - xs)
+            + at!(c + 4 - xs);
         retval += sum * sum;
     }
 
     // Pattern 9: steep diagonal (2:1 slope)
     {
-        let sum = data[center - xs3 - 2]
-            + data[center - xs2 - 1]
-            + data[center - xs - 1]
-            + data[center]
-            + data[center + xs + 1]
-            + data[center + xs2 + 1]
-            + data[center + xs3 + 2];
+        let sum = at!(c - xs3 - 2)
+            + at!(c - xs2 - 1)
+            + at!(c - xs - 1)
+            + at!(c)
+            + at!(c + xs + 1)
+            + at!(c + xs2 + 1)
+            + at!(c + xs3 + 2);
         retval += sum * sum;
     }
 
     // Pattern 10: steep diagonal other way
     {
-        let sum = data[center - xs3 + 2]
-            + data[center - xs2 + 1]
-            + data[center - xs + 1]
-            + data[center]
-            + data[center + xs - 1]
-            + data[center + xs2 - 1]
-            + data[center + xs3 - 2];
+        let sum = at!(c - xs3 + 2)
+            + at!(c - xs2 + 1)
+            + at!(c - xs + 1)
+            + at!(c)
+            + at!(c + xs - 1)
+            + at!(c + xs2 - 1)
+            + at!(c + xs3 - 2);
         retval += sum * sum;
     }
 
     // Pattern 11: shallow diagonal (1:2 slope)
     {
-        let sum = data[center - xs2 - 3]
-            + data[center - xs - 2]
-            + data[center - xs - 1]
-            + data[center]
-            + data[center + xs + 1]
-            + data[center + xs + 2]
-            + data[center + xs2 + 3];
+        let sum = at!(c - xs2 - 3)
+            + at!(c - xs - 2)
+            + at!(c - xs - 1)
+            + at!(c)
+            + at!(c + xs + 1)
+            + at!(c + xs + 2)
+            + at!(c + xs2 + 3);
         retval += sum * sum;
     }
 
     // Pattern 12: shallow diagonal other way
     {
-        let sum = data[center - xs2 + 3]
-            + data[center - xs + 2]
-            + data[center - xs + 1]
-            + data[center]
-            + data[center + xs - 1]
-            + data[center + xs - 2]
-            + data[center + xs2 - 3];
+        let sum = at!(c - xs2 + 3)
+            + at!(c - xs + 2)
+            + at!(c - xs + 1)
+            + at!(c)
+            + at!(c + xs - 1)
+            + at!(c + xs - 2)
+            + at!(c + xs2 - 3);
         retval += sum * sum;
     }
 
@@ -702,53 +706,53 @@ fn malta_unit_interior(
 
         // Pattern 13: S-curve
         {
-            let sum = data[center + xs2 - 4]
-                + data[center + xs2 - 3]
-                + data[center + xs - 2]
-                + data[center + xs - 1]
-                + data[center]
-                + data[center + 1]
-                + data[center - xs + 2]
-                + data[center - xs + 3];
+            let sum = at!(c + xs2 - 4)
+                + at!(c + xs2 - 3)
+                + at!(c + xs - 2)
+                + at!(c + xs - 1)
+                + at!(c)
+                + at!(c + 1)
+                + at!(c - xs + 2)
+                + at!(c - xs + 3);
             retval += sum * sum;
         }
 
         // Pattern 14: S-curve mirrored vertically
         {
-            let sum = data[center - xs2 - 4]
-                + data[center - xs2 - 3]
-                + data[center - xs - 2]
-                + data[center - xs - 1]
-                + data[center]
-                + data[center + 1]
-                + data[center + xs + 2]
-                + data[center + xs + 3];
+            let sum = at!(c - xs2 - 4)
+                + at!(c - xs2 - 3)
+                + at!(c - xs - 2)
+                + at!(c - xs - 1)
+                + at!(c)
+                + at!(c + 1)
+                + at!(c + xs + 2)
+                + at!(c + xs + 3);
             retval += sum * sum;
         }
 
         // Pattern 15: S-curve rotated 90°
         {
-            let sum = data[center - xs4 - 2]
-                + data[center - xs3 - 2]
-                + data[center - xs2 - 1]
-                + data[center - xs - 1]
-                + data[center]
-                + data[center + xs]
-                + data[center + xs2 + 1]
-                + data[center + xs3 + 1];
+            let sum = at!(c - xs4 - 2)
+                + at!(c - xs3 - 2)
+                + at!(c - xs2 - 1)
+                + at!(c - xs - 1)
+                + at!(c)
+                + at!(c + xs)
+                + at!(c + xs2 + 1)
+                + at!(c + xs3 + 1);
             retval += sum * sum;
         }
 
         // Pattern 16: S-curve rotated 90° mirrored
         {
-            let sum = data[center - xs4 + 2]
-                + data[center - xs3 + 2]
-                + data[center - xs2 + 1]
-                + data[center - xs + 1]
-                + data[center]
-                + data[center + xs]
-                + data[center + xs2 - 1]
-                + data[center + xs3 - 1];
+            let sum = at!(c - xs4 + 2)
+                + at!(c - xs3 + 2)
+                + at!(c - xs2 + 1)
+                + at!(c - xs + 1)
+                + at!(c)
+                + at!(c + xs)
+                + at!(c + xs2 - 1)
+                + at!(c + xs3 - 1);
             retval += sum * sum;
         }
     } else {
@@ -756,57 +760,57 @@ fn malta_unit_interior(
 
         // Pattern 13: curved line pattern (same as 8)
         {
-            let sum = data[center - 4 + xs]
-                + data[center - 3 + xs]
-                + data[center - 2 + xs]
-                + data[center - 1]
-                + data[center]
-                + data[center + 1]
-                + data[center + 2 - xs]
-                + data[center + 3 - xs]
-                + data[center + 4 - xs];
+            let sum = at!(c - 4 + xs)
+                + at!(c - 3 + xs)
+                + at!(c - 2 + xs)
+                + at!(c - 1)
+                + at!(c)
+                + at!(c + 1)
+                + at!(c + 2 - xs)
+                + at!(c + 3 - xs)
+                + at!(c + 4 - xs);
             retval += sum * sum;
         }
 
         // Pattern 14: curved line other direction (same as 7)
         {
-            let sum = data[center - 4 - xs]
-                + data[center - 3 - xs]
-                + data[center - 2 - xs]
-                + data[center - 1]
-                + data[center]
-                + data[center + 1]
-                + data[center + 2 + xs]
-                + data[center + 3 + xs]
-                + data[center + 4 + xs];
+            let sum = at!(c - 4 - xs)
+                + at!(c - 3 - xs)
+                + at!(c - 2 - xs)
+                + at!(c - 1)
+                + at!(c)
+                + at!(c + 1)
+                + at!(c + 2 + xs)
+                + at!(c + 3 + xs)
+                + at!(c + 4 + xs);
             retval += sum * sum;
         }
 
         // Pattern 15: very shallow curve (same as 6)
         {
-            let sum = data[center - xs4 - 1]
-                + data[center - xs3 - 1]
-                + data[center - xs2 - 1]
-                + data[center - xs]
-                + data[center]
-                + data[center + xs]
-                + data[center + xs2 + 1]
-                + data[center + xs3 + 1]
-                + data[center + xs4 + 1];
+            let sum = at!(c - xs4 - 1)
+                + at!(c - xs3 - 1)
+                + at!(c - xs2 - 1)
+                + at!(c - xs)
+                + at!(c)
+                + at!(c + xs)
+                + at!(c + xs2 + 1)
+                + at!(c + xs3 + 1)
+                + at!(c + xs4 + 1);
             retval += sum * sum;
         }
 
         // Pattern 16: very shallow curve other direction (same as 5)
         {
-            let sum = data[center - xs4 + 1]
-                + data[center - xs3 + 1]
-                + data[center - xs2 + 1]
-                + data[center - xs]
-                + data[center]
-                + data[center + xs]
-                + data[center + xs2 - 1]
-                + data[center + xs3 - 1]
-                + data[center + xs4 - 1];
+            let sum = at!(c - xs4 + 1)
+                + at!(c - xs3 + 1)
+                + at!(c - xs2 + 1)
+                + at!(c - xs)
+                + at!(c)
+                + at!(c + xs)
+                + at!(c + xs2 - 1)
+                + at!(c + xs3 - 1)
+                + at!(c + xs4 - 1);
             retval += sum * sum;
         }
     }
@@ -825,172 +829,177 @@ fn malta_unit_lf_interior(data: &[f32], center: usize, stride: usize) -> f32 {
     let xs3 = xs2 + xs;
     let xs4 = xs3 + xs;
 
-    // Safety invariant: center must have at least 4*stride + 4 elements on each side
-    debug_assert!(center >= xs4 + 4, "center too close to start of data");
-    debug_assert!(
-        center + xs4 + 4 < data.len(),
-        "center too close to end of data"
-    );
+    // Pre-validate full access range: center ± (4*stride + 4)
+    let reach = xs4 + 4;
+    assert!(center >= reach && center + reach < data.len());
 
+    // SAFETY: all accesses are within [center-reach, center+reach], bounds-checked above.
+    macro_rules! at {
+        ($off:expr) => {
+            unsafe { *data.get_unchecked(($off) as usize) }
+        };
+    }
+
+    let c = center;
     let mut retval = 0.0f32;
 
     // Pattern 1: x grows, y constant (sparse horizontal)
     {
-        let sum = data[center - 4]
-            + data[center - 2]
-            + data[center]
-            + data[center + 2]
-            + data[center + 4];
+        let sum = at!(c - 4)
+            + at!(c - 2)
+            + at!(c)
+            + at!(c + 2)
+            + at!(c + 4);
         retval += sum * sum;
     }
 
     // Pattern 2: y grows, x constant (sparse vertical)
     {
-        let sum = data[center - xs4]
-            + data[center - xs2]
-            + data[center]
-            + data[center + xs2]
-            + data[center + xs4];
+        let sum = at!(c - xs4)
+            + at!(c - xs2)
+            + at!(c)
+            + at!(c + xs2)
+            + at!(c + xs4);
         retval += sum * sum;
     }
 
     // Pattern 3: both grow (diagonal)
     {
-        let sum = data[center - xs3 - 3]
-            + data[center - xs2 - 2]
-            + data[center]
-            + data[center + xs2 + 2]
-            + data[center + xs3 + 3];
+        let sum = at!(c - xs3 - 3)
+            + at!(c - xs2 - 2)
+            + at!(c)
+            + at!(c + xs2 + 2)
+            + at!(c + xs3 + 3);
         retval += sum * sum;
     }
 
     // Pattern 4: y grows, x shrinks
     {
-        let sum = data[center - xs3 + 3]
-            + data[center - xs2 + 2]
-            + data[center]
-            + data[center + xs2 - 2]
-            + data[center + xs3 - 3];
+        let sum = at!(c - xs3 + 3)
+            + at!(c - xs2 + 2)
+            + at!(c)
+            + at!(c + xs2 - 2)
+            + at!(c + xs3 - 3);
         retval += sum * sum;
     }
 
     // Pattern 5: y grows, x shifts 1 to -1
     {
-        let sum = data[center - xs4 + 1]
-            + data[center - xs2 + 1]
-            + data[center]
-            + data[center + xs2 - 1]
-            + data[center + xs4 - 1];
+        let sum = at!(c - xs4 + 1)
+            + at!(c - xs2 + 1)
+            + at!(c)
+            + at!(c + xs2 - 1)
+            + at!(c + xs4 - 1);
         retval += sum * sum;
     }
 
     // Pattern 6: y grows, x shifts -1 to 1
     {
-        let sum = data[center - xs4 - 1]
-            + data[center - xs2 - 1]
-            + data[center]
-            + data[center + xs2 + 1]
-            + data[center + xs4 + 1];
+        let sum = at!(c - xs4 - 1)
+            + at!(c - xs2 - 1)
+            + at!(c)
+            + at!(c + xs2 + 1)
+            + at!(c + xs4 + 1);
         retval += sum * sum;
     }
 
     // Pattern 7: x grows, y shifts -1 to 1
     {
-        let sum = data[center - 4 - xs]
-            + data[center - 2 - xs]
-            + data[center]
-            + data[center + 2 + xs]
-            + data[center + 4 + xs];
+        let sum = at!(c - 4 - xs)
+            + at!(c - 2 - xs)
+            + at!(c)
+            + at!(c + 2 + xs)
+            + at!(c + 4 + xs);
         retval += sum * sum;
     }
 
     // Pattern 8: x grows, y shifts 1 to -1
     {
-        let sum = data[center - 4 + xs]
-            + data[center - 2 + xs]
-            + data[center]
-            + data[center + 2 - xs]
-            + data[center + 4 - xs];
+        let sum = at!(c - 4 + xs)
+            + at!(c - 2 + xs)
+            + at!(c)
+            + at!(c + 2 - xs)
+            + at!(c + 4 - xs);
         retval += sum * sum;
     }
 
     // Pattern 9: steep slope
     {
-        let sum = data[center - xs3 - 2]
-            + data[center - xs2 - 1]
-            + data[center]
-            + data[center + xs2 + 1]
-            + data[center + xs3 + 2];
+        let sum = at!(c - xs3 - 2)
+            + at!(c - xs2 - 1)
+            + at!(c)
+            + at!(c + xs2 + 1)
+            + at!(c + xs3 + 2);
         retval += sum * sum;
     }
 
     // Pattern 10: steep slope other way
     {
-        let sum = data[center - xs3 + 2]
-            + data[center - xs2 + 1]
-            + data[center]
-            + data[center + xs2 - 1]
-            + data[center + xs3 - 2];
+        let sum = at!(c - xs3 + 2)
+            + at!(c - xs2 + 1)
+            + at!(c)
+            + at!(c + xs2 - 1)
+            + at!(c + xs3 - 2);
         retval += sum * sum;
     }
 
     // Pattern 11: shallow slope
     {
-        let sum = data[center - xs2 - 3]
-            + data[center - xs - 2]
-            + data[center]
-            + data[center + xs + 2]
-            + data[center + xs2 + 3];
+        let sum = at!(c - xs2 - 3)
+            + at!(c - xs - 2)
+            + at!(c)
+            + at!(c + xs + 2)
+            + at!(c + xs2 + 3);
         retval += sum * sum;
     }
 
     // Pattern 12: shallow slope other way
     {
-        let sum = data[center - xs2 + 3]
-            + data[center - xs + 2]
-            + data[center]
-            + data[center + xs - 2]
-            + data[center + xs2 - 3];
+        let sum = at!(c - xs2 + 3)
+            + at!(c - xs + 2)
+            + at!(c)
+            + at!(c + xs - 2)
+            + at!(c + xs2 - 3);
         retval += sum * sum;
     }
 
     // Pattern 13: curved path
     {
-        let sum = data[center - 4 + xs2]
-            + data[center - 2 + xs]
-            + data[center]
-            + data[center + 2 - xs]
-            + data[center + 4 - xs2];
+        let sum = at!(c - 4 + xs2)
+            + at!(c - 2 + xs)
+            + at!(c)
+            + at!(c + 2 - xs)
+            + at!(c + 4 - xs2);
         retval += sum * sum;
     }
 
     // Pattern 14: curved other direction
     {
-        let sum = data[center - 4 - xs2]
-            + data[center - 2 - xs]
-            + data[center]
-            + data[center + 2 + xs]
-            + data[center + 4 + xs2];
+        let sum = at!(c - 4 - xs2)
+            + at!(c - 2 - xs)
+            + at!(c)
+            + at!(c + 2 + xs)
+            + at!(c + 4 + xs2);
         retval += sum * sum;
     }
 
     // Pattern 15: vertical with shift
     {
-        let sum = data[center - xs4 - 2]
-            + data[center - xs2 - 1]
-            + data[center]
-            + data[center + xs2 + 1]
-            + data[center + xs4 + 2];
+        let sum = at!(c - xs4 - 2)
+            + at!(c - xs2 - 1)
+            + at!(c)
+            + at!(c + xs2 + 1)
+            + at!(c + xs4 + 2);
         retval += sum * sum;
     }
 
     // Pattern 16: vertical other shift
     {
-        let sum = data[center - xs4 + 2]
-            + data[center - xs2 + 1]
-            + data[center]
-            + data[center + xs2 - 1]
-            + data[center + xs4 - 2];
+        let sum = at!(c - xs4 + 2)
+            + at!(c - xs2 + 1)
+            + at!(c)
+            + at!(c + xs2 - 1)
+            + at!(c + xs4 - 2);
         retval += sum * sum;
     }
 
@@ -1022,11 +1031,21 @@ fn malta_unit_interior_8x_v3(
     let xs3 = xs * 3;
     let xs4 = xs * 4;
 
+    // Pre-validate full access range: center ± (4*stride + 4), plus 7 for 8-wide SIMD
+    // Most negative offset: -(4*stride + 4), most positive end: +(4*stride + 4) + 8
+    let reach = 4 * stride + 4;
+    assert!(center >= reach && center + reach + 8 <= data.len());
+
     macro_rules! ld {
         ($off:expr) => {{
             let o: isize = $off;
             let start = (center as isize + o) as usize;
-            f32x8::load(token, (&data[start..start + 8]).try_into().unwrap())
+            // SAFETY: start..start+8 is within [center-reach, center+reach+8),
+            // which was bounds-checked above.
+            let arr: &[f32; 8] = unsafe {
+                &*(data.as_ptr().add(start) as *const [f32; 8])
+            };
+            f32x8::load(token, arr)
         }};
     }
 
@@ -1099,11 +1118,20 @@ fn malta_unit_lf_interior_8x_v3(
     let xs3 = xs * 3;
     let xs4 = xs * 4;
 
+    // Pre-validate full access range: center ± (4*stride + 4), plus 7 for 8-wide SIMD
+    let reach = 4 * stride + 4;
+    assert!(center >= reach && center + reach + 8 <= data.len());
+
     macro_rules! ld {
         ($off:expr) => {{
             let o: isize = $off;
             let start = (center as isize + o) as usize;
-            f32x8::load(token, (&data[start..start + 8]).try_into().unwrap())
+            // SAFETY: start..start+8 is within [center-reach, center+reach+8),
+            // which was bounds-checked above.
+            let arr: &[f32; 8] = unsafe {
+                &*(data.as_ptr().add(start) as *const [f32; 8])
+            };
+            f32x8::load(token, arr)
         }};
     }
 
