@@ -96,13 +96,14 @@ where
     let border2 = if width > half { width - half } else { 0 };
 
     // Process left border (x < half)
-    for x in 0..border1 {
-        convolve_border_column_h(
+    if border1 > 0 {
+        convolve_border_columns(
             input,
             kernel,
             weight_no_border,
             border_ratio,
-            x,
+            0,
+            border1,
             &mut output,
         );
     }
@@ -113,13 +114,14 @@ where
     }
 
     // Process right border
-    for x in border2..width {
-        convolve_border_column_h(
+    if border2 < width {
+        convolve_border_columns(
             input,
             kernel,
             weight_no_border,
             border_ratio,
-            x,
+            border2,
+            width,
             &mut output,
         );
     }
@@ -257,40 +259,57 @@ fn convolve_interior_scalar(
     }
 }
 
-/// Helper for border handling during horizontal convolution with transpose.
-fn convolve_border_column_h(
+/// Batch border handling during horizontal convolution with transpose.
+///
+/// Processes all border columns in the range x_start..x_end. Pre-computes
+/// per-column kernel slices with scale factors baked in, then uses iter().zip()
+/// for the inner dot product to eliminate per-element bounds checks.
+fn convolve_border_columns(
     input: &ImageF,
     kernel: &[f32],
     weight_no_border: f32,
     border_ratio: f32,
-    x: usize,
+    x_start: usize,
+    x_end: usize,
     output: &mut ImageF,
 ) {
     let width = input.width();
     let height = input.height();
     let half = kernel.len() / 2;
 
-    let minx = x.saturating_sub(half);
-    let maxx = (x + half).min(width - 1);
+    // Precompute per-column: input start offset, pre-scaled kernel coefficients
+    // Pack all scaled kernels into a flat array to avoid per-column allocation
+    let num_cols = x_end - x_start;
+    // (minx, kernel_slice_offset, kernel_slice_len) per column
+    let mut col_info: Vec<(usize, usize, usize)> = Vec::with_capacity(num_cols);
+    let mut scaled_kernels: Vec<f32> = Vec::new();
 
-    // Compute actual weight for this column
-    let mut weight = 0.0f32;
-    for j in minx..=maxx {
-        weight += kernel[j + half - x];
+    for x in x_start..x_end {
+        let minx = x.saturating_sub(half);
+        let maxx = (x + half).min(width - 1);
+        let k_start = minx + half - x;
+        let k_end = maxx + half - x + 1;
+        let kernel_slice = &kernel[k_start..k_end];
+
+        let weight: f32 = kernel_slice.iter().sum();
+        let effective_weight = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective_weight;
+
+        let offset = scaled_kernels.len();
+        scaled_kernels.extend(kernel_slice.iter().map(|&k| k * scale));
+        col_info.push((minx, offset, kernel_slice.len()));
     }
 
-    // Interpolate between no-border and border scaling
-    let effective_weight = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
-    let scale = 1.0 / effective_weight;
+    // Process each column (good write locality for transposed output)
+    for (xi, &(minx, k_offset, klen)) in col_info.iter().enumerate() {
+        let x = x_start + xi;
+        let k_slice = &scaled_kernels[k_offset..k_offset + klen];
 
-    for y in 0..height {
-        let row_in = input.row(y);
-        let mut sum = 0.0f32;
-        for j in minx..=maxx {
-            sum += row_in[j] * kernel[j + half - x];
+        for y in 0..height {
+            let row_slice = &input.row(y)[minx..minx + klen];
+            let sum: f32 = row_slice.iter().zip(k_slice).map(|(&r, &k)| r * k).sum();
+            output.set(y, x, sum);
         }
-        // Write transposed
-        output.set(y, x, sum * scale);
     }
 }
 
