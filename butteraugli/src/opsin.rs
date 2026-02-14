@@ -375,6 +375,7 @@ pub fn linear_rgb_to_xyb_butteraugli(
 ///
 /// # Returns
 /// XYB image (3 planes)
+#[allow(clippy::too_many_arguments)]
 pub fn linear_planar_to_xyb_butteraugli(
     r: &[f32],
     g: &[f32],

@@ -172,7 +172,7 @@ fn convolve_interior_avx512(
             // For each kernel position, load 16 values and accumulate
             for (j, &k) in scaled_kernel.iter().enumerate() {
                 let arr: [f32; 16] = row_in[d + j..d + j + 16].try_into().unwrap();
-                sum = sum + f32x16::from_array(token, arr) * f32x16::splat(token, k);
+                sum += f32x16::from_array(token, arr) * f32x16::splat(token, k);
             }
 
             // Store results (transposed write)
@@ -224,7 +224,7 @@ fn convolve_interior_avx2(
             // For each kernel position, load 8 values and accumulate
             for (j, &k) in scaled_kernel.iter().enumerate() {
                 let arr: [f32; 8] = row_in[d + j..d + j + 8].try_into().unwrap();
-                sum = sum + f32x8::from_array(token, arr) * f32x8::splat(token, k);
+                sum += f32x8::from_array(token, arr) * f32x8::splat(token, k);
             }
 
             // Store results (transposed write)

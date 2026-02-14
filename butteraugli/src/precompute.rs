@@ -217,6 +217,11 @@ impl ButteraugliReference {
     /// * `height` - Image height in pixels
     /// * `stride` - Pixels per row (>= width, for alignment padding)
     /// * `params` - Butteraugli parameters
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Image is smaller than 8x8 pixels
+    /// - Any channel buffer is too small for the given stride and height
     pub fn new_linear_planar(
         r: &[f32],
         g: &[f32],
@@ -345,6 +350,9 @@ impl ButteraugliReference {
     /// # Arguments
     /// * `r`, `g`, `b` - Per-channel planar data (stride * height elements each)
     /// * `stride` - Pixels per row (>= width)
+    ///
+    /// # Errors
+    /// Returns an error if any channel buffer is too small for the given stride and height.
     pub fn compare_linear_planar(
         &self,
         r: &[f32],
