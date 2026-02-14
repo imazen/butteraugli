@@ -156,7 +156,7 @@ fn convolve_interior_avx512(
     output: &mut ImageF,
     token: archmage::X64V4Token,
 ) {
-    use magetypes::f32x16;
+    use magetypes::simd::f32x16;
     let height = input.height();
     let simd_chunks = (border2 - border1) / 16;
 
@@ -208,7 +208,7 @@ fn convolve_interior_avx2(
     output: &mut ImageF,
     token: archmage::X64V3Token,
 ) {
-    use magetypes::f32x8;
+    use magetypes::simd::f32x8;
     let height = input.height();
     let simd_chunks = (border2 - border1) / 8;
 
@@ -420,7 +420,7 @@ fn blur_mirrored_5x5_avx512(
     token: archmage::X64V4Token,
     pool: &BufferPool,
 ) -> ImageF {
-    use magetypes::f32x16;
+    use magetypes::simd::f32x16;
 
     let width = input.width();
     let height = input.height();
@@ -588,7 +588,7 @@ fn blur_mirrored_5x5_avx2(
     token: archmage::X64V3Token,
     pool: &BufferPool,
 ) -> ImageF {
-    use magetypes::f32x8;
+    use magetypes::simd::f32x8;
 
     let width = input.width();
     let height = input.height();

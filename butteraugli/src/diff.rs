@@ -203,7 +203,7 @@ fn l2_diff_avx512(
     diffmap: &mut ImageF,
     token: archmage::X64V4Token,
 ) {
-    use magetypes::f32x16;
+    use magetypes::simd::f32x16;
 
     let width = i0.width();
     let height = i0.height();
@@ -246,7 +246,7 @@ fn l2_diff_avx2(
     diffmap: &mut ImageF,
     token: archmage::X64V3Token,
 ) {
-    use magetypes::f32x8;
+    use magetypes::simd::f32x8;
 
     let width = i0.width();
     let height = i0.height();

@@ -3,7 +3,7 @@ resolver = "2"
 members = ["butteraugli", "butteraugli-cli"]
 
 [workspace.package]
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/imazen/butteraugli"
@@ -12,12 +12,12 @@ authors = ["Lilith River <lilith@imazen.io>"]
 rust-version = "1.85"
 
 [workspace.dependencies]
-butteraugli = { path = "butteraugli", version = "0.5.0" }
+butteraugli = { path = "butteraugli", version = "0.5.1" }
 wide = "0.7"
 multiversion = "0.8"
 multiversed = "0.2"
-archmage = { version = "0.4", features = ["avx512"] }
-magetypes = { version = "0.4", features = ["avx512"] }
+archmage = { version = "0.7", features = ["avx512"] }
+magetypes = { version = "0.7", features = ["avx512"] }
 clap = { version = "4.5", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1.0", features = ["derive"] }
