@@ -27,6 +27,9 @@ exclude = [
 default = []
 # Expose internal modules for testing/benchmarking. Not a stable API.
 internals = []
+# Use unchecked indexing in hot loops (Malta filters) for ~6% fewer instructions.
+# Safety: each function pre-validates the full access range with an assert!().
+unsafe-performance = []
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
 # Enable via: cargo test --features cpp-parity (after setting up local path in .cargo/config.toml)
 # cpp-parity = ["dep:jpegli-internals-sys"]

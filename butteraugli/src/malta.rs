@@ -10,8 +10,46 @@
 //!
 //! The implementation uses safe Rust with direct slice indexing for interior
 //! pixels and fixed-size array windows for border pixels.
+//!
+//! With the `unsafe-performance` feature, interior functions use unchecked
+//! indexing after a single bounds assertion, eliminating per-access bounds
+//! checks for ~6% fewer instructions.
 
 use crate::image::ImageF;
+
+/// Read a single f32 from a data slice.
+///
+/// With `unsafe-performance`: unchecked access (caller must pre-validate range).
+/// Without: normal bounds-checked indexing.
+#[cfg(feature = "unsafe-performance")]
+#[inline(always)]
+fn data_at(data: &[f32], idx: usize) -> f32 {
+    // SAFETY: callers assert the full access range before any calls to this function.
+    unsafe { *data.get_unchecked(idx) }
+}
+
+#[cfg(not(feature = "unsafe-performance"))]
+#[inline(always)]
+fn data_at(data: &[f32], idx: usize) -> f32 {
+    data[idx]
+}
+
+/// Load 8 contiguous f32 values as a fixed-size array reference.
+///
+/// With `unsafe-performance`: pointer cast (caller must pre-validate range).
+/// Without: slice + try_into with bounds check.
+#[cfg(feature = "unsafe-performance")]
+#[inline(always)]
+fn load_8(data: &[f32], start: usize) -> &[f32; 8] {
+    // SAFETY: callers assert the full access range before any calls to this function.
+    unsafe { &*(data.as_ptr().add(start) as *const [f32; 8]) }
+}
+
+#[cfg(not(feature = "unsafe-performance"))]
+#[inline(always)]
+fn load_8(data: &[f32], start: usize) -> &[f32; 8] {
+    data[start..start + 8].try_into().unwrap()
+}
 
 /// Access a pixel in a 9x9 window at offset (dx, dy) from center.
 /// Center is at (4, 4), so valid offsets are -4..=4.
@@ -535,10 +573,9 @@ fn malta_unit_interior(
     let reach = xs4 + 4;
     assert!(center >= reach && center + reach < data.len());
 
-    // SAFETY: all accesses are within [center-reach, center+reach], bounds-checked above.
     macro_rules! at {
         ($off:expr) => {
-            unsafe { *data.get_unchecked(($off) as usize) }
+            data_at(data, ($off) as usize)
         };
     }
 
@@ -833,10 +870,9 @@ fn malta_unit_lf_interior(data: &[f32], center: usize, stride: usize) -> f32 {
     let reach = xs4 + 4;
     assert!(center >= reach && center + reach < data.len());
 
-    // SAFETY: all accesses are within [center-reach, center+reach], bounds-checked above.
     macro_rules! at {
         ($off:expr) => {
-            unsafe { *data.get_unchecked(($off) as usize) }
+            data_at(data, ($off) as usize)
         };
     }
 
@@ -1040,12 +1076,7 @@ fn malta_unit_interior_8x_v3(
         ($off:expr) => {{
             let o: isize = $off;
             let start = (center as isize + o) as usize;
-            // SAFETY: start..start+8 is within [center-reach, center+reach+8),
-            // which was bounds-checked above.
-            let arr: &[f32; 8] = unsafe {
-                &*(data.as_ptr().add(start) as *const [f32; 8])
-            };
-            f32x8::load(token, arr)
+            f32x8::load(token, load_8(data, start))
         }};
     }
 
@@ -1126,12 +1157,7 @@ fn malta_unit_lf_interior_8x_v3(
         ($off:expr) => {{
             let o: isize = $off;
             let start = (center as isize + o) as usize;
-            // SAFETY: start..start+8 is within [center-reach, center+reach+8),
-            // which was bounds-checked above.
-            let arr: &[f32; 8] = unsafe {
-                &*(data.as_ptr().add(start) as *const [f32; 8])
-            };
-            f32x8::load(token, arr)
+            f32x8::load(token, load_8(data, start))
         }};
     }
 
