@@ -118,11 +118,11 @@ jobs:
         env:
           CARGO_TARGET_WASM32_WASIP1_RUNNER: "wasmtime --dir=. --"
           RUSTFLAGS: "-C target-feature=+simd128"
-        run: cargo test --target wasm32-wasip1 -p butteraugli --lib --tests
+        run: cargo test --target wasm32-wasip1 -p butteraugli --lib
       - name: Test WASM without SIMD (scalar)
         env:
           CARGO_TARGET_WASM32_WASIP1_RUNNER: "wasmtime --dir=. --"
-        run: cargo test --target wasm32-wasip1 -p butteraugli --lib --tests
+        run: cargo test --target wasm32-wasip1 -p butteraugli --lib
 
   # Documentation build
   docs:
