@@ -2,8 +2,8 @@ use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8};
 use std::time::Instant;
 
 fn main() {
-    let width = 512;
-    let height = 512;
+    let width: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(512);
+    let height = width;
 
     // Create gradient images with small differences
     let pixels1: Vec<RGB8> = (0..width * height)
@@ -40,7 +40,8 @@ fn main() {
     let elapsed = start.elapsed();
 
     println!(
-        "512x512 image: {:.2}ms per iteration ({} iterations, total {:.2}s)",
+        "{}x{} image: {:.2}ms per iteration ({} iterations, total {:.2}s)",
+        width, height,
         elapsed.as_secs_f64() * 1000.0 / iterations as f64,
         iterations,
         elapsed.as_secs_f64()
