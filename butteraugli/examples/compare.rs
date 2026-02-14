@@ -1,7 +1,7 @@
 use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8};
 use std::env;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Write};
 
 fn load_png(path: &str) -> (Vec<RGB8>, usize, usize) {
     let file = File::open(path).unwrap_or_else(|e| panic!("Failed to open {path}: {e}"));
@@ -71,8 +71,31 @@ fn main() {
 
     let img1 = Img::new(pixels1, w1, h1);
     let img2 = Img::new(pixels2, w2, h2);
-    let params = ButteraugliParams::default();
+    let single_res = args.iter().any(|a| a == "--single-res");
+    let params = ButteraugliParams::default()
+        .with_compute_diffmap(true)
+        .with_single_resolution(single_res);
 
     let result = butteraugli(img1.as_ref(), img2.as_ref(), &params).unwrap();
     println!("{:.6}", result.score);
+
+    // If --rawdistmap <path> is given, dump diffmap as PFM
+    if let Some(idx) = args.iter().position(|a| a == "--rawdistmap") {
+        if let Some(path) = args.get(idx + 1) {
+            if let Some(ref diffmap) = result.diffmap {
+                let w = diffmap.width();
+                let h = diffmap.height();
+                let mut f = File::create(path).unwrap();
+                write!(f, "Pf\n{w} {h}\n-1.0\n").unwrap();
+                // PFM stores bottom-to-top
+                for y in (0..h).rev() {
+                    let row = &diffmap.buf()[(y * diffmap.stride())..(y * diffmap.stride() + w)];
+                    for &val in row {
+                        f.write_all(&val.to_le_bytes()).unwrap();
+                    }
+                }
+                eprintln!("Wrote diffmap to {path}");
+            }
+        }
+    }
 }

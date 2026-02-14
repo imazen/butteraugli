@@ -706,8 +706,8 @@ fn compute_diffmap_multiresolution_linear(
         compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params, pool);
 
     // Add supersampled sub-level contribution
-    if let Some(sub) = sub_diffmap {
-        add_supersampled_2x(&sub, 0.5, &mut diffmap);
+    if let Some(ref sub) = sub_diffmap {
+        add_supersampled_2x(sub, 0.5, &mut diffmap);
     }
 
     diffmap

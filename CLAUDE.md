@@ -4,173 +4,120 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 
 ## Known Bugs
 
-### BUG: Subsampling in sRGB u8 instead of linear float (UNFIXED)
+None currently known. Parity with libjxl `butteraugli_main` verified at <0.001% on
+10 real photographs (GB82 corpus, Q75 JPEG, 576x768).
 
-**Files:** `diff.rs:109` (`subsample_rgb_2x`), `precompute.rs:951` (same function duplicated)
+## Parity Status (2026-02-14)
 
-The C++ `SubSample2x` operates on `Image3F` (linear float RGB), averaging with `0.25f * pixel`.
-The Rust version averages sRGB u8 values as `u32` and truncates back to `u8`.
+### FIXED: Subsampling in sRGB u8 instead of linear float
 
-This is wrong in two ways:
+**Commit:** `0f396af`
 
-1. **Nonlinear averaging.** sRGB is gamma-compressed (~2.2). Averaging compressed values
-   produces darker results than averaging in linear space then compressing. For two pixels
-   at sRGB 50 and 200: linear average → sRGB ≈ 159, but sRGB average = 125. That's a
-   massive difference in dark regions where the gamma curve is steepest.
+The Rust port subsampled sRGB u8 pixel data (averaging gamma-compressed values and
+truncating to u8). The C++ subsamples `Image3F` in linear float space. Fix: convert
+sRGB → linear f32 before subsampling, subsample in linear space.
 
-2. **Quantization loss.** Truncating averaged floats to u8 destroys precision. Linear float
-   values 0.0039 and 0.0042 average to 0.00405, but in sRGB u8, values 16 and 17 average
-   to 16 (truncated). This matters most at low luminance — exactly where butteraugli's
-   masking model is most sensitive.
+### RESOLVED: "Single-level multiresolution" was a misdiagnosis
 
-**Impact:** Systematic underestimation of distortion at sub-resolutions, especially in
-dark regions and smooth gradients. Contributes to the 8-25% gap vs libjxl.
+The C++ `Make()` recurses, but `Diffmap()` only ever uses ONE sub-level via
+`DiffmapOpsinDynamicsImage()`. The Rust single-level behavior is correct.
 
-**Fix:** Convert sRGB → linear float before subsampling (or subsample the `Image3F` that
-`srgb_to_xyb_butteraugli` already produces internally). The C++ never touches sRGB u8
-for subsampling — it receives `Image3F` (linear) and subsamples that.
+Exhaustive code tracing confirmed: `DiffmapOpsinDynamicsImage` calls
+`SeparateFrequencies` + `DiffmapPsychoImage` — no recursion. The recursive
+tree is built but only the immediate child is used during diffmap computation.
 
-### BUG: Single-level multiresolution instead of recursive (UNFIXED)
+### RESOLVED: 5-25% gap was a test artifact, not an algorithm bug
 
-**Files:** `precompute.rs:116-130`, `diff.rs:665-700`
+The apparent 5-25% score gap on real photographs was caused by **PNG gamma metadata
+mismatch** in the test images, not by any butteraugli algorithm difference.
 
-The C++ `ButteraugliComparator::Make` recurses: it calls `Make(SubSample2x(rgb0))` until
-dimensions drop below 8. For a 512x512 image, that's 6 levels (512→256→128→64→32→16→8).
-Each sub-level's diffmap is added via `AddSupersampled2x(subresult, 0.5, result)`.
+**Root cause:** The Q75 JPEG → PNG conversion tool (ImageMagick) embedded `gAMA: 0.45455`
+and `cHRM` chunks in the distorted PNGs. The reference lossless PNGs had no such
+metadata. libjxl's CMS reads these chunks and applies a different color transfer
+function to each image, inflating the perceived difference.
 
-The Rust implementation only does **one level** of subsampling (`half: Option<ScaleData>`).
+The Rust code's PNG decoder ignores gamma metadata and applies standard sRGB transfer
+to both images — giving the **correct** butteraugli score.
 
-The `butteraugli_main` tool and `ButteraugliDiffmap` both use the recursive
-`ButteraugliComparator` path. The `ButteraugliInterfaceInPlace` path also does one level,
-but that's NOT what the standard tools or jxl encoder use.
+**Proof:** Stripping gamma metadata from all Q75 PNGs made C++ scores match Rust
+within 0.0003% on all 10 test images:
 
-**Impact:** Missing recursive sub-levels means low-frequency differences are underweighted.
-Each deeper level adds `0.5 * sub_score` (scaled by `1 - 0.3*0.5`) to the result. The
-cumulative effect is 8-25% underestimation on real images, growing with image size (more
-recursion levels for larger images).
+| Image    | C++ (gamma) | C++ (stripped) | Rust    | Old gap | New gap  |
+|----------|-------------|----------------|---------|---------|----------|
+| baby     | 3.3165      | 3.0873         | 3.0872  | 6.9%    | 0.0000%  |
+| bulb     | 2.8715      | 2.3174         | 2.3174  | 19.3%   | 0.0003%  |
+| city     | 4.0689      | 3.8511         | 3.8511  | 5.4%    | 0.0000%  |
+| dog      | 3.1956      | 2.5060         | 2.5060  | 21.6%   | 0.0001%  |
+| flowers  | 3.2353      | 2.4274         | 2.4274  | 25.0%   | 0.0001%  |
+| girl     | 5.1367      | 4.8268         | 4.8268  | 6.0%    | 0.0000%  |
+| grass    | 2.8591      | 2.4344         | 2.4344  | 14.9%   | 0.0001%  |
+| guitar   | 6.8867      | 6.5399         | 6.5399  | 5.0%    | 0.0000%  |
+| haze     | 2.3533      | 2.1042         | 2.1042  | 10.6%   | 0.0001%  |
+| house    | 3.9174      | 3.0071         | 3.0071  | 23.2%   | 0.0000%  |
 
-**Fix:** Make the multiresolution recursive. `ButteraugliReference` should contain a
-`Box<Option<ButteraugliReference>>` for the sub-level, not `Option<ScaleData>`. The
-standalone API in `diff.rs` needs the same recursive structure.
+**Lesson for test methodology:** When comparing perceptual metrics, ensure BOTH images
+have identical color metadata. PNG gAMA/cHRM chunks cause CMS-aware decoders (libjxl)
+to apply different transfer functions. Strip metadata or use identical encoding pipelines.
 
-## Parity Testing Failures — Post-Mortem
+## Parity Testing Post-Mortem
 
-### How two major algorithmic bugs survived the test suite
+### How the sRGB subsampling bug survived the test suite
 
-These bugs existed since the initial port and were never caught. Here's why, and what
-to do differently.
+1. **Loose tolerances masked real bugs.** Tests used 20-30% relative tolerance with
+   `|| diff < 0.5` escape hatches. Rule: max 2% tolerance on real images, no escape hatches.
 
-### Problem 1: Loose tolerances masked real bugs
+2. **Small synthetic images hide architectural bugs.** Tests used 32x32 and 64x64 images.
+   The sRGB subsampling error is smaller on synthetic images because they mostly live in
+   the linear range of the sRGB curve. Rule: test with real photographs at 512x512+.
 
-The parity tests used:
-- `cpp_parity.rs`: 20-30% relative **OR** absolute diff < 0.5-1.5
-- `reference_parity.rs`: 20% relative, with 10% of tests allowed to fail
-- Edge+blur at 32% divergence was labeled "known divergence" and accepted
+3. **Reference tests were #[ignore] with manual setup.** Rule: ship a small test image
+   pair with baked-in C++ reference scores. No env vars, no external binaries.
 
-**Rule: No tolerance above 5% relative for real-image butteraugli parity.** If a test
-needs 20% tolerance, the implementation has a bug — find it instead of widening the
-tolerance. The `OR diff < 0.5` escape hatch is banned; it lets any score below 2.5
-pass with 20% error.
-
-### Problem 2: Small synthetic images hide size-dependent bugs
-
-Tests used 32x32 and 64x64 images. At 32x32, the recursive multiresolution only adds
-2 levels (32→16→8). At 512x512, it's 6 levels. The cumulative contribution from deeper
-levels grows with image size, so the bug was invisible on tiny test images.
-
-The sRGB subsampling error is also smaller on synthetic images (uniform, gradient,
-checkerboard) because they mostly live in the linear range of the sRGB curve. Real
-photographs have dark shadows where the gamma nonlinearity is steepest.
-
-**Rule: Parity tests MUST include real photographs at realistic sizes (512x512+).**
-Synthetic tests catch formula errors. Only real images at real sizes catch architectural
-errors like missing recursion levels or wrong color space for subsampling.
-
-### Problem 3: Reference tests were #[ignore] and required manual setup
-
-The `test_real_image_score_parity` test was `#[ignore]` and required `JPEGLI_TESTDATA`
-and `CJPEGLI_PATH` environment variables. Nobody ran it routinely.
-
-**Rule: At least one real-image parity test must run in CI without manual setup.** Ship
-a small (64KB) test image pair with known C++ reference scores baked into the test. No
-env vars, no external binaries, no ignoring.
-
-### Problem 4: FFI tests called the right C++ path but tolerances absorbed the diff
-
-The `butteraugli_compare` FFI wrapper calls `ButteraugliDiffmap` → `ButteraugliComparator::Make`
-(recursive). So the C++ side WAS using the correct recursive path. But the 20-30% tolerance
-on 32x32-64x64 images meant the single-level Rust result was "close enough" to pass.
-
-**Rule: When a parity test passes with 20% tolerance, that's not parity — that's a
-coincidence detector.** Tighten tolerances until tests fail, then fix the bugs they reveal.
+4. **FFI tolerances absorbed the diff.** The FFI tests did call the correct C++ path,
+   but 20-30% tolerance on tiny images meant the bug was "close enough" to pass.
+   Rule: if a test needs 20% tolerance, the implementation has a bug — find it.
 
 ## Testing Standards
 
 ### Butteraugli parity requirements
 
-1. **Real images, real sizes.** At least 5 photographs at 512x512+ in CI. Use GB82 corpus
-   subset or ship compressed test pairs in the repo.
-
-2. **Tight tolerances.** Max 2% relative difference on real images vs libjxl `butteraugli_main`.
-   Max 0.001% between Rust optimization levels (FMA noise only).
-
-3. **No escape hatches.** No `|| diff < X` clauses. No "allow N% of tests to fail."
-   Every test case must pass individually.
-
-4. **Test the tool people actually use.** The reference is `butteraugli_main` from libjxl,
-   which uses `ButteraugliComparator` (recursive). NOT the standalone Google `butteraugli-c`
-   (different codebase). NOT `ButteraugliInterfaceInPlace` (single-level).
-
-5. **Test at multiple sizes.** Same image at 256, 512, 1024 to catch size-dependent bugs.
-   The recursion depth scales with image size.
-
-6. **Intermediate verification.** Don't just test the final score. Test blur output, mask
-   output, frequency separation at intermediate stages with tight tolerances. A 2% error
-   at each stage compounds to 20% at the end.
+1. **Real images, real sizes.** At least 5 photographs at 512x512+ in CI.
+2. **Tight tolerances.** Max 2% relative difference vs libjxl `butteraugli_main`.
+3. **No escape hatches.** No `|| diff < X` clauses. No "allow N% to fail."
+4. **Test the right tool.** Reference is `butteraugli_main` from libjxl (recursive
+   Comparator), NOT standalone `butteraugli-c` (different codebase).
+5. **Match color metadata.** Both images must have identical PNG gAMA/cHRM chunks
+   (or both have none) to avoid CMS-induced differences.
 
 ## Architecture Notes
 
-### Multiresolution structure (C++ reference)
+### Multiresolution structure
+
+C++ `Make()` builds a recursive tree but `Diffmap()` only uses one sub-level.
+Rust correctly matches this single-sub-level behavior.
 
 ```
-ButteraugliComparator::Make(rgb0, params):
-  1. OpsinDynamicsImage(rgb0) → xyb0
-  2. SeparateFrequencies(xyb0) → pi0 (PsychoImage)
-  3. SubSample2x(rgb0) → rgb0_sub (linear float, NOT sRGB u8)
-  4. Make(rgb0_sub, params) → sub_ (RECURSIVE)
-  5. Base case: width < 8 || height < 8
-
-ButteraugliComparator::Diffmap(rgb1):
+Diffmap(rgb1):
   1. OpsinDynamicsImage(rgb1) → xyb1
   2. DiffmapPsychoImage(xyb1) → result (full-res diffmap)
   3. If sub_:
-     a. SubSample2x(rgb1) → rgb1_sub
-     b. OpsinDynamicsImage(rgb1_sub) → sub_xyb
-     c. sub_.DiffmapOpsinDynamicsImage(sub_xyb) → subresult (RECURSIVE)
-     d. AddSupersampled2x(subresult, 0.5, result)
+     a. SubSample2x(rgb1) → rgb1_sub (linear float)
+     b. DiffmapOpsinDynamicsImage(rgb1_sub) → subresult (NOT recursive)
+     c. AddSupersampled2x(subresult, 0.5, result)
 ```
 
-### SubSample2x (C++ reference)
-
-Operates on `Image3F` (linear float). Per-channel:
-- Accumulates `0.25 * pixel` into output (2x2 box filter)
-- If input has odd width: doubles the last output column
-- If input has odd height: doubles the last output row
-
-NOT: averaging sRGB u8 values. NOT: truncating to integers.
-
-### AddSupersampled2x (C++ reference)
+### AddSupersampled2x
 
 ```
 dest[y][x] *= (1.0 - 0.3 * 0.5);  // kHeuristicMixingValue = 0.3, weight = 0.5
 dest[y][x] += 0.5 * src[y/2][x/2];
 ```
 
-### C++ entry points (which path does what)
+### C++ entry points
 
 | Entry point | Multiresolution | Used by |
 |------------|----------------|---------|
-| `ButteraugliComparator::Make` + `Diffmap` | Recursive (N levels) | `butteraugli_main`, jxl encoder, FFI `butteraugli_compare` |
+| `ButteraugliComparator::Make` + `Diffmap` | Recursive tree, single sub-level used | `butteraugli_main`, jxl encoder |
 | `ButteraugliInterfaceInPlace` | Single level | Legacy API |
 | `ButteraugliDiffmap` | Recursive (via Comparator) | Most callers |
 
