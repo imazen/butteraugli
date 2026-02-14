@@ -26,9 +26,7 @@
 //! ```
 
 use crate::image::{BufferPool, Image3F, ImageF};
-use crate::opsin::{
-    linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli, srgb_to_xyb_butteraugli,
-};
+use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli};
 use crate::psycho::{separate_frequencies, PsychoImage};
 use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, MaltaVariant};
 
@@ -53,6 +51,9 @@ struct ScaleData {
 /// for the reference image, allowing you to quickly compare multiple distorted
 /// images against the same reference without recomputing reference-side data.
 ///
+/// Uses single-level multiresolution matching C++ `ButteraugliComparator::Diffmap`:
+/// the full-resolution diffmap plus one half-resolution sub-level.
+///
 /// Ideal for:
 /// - Simulated annealing optimization
 /// - Batch quality assessment
@@ -61,7 +62,7 @@ struct ScaleData {
 pub struct ButteraugliReference {
     /// Full resolution precomputed data
     full: ScaleData,
-    /// Half resolution precomputed data (for multiresolution, if image large enough)
+    /// Half resolution precomputed data (single sub-level for multiresolution)
     half: Option<ScaleData>,
     /// Original image dimensions
     width: usize,
@@ -73,8 +74,18 @@ pub struct ButteraugliReference {
     pool: BufferPool,
 }
 
+/// Converts sRGB u8 buffer to linear f32.
+fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
+    rgb.iter()
+        .map(|&v| crate::opsin::srgb_to_linear(v))
+        .collect()
+}
+
 impl ButteraugliReference {
     /// Precompute reference data from an sRGB u8 image.
+    ///
+    /// Internally converts sRGB to linear RGB, then delegates to the linear path.
+    /// This ensures subsampling at all resolution levels happens in linear space.
     ///
     /// # Arguments
     /// * `rgb` - Reference image (sRGB u8, 3 bytes per pixel, row-major RGB order)
@@ -105,41 +116,16 @@ impl ButteraugliReference {
             });
         }
 
-        let pool = BufferPool::new();
-
-        // Precompute full resolution
-        let xyb = srgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target(), &pool);
-        let psycho = separate_frequencies(&xyb, &pool);
-        let full = ScaleData { xyb, psycho };
-
-        // Precompute half resolution if image is large enough
-        let half = if !params.single_resolution()
-            && width >= MIN_SIZE_FOR_SUBSAMPLE
-            && height >= MIN_SIZE_FOR_SUBSAMPLE
-        {
-            let (sub_rgb, sw, sh) = subsample_rgb_2x(rgb, width, height);
-            let sub_xyb =
-                srgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
-            let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-            Some(ScaleData {
-                xyb: sub_xyb,
-                psycho: sub_psycho,
-            })
-        } else {
-            None
-        };
-
-        Ok(Self {
-            full,
-            half,
-            width,
-            height,
-            params,
-            pool,
-        })
+        // Convert sRGB u8 → linear f32 and delegate.
+        // Subsampling must happen in linear space, not gamma-compressed sRGB.
+        let linear = srgb_u8_to_linear_f32(rgb);
+        Self::new_linear(&linear, width, height, params)
     }
 
     /// Precompute reference data from a linear RGB f32 image.
+    ///
+    /// Creates full-resolution data plus a single half-resolution sub-level,
+    /// matching C++ `ButteraugliComparator::Diffmap` behavior.
     ///
     /// # Arguments
     /// * `rgb` - Reference image (linear RGB f32, 3 floats per pixel, row-major, 0.0-1.0 range)
@@ -172,13 +158,13 @@ impl ButteraugliReference {
 
         let pool = BufferPool::new();
 
-        // Precompute full resolution
+        // Compute full-resolution XYB and frequency decomposition
         let xyb =
             linear_rgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target(), &pool);
         let psycho = separate_frequencies(&xyb, &pool);
         let full = ScaleData { xyb, psycho };
 
-        // Precompute half resolution if image is large enough
+        // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
         let half = if !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
             && height >= MIN_SIZE_FOR_SUBSAMPLE
@@ -245,7 +231,7 @@ impl ButteraugliReference {
 
         let pool = BufferPool::new();
 
-        // Precompute full resolution
+        // Compute XYB directly from planar data (avoids interleave overhead)
         let xyb = linear_planar_to_xyb_butteraugli(
             r,
             g,
@@ -259,21 +245,18 @@ impl ButteraugliReference {
         let psycho = separate_frequencies(&xyb, &pool);
         let full = ScaleData { xyb, psycho };
 
-        // Precompute half resolution if image is large enough
-        // For the planar path, we subsample each channel separately
+        // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
         let half = if !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
             && height >= MIN_SIZE_FOR_SUBSAMPLE
         {
             let (sub_r, sub_g, sub_b, sw, sh) =
                 subsample_planar_rgb_2x(r, g, b, width, height, stride);
-            let sub_xyb = linear_planar_to_xyb_butteraugli(
-                &sub_r,
-                &sub_g,
-                &sub_b,
+            let sub_rgb = interleave_planar(&sub_r, &sub_g, &sub_b, sw, sh);
+            let sub_xyb = linear_rgb_to_xyb_butteraugli(
+                &sub_rgb,
                 sw,
                 sh,
-                sw,
                 params.intensity_target(),
                 &pool,
             );
@@ -390,9 +373,21 @@ impl ButteraugliReference {
     }
 
     /// Internal comparison implementation for sRGB input.
+    ///
+    /// Converts sRGB to linear and delegates to the linear path.
     fn compare_impl(&self, rgb: &[u8]) -> ButteraugliResult {
+        let linear = srgb_u8_to_linear_f32(rgb);
+        self.compare_linear_impl(&linear)
+    }
+
+    /// Internal comparison implementation for linear RGB input.
+    ///
+    /// Computes full-resolution diffmap using precomputed reference, then adds
+    /// a single half-resolution sub-level via AddSupersampled2x. This matches
+    /// C++ `ButteraugliComparator::Diffmap` which only uses one sub-level.
+    fn compare_linear_impl(&self, rgb: &[f32]) -> ButteraugliResult {
         // Convert distorted image to XYB and compute frequency decomposition
-        let xyb2 = srgb_to_xyb_butteraugli(
+        let xyb2 = linear_rgb_to_xyb_butteraugli(
             rgb,
             self.width,
             self.height,
@@ -411,58 +406,7 @@ impl ButteraugliReference {
             &self.pool,
         );
 
-        // Add half-resolution contribution if available
-        if let Some(ref half) = self.half {
-            let (sub_rgb, sw, sh) = subsample_rgb_2x(rgb, self.width, self.height);
-            let sub_xyb = srgb_to_xyb_butteraugli(
-                &sub_rgb,
-                sw,
-                sh,
-                self.params.intensity_target(),
-                &self.pool,
-            );
-            let sub_ps2 = separate_frequencies(&sub_xyb, &self.pool);
-
-            let sub_diffmap = compute_diffmap_with_precomputed(
-                &half.psycho,
-                &sub_ps2,
-                sw,
-                sh,
-                &self.params,
-                &self.pool,
-            );
-
-            add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
-        }
-
-        let score = compute_score_from_diffmap(&diffmap);
-
-        ButteraugliResult {
-            score,
-            diffmap: Some(diffmap.into_imgvec()),
-        }
-    }
-
-    /// Internal comparison implementation for linear RGB input.
-    fn compare_linear_impl(&self, rgb: &[f32]) -> ButteraugliResult {
-        let xyb2 = linear_rgb_to_xyb_butteraugli(
-            rgb,
-            self.width,
-            self.height,
-            self.params.intensity_target(),
-            &self.pool,
-        );
-        let ps2 = separate_frequencies(&xyb2, &self.pool);
-
-        let mut diffmap = compute_diffmap_with_precomputed(
-            &self.full.psycho,
-            &ps2,
-            self.width,
-            self.height,
-            &self.params,
-            &self.pool,
-        );
-
+        // Add single half-resolution sub-level
         if let Some(ref half) = self.half {
             let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, self.width, self.height);
             let sub_xyb = linear_rgb_to_xyb_butteraugli(
@@ -472,17 +416,16 @@ impl ButteraugliReference {
                 self.params.intensity_target(),
                 &self.pool,
             );
-            let sub_ps2 = separate_frequencies(&sub_xyb, &self.pool);
+            let sub_ps = separate_frequencies(&sub_xyb, &self.pool);
 
             let sub_diffmap = compute_diffmap_with_precomputed(
                 &half.psycho,
-                &sub_ps2,
+                &sub_ps,
                 sw,
                 sh,
                 &self.params,
                 &self.pool,
             );
-
             add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
         }
 
@@ -502,61 +445,43 @@ impl ButteraugliReference {
         b: &[f32],
         stride: usize,
     ) -> ButteraugliResult {
-        let xyb2 = linear_planar_to_xyb_butteraugli(
-            r,
-            g,
-            b,
-            self.width,
-            self.height,
-            stride,
-            self.params.intensity_target(),
-            &self.pool,
-        );
-        let ps2 = separate_frequencies(&xyb2, &self.pool);
+        // Interleave planar → interleaved for the single-level path
+        let rgb = interleave_planar_stride(r, g, b, self.width, self.height, stride);
+        self.compare_linear_impl(&rgb)
+    }
+}
 
-        let mut diffmap = compute_diffmap_with_precomputed(
-            &self.full.psycho,
-            &ps2,
-            self.width,
-            self.height,
-            &self.params,
-            &self.pool,
-        );
+/// Interleaves planar RGB data (R, G, B each width*height) into [RGBRGB...].
+fn interleave_planar(r: &[f32], g: &[f32], b: &[f32], width: usize, height: usize) -> Vec<f32> {
+    let n = width * height;
+    let mut out = Vec::with_capacity(n * 3);
+    for i in 0..n {
+        out.push(r[i]);
+        out.push(g[i]);
+        out.push(b[i]);
+    }
+    out
+}
 
-        if let Some(ref half) = self.half {
-            let (sub_r, sub_g, sub_b, sw, sh) =
-                subsample_planar_rgb_2x(r, g, b, self.width, self.height, stride);
-            let sub_xyb = linear_planar_to_xyb_butteraugli(
-                &sub_r,
-                &sub_g,
-                &sub_b,
-                sw,
-                sh,
-                sw,
-                self.params.intensity_target(),
-                &self.pool,
-            );
-            let sub_ps2 = separate_frequencies(&sub_xyb, &self.pool);
-
-            let sub_diffmap = compute_diffmap_with_precomputed(
-                &half.psycho,
-                &sub_ps2,
-                sw,
-                sh,
-                &self.params,
-                &self.pool,
-            );
-
-            add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
-        }
-
-        let score = compute_score_from_diffmap(&diffmap);
-
-        ButteraugliResult {
-            score,
-            diffmap: Some(diffmap.into_imgvec()),
+/// Interleaves planar RGB data with stride into [RGBRGB...].
+fn interleave_planar_stride(
+    r: &[f32],
+    g: &[f32],
+    b: &[f32],
+    width: usize,
+    height: usize,
+    stride: usize,
+) -> Vec<f32> {
+    let mut out = Vec::with_capacity(width * height * 3);
+    for y in 0..height {
+        let row_offset = y * stride;
+        for x in 0..width {
+            out.push(r[row_offset + x]);
+            out.push(g[row_offset + x]);
+            out.push(b[row_offset + x]);
         }
     }
+    out
 }
 
 // ============================================================================
@@ -955,45 +880,6 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
     }
 }
 
-/// Subsamples sRGB buffer by 2x.
-fn subsample_rgb_2x(rgb: &[u8], width: usize, height: usize) -> (Vec<u8>, usize, usize) {
-    let out_width = width.div_ceil(2);
-    let out_height = height.div_ceil(2);
-    let mut output = vec![0u8; out_width * out_height * 3];
-
-    for oy in 0..out_height {
-        for ox in 0..out_width {
-            let mut r_sum = 0u32;
-            let mut g_sum = 0u32;
-            let mut b_sum = 0u32;
-            let mut count = 0u32;
-
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let ix = ox * 2 + dx;
-                    let iy = oy * 2 + dy;
-                    if ix < width && iy < height {
-                        let idx = (iy * width + ix) * 3;
-                        r_sum += rgb[idx] as u32;
-                        g_sum += rgb[idx + 1] as u32;
-                        b_sum += rgb[idx + 2] as u32;
-                        count += 1;
-                    }
-                }
-            }
-
-            if count > 0 {
-                let out_idx = (oy * out_width + ox) * 3;
-                output[out_idx] = (r_sum / count) as u8;
-                output[out_idx + 1] = (g_sum / count) as u8;
-                output[out_idx + 2] = (b_sum / count) as u8;
-            }
-        }
-    }
-
-    (output, out_width, out_height)
-}
-
 /// Subsamples linear RGB buffer by 2x.
 fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
@@ -1099,7 +985,7 @@ mod tests {
         assert_eq!(reference.height(), height);
         assert!(
             reference.half.is_some(),
-            "should have half-resolution data for 64x64"
+            "should have sub-level data for 64x64"
         );
     }
 
@@ -1115,7 +1001,7 @@ mod tests {
 
         assert!(
             reference.half.is_none(),
-            "should not have half-resolution for 12x12"
+            "should not have sub-level for 12x12"
         );
     }
 
@@ -1335,7 +1221,7 @@ mod tests {
             ButteraugliReference::new(&rgb1, width, height, ButteraugliParams::default())
                 .expect("should create reference");
 
-        assert!(reference.half.is_some(), "should have multiresolution data");
+        assert!(reference.half.is_some(), "should have half-resolution sub-level");
 
         let precomputed_result = reference.compare(&rgb2).expect("should compare");
 

@@ -12,7 +12,7 @@ use crate::malta::malta_diff_map;
 use crate::mask::{
     combine_channels_for_masking, compute_mask as compute_mask_from_images, mask_dc_y, mask_y,
 };
-use crate::opsin::{linear_rgb_to_xyb_butteraugli, srgb_to_xyb_butteraugli};
+use crate::opsin::linear_rgb_to_xyb_butteraugli;
 use crate::psycho::{separate_frequencies, PsychoImage};
 use crate::{ButteraugliParams, MaltaVariant};
 use imgref::ImgRef;
@@ -27,23 +27,6 @@ pub(crate) struct InternalResult {
 /// Minimum image dimension for multi-resolution processing.
 /// Images smaller than this are handled without recursion.
 const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
-
-/// Converts sRGB u8 buffer to XYB Image3F using butteraugli's OpsinDynamicsImage.
-///
-/// This uses the correct butteraugli color conversion, which is DIFFERENT
-/// from jpegli's XYB color space. Key differences:
-/// 1. Different OpsinAbsorbance matrix coefficients
-/// 2. Uses Gamma function (FastLog2f based), not cube root
-/// 3. Includes dynamic sensitivity based on blurred image
-fn srgb_to_xyb_image(
-    rgb: &[u8],
-    width: usize,
-    height: usize,
-    intensity_target: f32,
-    pool: &BufferPool,
-) -> Image3F {
-    srgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool)
-}
 
 /// Converts linear RGB f32 buffer to XYB Image3F using butteraugli's OpsinDynamicsImage.
 fn linear_rgb_to_xyb_image(
@@ -105,44 +88,9 @@ fn subsample_2x(input: &Image3F) -> Image3F {
     output
 }
 
-/// Subsamples an RGB buffer by 2x for multi-resolution processing.
-fn subsample_rgb_2x(rgb: &[u8], width: usize, height: usize) -> (Vec<u8>, usize, usize) {
-    let out_width = width.div_ceil(2);
-    let out_height = height.div_ceil(2);
-    let mut output = vec![0u8; out_width * out_height * 3];
-
-    // Simple averaging of 2x2 blocks
-    for oy in 0..out_height {
-        for ox in 0..out_width {
-            let mut r_sum = 0u32;
-            let mut g_sum = 0u32;
-            let mut b_sum = 0u32;
-            let mut count = 0u32;
-
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let ix = ox * 2 + dx;
-                    let iy = oy * 2 + dy;
-                    if ix < width && iy < height {
-                        let idx = (iy * width + ix) * 3;
-                        r_sum += rgb[idx] as u32;
-                        g_sum += rgb[idx + 1] as u32;
-                        b_sum += rgb[idx + 2] as u32;
-                        count += 1;
-                    }
-                }
-            }
-
-            if count > 0 {
-                let out_idx = (oy * out_width + ox) * 3;
-                output[out_idx] = (r_sum / count) as u8;
-                output[out_idx + 1] = (g_sum / count) as u8;
-                output[out_idx + 2] = (b_sum / count) as u8;
-            }
-        }
-    }
-
-    (output, out_width, out_height)
+/// Converts sRGB u8 buffer to linear f32.
+fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
+    rgb.iter().map(|&v| crate::opsin::srgb_to_linear(v)).collect()
 }
 
 /// Adds a supersampled (upscaled 2x) diffmap to the destination.
@@ -624,52 +572,10 @@ fn compute_score_from_diffmap(diffmap: &ImageF) -> f64 {
     max_val as f64
 }
 
-/// Computes the diffmap for a single resolution level.
-fn compute_diffmap_single_resolution(
-    rgb1: &[u8],
-    rgb2: &[u8],
-    width: usize,
-    height: usize,
-    params: &ButteraugliParams,
-    pool: &BufferPool,
-) -> ImageF {
-    // Convert to XYB using butteraugli's OpsinDynamicsImage
-    let xyb1 = srgb_to_xyb_image(rgb1, width, height, params.intensity_target(), pool);
-    let xyb2 = srgb_to_xyb_image(rgb2, width, height, params.intensity_target(), pool);
-
-    // Perform frequency decomposition
-    let ps1 = separate_frequencies(&xyb1, pool);
-    let ps2 = separate_frequencies(&xyb2, pool);
-
-    // Compute AC differences using Malta filter
-    let mut block_diff_ac =
-        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul(), params.malta_variant());
-
-    // Compute mask from both PsychoImages (also accumulates some AC differences)
-    // This matches C++ MaskPsychoImage which calls CombineChannelsForMasking + Mask
-    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);
-
-    // Compute DC (LF) differences
-    let mut block_diff_dc = Image3F::new(width, height);
-    for c in 0..3 {
-        for y in 0..height {
-            for x in 0..width {
-                let d = ps1.lf.plane(c).get(x, y) - ps2.lf.plane(c).get(x, y);
-                block_diff_dc
-                    .plane_mut(c)
-                    .set(x, y, d * d * WMUL[6 + c] as f32);
-            }
-        }
-    }
-
-    // Combine channels to final diffmap using MaskY/MaskDcY
-    combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul())
-}
-
-/// Computes butteraugli diffmap with optional single-level multiresolution.
+/// Computes butteraugli diffmap with multiresolution (sRGB u8 input).
 ///
-/// Matches C++ ButteraugliInterfaceInPlace: only ONE level of subsampling,
-/// not recursive. For images >= 15x15, compute at half resolution and add.
+/// Converts sRGB to linear first, then delegates to the linear path.
+/// This ensures subsampling happens in linear space (not gamma-compressed sRGB).
 fn compute_diffmap_multiresolution(
     rgb1: &[u8],
     rgb2: &[u8],
@@ -678,33 +584,9 @@ fn compute_diffmap_multiresolution(
     params: &ButteraugliParams,
     pool: &BufferPool,
 ) -> ImageF {
-    // C++ uses 15 as threshold for multiresolution
-    const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
-
-    // First compute subdiffmap at half resolution (if image is large enough)
-    let mut sub_diffmap = None;
-    if !params.single_resolution()
-        && width >= MIN_SIZE_FOR_SUBSAMPLE
-        && height >= MIN_SIZE_FOR_SUBSAMPLE
-    {
-        let (sub_rgb1, sw, sh) = subsample_rgb_2x(rgb1, width, height);
-        let (sub_rgb2, _, _) = subsample_rgb_2x(rgb2, width, height);
-
-        // Single level only, not recursive (matches C++)
-        sub_diffmap = Some(compute_diffmap_single_resolution(
-            &sub_rgb1, &sub_rgb2, sw, sh, params, pool,
-        ));
-    }
-
-    // Compute diffmap at full resolution
-    let mut diffmap = compute_diffmap_single_resolution(rgb1, rgb2, width, height, params, pool);
-
-    // Add supersampled subdiffmap if we computed one
-    if let Some(sub) = sub_diffmap {
-        add_supersampled_2x(&sub, 0.5, &mut diffmap);
-    }
-
-    diffmap
+    let linear1 = srgb_u8_to_linear_f32(rgb1);
+    let linear2 = srgb_u8_to_linear_f32(rgb2);
+    compute_diffmap_multiresolution_linear(&linear1, &linear2, width, height, params, pool)
 }
 
 /// Subsamples linear RGB f32 buffer by 2x for multi-resolution processing.
@@ -788,7 +670,12 @@ fn compute_diffmap_single_resolution_linear(
     combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul())
 }
 
-/// Computes butteraugli diffmap with multiresolution (linear RGB input).
+/// Computes butteraugli diffmap with single-level multiresolution (linear RGB input).
+///
+/// Matches C++ ButteraugliComparator::Diffmap: computes at full resolution,
+/// then adds ONE sub-level at half resolution via AddSupersampled2x.
+/// The C++ creates a recursive tree in Make() but Diffmap() only uses
+/// the immediate sub-level (via DiffmapOpsinDynamicsImage, which doesn't recurse).
 fn compute_diffmap_multiresolution_linear(
     rgb1: &[f32],
     rgb2: &[f32],
@@ -799,7 +686,7 @@ fn compute_diffmap_multiresolution_linear(
 ) -> ImageF {
     const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 
-    // First compute subdiffmap at half resolution (if image is large enough)
+    // Compute sub-level diffmap at half resolution (single level, not recursive)
     let mut sub_diffmap = None;
     if !params.single_resolution()
         && width >= MIN_SIZE_FOR_SUBSAMPLE
@@ -808,6 +695,7 @@ fn compute_diffmap_multiresolution_linear(
         let (sub_rgb1, sw, sh) = subsample_linear_rgb_2x(rgb1, width, height);
         let (sub_rgb2, _, _) = subsample_linear_rgb_2x(rgb2, width, height);
 
+        // Single level only — matches C++ Diffmap behavior
         sub_diffmap = Some(compute_diffmap_single_resolution_linear(
             &sub_rgb1, &sub_rgb2, sw, sh, params, pool,
         ));
@@ -817,7 +705,7 @@ fn compute_diffmap_multiresolution_linear(
     let mut diffmap =
         compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params, pool);
 
-    // Add supersampled subdiffmap if we computed one
+    // Add supersampled sub-level contribution
     if let Some(sub) = sub_diffmap {
         add_supersampled_2x(&sub, 0.5, &mut diffmap);
     }
@@ -826,6 +714,9 @@ fn compute_diffmap_multiresolution_linear(
 }
 
 /// Main implementation of butteraugli comparison (sRGB u8 input).
+///
+/// Converts sRGB to linear f32 and delegates to the linear path.
+/// This ensures all subsampling happens in linear space.
 pub fn compute_butteraugli_impl(
     rgb1: &[u8],
     rgb2: &[u8],
@@ -844,22 +735,12 @@ pub fn compute_butteraugli_impl(
         };
     }
 
-    let pool = BufferPool::new();
+    // Convert sRGB u8 → linear f32, then use the linear path.
+    // This is critical: subsampling must happen in linear space, not sRGB.
+    let linear1 = srgb_u8_to_linear_f32(rgb1);
+    let linear2 = srgb_u8_to_linear_f32(rgb2);
 
-    // Handle very small images without multi-resolution
-    let diffmap = if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
-        compute_diffmap_single_resolution(rgb1, rgb2, width, height, params, &pool)
-    } else {
-        compute_diffmap_multiresolution(rgb1, rgb2, width, height, params, &pool)
-    };
-
-    // Compute global score
-    let score = compute_score_from_diffmap(&diffmap);
-
-    InternalResult {
-        score,
-        diffmap: Some(diffmap),
-    }
+    compute_butteraugli_linear_impl(&linear1, &linear2, width, height, params)
 }
 
 /// Main implementation of butteraugli comparison (linear RGB f32 input).
@@ -1118,36 +999,6 @@ mod tests {
             }
         }
         assert!(sum > 0.0, "L2 diff should be non-zero for different images");
-    }
-
-    #[test]
-    fn test_subsample_rgb_2x() {
-        let width = 8;
-        let height = 8;
-        let rgb: Vec<u8> = vec![128; width * height * 3];
-
-        let (sub_rgb, sw, sh) = subsample_rgb_2x(&rgb, width, height);
-
-        assert_eq!(sw, 4);
-        assert_eq!(sh, 4);
-        assert_eq!(sub_rgb.len(), 4 * 4 * 3);
-        // Uniform input should produce uniform output
-        assert!(sub_rgb.iter().all(|&v| v == 128));
-    }
-
-    #[test]
-    fn test_subsample_rgb_2x_odd() {
-        let width = 7;
-        let height = 7;
-        let rgb: Vec<u8> = vec![128; width * height * 3];
-
-        let (sub_rgb, sw, sh) = subsample_rgb_2x(&rgb, width, height);
-
-        // (7+1)/2 = 4
-        assert_eq!(sw, 4);
-        assert_eq!(sh, 4);
-        // Verify subsampled buffer size
-        assert_eq!(sub_rgb.len(), sw * sh * 3);
     }
 
     #[test]
