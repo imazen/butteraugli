@@ -7,10 +7,62 @@ use imgref::ImgVec;
 use std::cell::RefCell;
 use std::ops::{Index, IndexMut};
 
-// Thread-local buffer pool to avoid repeated mmap/munmap for large ImageF buffers.
-// At 8K resolution, each ImageF is ~127MB — pooling avoids kernel overhead.
-thread_local! {
-    static BUFFER_POOL: RefCell<Vec<Vec<f32>>> = const { RefCell::new(Vec::new()) };
+/// Reusable buffer pool for `ImageF` allocations.
+///
+/// Avoids repeated mmap/munmap for large temporary buffers. Owned by the
+/// caller (typically `ButteraugliReference` or a local in standalone API
+/// functions). When the pool is dropped, all cached buffers are freed.
+#[derive(Debug, Default)]
+pub struct BufferPool {
+    buffers: RefCell<Vec<Vec<f32>>>,
+}
+
+impl BufferPool {
+    /// Creates a new empty buffer pool.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Takes a buffer of at least `needed` elements from the pool (best-fit).
+    /// Returns stale data — caller must zero-fill if needed.
+    pub(crate) fn take(&self, needed: usize) -> Vec<f32> {
+        let mut pool = self.buffers.borrow_mut();
+        let mut best_idx = None;
+        let mut best_excess = usize::MAX;
+        for (i, buf) in pool.iter().enumerate() {
+            let cap = buf.len();
+            if cap >= needed && cap - needed < best_excess {
+                best_idx = Some(i);
+                best_excess = cap - needed;
+            }
+        }
+        if let Some(idx) = best_idx {
+            let mut buf = pool.swap_remove(idx);
+            buf.truncate(needed);
+            if buf.len() < needed {
+                buf.resize(needed, 0.0);
+            }
+            buf
+        } else {
+            vec![0.0; needed]
+        }
+    }
+
+    /// Returns a buffer to the pool. Dropped silently if pool is full (32 buffers).
+    pub(crate) fn put(&self, buf: Vec<f32>) {
+        let mut pool = self.buffers.borrow_mut();
+        if pool.len() < 32 {
+            pool.push(buf);
+        }
+    }
+}
+
+impl Clone for BufferPool {
+    /// Clone creates a fresh empty pool — the clone does not share buffers.
+    fn clone(&self) -> Self {
+        Self::new()
+    }
 }
 
 /// Single-channel floating point image.
@@ -177,31 +229,11 @@ impl ImageF {
     /// The buffer is zero-filled. When done with the image, call `.recycle()`
     /// to return the buffer to the pool instead of freeing it.
     #[must_use]
-    pub fn from_pool(width: usize, height: usize) -> Self {
+    pub fn from_pool(width: usize, height: usize, pool: &BufferPool) -> Self {
         let stride = (width + 15) & !15;
         let needed = stride * height;
-
-        let data = BUFFER_POOL.with(|pool| {
-            let mut pool = pool.borrow_mut();
-            // Find smallest buffer that fits
-            let mut best_idx = None;
-            let mut best_excess = usize::MAX;
-            for (i, buf) in pool.iter().enumerate() {
-                let cap = buf.len();
-                if cap >= needed && cap - needed < best_excess {
-                    best_idx = Some(i);
-                    best_excess = cap - needed;
-                }
-            }
-            if let Some(idx) = best_idx {
-                let mut buf = pool.swap_remove(idx);
-                buf.resize(needed, 0.0);
-                buf.fill(0.0);
-                buf
-            } else {
-                vec![0.0; needed]
-            }
-        });
+        let mut data = pool.take(needed);
+        data.fill(0.0);
 
         Self {
             data,
@@ -216,34 +248,10 @@ impl ImageF {
     /// The buffer may contain stale data from a previous use. Only use this when
     /// the caller will overwrite every pixel (e.g., blur output buffers).
     #[must_use]
-    pub fn from_pool_dirty(width: usize, height: usize) -> Self {
+    pub fn from_pool_dirty(width: usize, height: usize, pool: &BufferPool) -> Self {
         let stride = (width + 15) & !15;
         let needed = stride * height;
-
-        let data = BUFFER_POOL.with(|pool| {
-            let mut pool = pool.borrow_mut();
-            let mut best_idx = None;
-            let mut best_excess = usize::MAX;
-            for (i, buf) in pool.iter().enumerate() {
-                let cap = buf.len();
-                if cap >= needed && cap - needed < best_excess {
-                    best_idx = Some(i);
-                    best_excess = cap - needed;
-                }
-            }
-            if let Some(idx) = best_idx {
-                let mut buf = pool.swap_remove(idx);
-                buf.truncate(needed);
-                // Extend with zeros only if buffer was too small (shouldn't happen
-                // given the selection criteria, but handle gracefully)
-                if buf.len() < needed {
-                    buf.resize(needed, 0.0);
-                }
-                buf
-            } else {
-                vec![0.0; needed]
-            }
-        });
+        let data = pool.take(needed);
 
         Self {
             data,
@@ -253,25 +261,12 @@ impl ImageF {
         }
     }
 
-    /// Returns the internal buffer to the thread-local pool for reuse.
+    /// Returns the internal buffer to the pool for reuse.
     ///
     /// If the pool is full (32 buffers), the buffer is dropped normally.
     /// Forgetting to call this is not a bug — the buffer is freed as usual.
-    pub fn recycle(self) {
-        let data = self.data;
-        BUFFER_POOL.with(|pool| {
-            let mut pool = pool.borrow_mut();
-            if pool.len() < 32 {
-                pool.push(data);
-            }
-        });
-    }
-
-    /// Clears the thread-local buffer pool, freeing all cached buffers.
-    pub fn clear_pool() {
-        BUFFER_POOL.with(|pool| {
-            pool.borrow_mut().clear();
-        });
+    pub fn recycle(self, pool: &BufferPool) {
+        pool.put(self.data);
     }
 
     /// Checks if two images have the same dimensions.

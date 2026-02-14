@@ -17,7 +17,7 @@ use crate::consts::{
     MASK_DC_Y_SCALER, MASK_MUL, MASK_RADIUS, MASK_TO_ERROR_MUL, MASK_Y_MUL, MASK_Y_OFFSET,
     MASK_Y_SCALER,
 };
-use crate::image::ImageF;
+use crate::image::{BufferPool, ImageF};
 
 /// Combines HF and UHF channels for masking computation.
 ///
@@ -186,26 +186,31 @@ pub fn mask_dc_y(delta: f64) -> f64 {
 ///
 /// # Returns
 /// The computed mask image
-pub fn compute_mask(mask0: &ImageF, mask1: &ImageF, mut diff_ac: Option<&mut ImageF>) -> ImageF {
+pub fn compute_mask(
+    mask0: &ImageF,
+    mask1: &ImageF,
+    mut diff_ac: Option<&mut ImageF>,
+    pool: &BufferPool,
+) -> ImageF {
     let width = mask0.width();
     let height = mask0.height();
 
     // DiffPrecompute for mask0
-    let mut diff0 = ImageF::from_pool_dirty(width, height);
+    let mut diff0 = ImageF::from_pool_dirty(width, height, pool);
     diff_precompute(mask0, MASK_MUL, MASK_BIAS, &mut diff0);
 
     // DiffPrecompute for mask1
-    let mut diff1 = ImageF::from_pool_dirty(width, height);
+    let mut diff1 = ImageF::from_pool_dirty(width, height, pool);
     diff_precompute(mask1, MASK_MUL, MASK_BIAS, &mut diff1);
 
     // Blur diff0 and diff1
-    let blurred0 = gaussian_blur(&diff0, MASK_RADIUS);
-    let blurred1 = gaussian_blur(&diff1, MASK_RADIUS);
-    diff0.recycle();
-    diff1.recycle();
+    let blurred0 = gaussian_blur(&diff0, MASK_RADIUS, pool);
+    let blurred1 = gaussian_blur(&diff1, MASK_RADIUS, pool);
+    diff0.recycle(pool);
+    diff1.recycle(pool);
 
     // FuzzyErosion on blurred0
-    let mut eroded0 = ImageF::from_pool_dirty(width, height);
+    let mut eroded0 = ImageF::from_pool_dirty(width, height, pool);
     fuzzy_erosion(&blurred0, &mut eroded0);
 
     // Final mask computation
@@ -223,9 +228,9 @@ pub fn compute_mask(mask0: &ImageF, mask1: &ImageF, mut diff_ac: Option<&mut Ima
         }
     }
 
-    blurred0.recycle();
-    blurred1.recycle();
-    eroded0.recycle();
+    blurred0.recycle(pool);
+    blurred1.recycle(pool);
+    eroded0.recycle(pool);
     mask
 }
 

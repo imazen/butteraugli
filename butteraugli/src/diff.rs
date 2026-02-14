@@ -7,7 +7,7 @@ use crate::consts::{
     NORM1_HF, NORM1_HF_X, NORM1_MF, NORM1_MF_X, NORM1_UHF, NORM1_UHF_X, WMUL, W_HF_MALTA,
     W_HF_MALTA_X, W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X,
 };
-use crate::image::{Image3F, ImageF};
+use crate::image::{BufferPool, Image3F, ImageF};
 use crate::malta::malta_diff_map;
 use crate::mask::{
     combine_channels_for_masking, compute_mask as compute_mask_from_images, mask_dc_y, mask_y,
@@ -35,8 +35,14 @@ const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
 /// 1. Different OpsinAbsorbance matrix coefficients
 /// 2. Uses Gamma function (FastLog2f based), not cube root
 /// 3. Includes dynamic sensitivity based on blurred image
-fn srgb_to_xyb_image(rgb: &[u8], width: usize, height: usize, intensity_target: f32) -> Image3F {
-    srgb_to_xyb_butteraugli(rgb, width, height, intensity_target)
+fn srgb_to_xyb_image(
+    rgb: &[u8],
+    width: usize,
+    height: usize,
+    intensity_target: f32,
+    pool: &BufferPool,
+) -> Image3F {
+    srgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool)
 }
 
 /// Converts linear RGB f32 buffer to XYB Image3F using butteraugli's OpsinDynamicsImage.
@@ -45,8 +51,9 @@ fn linear_rgb_to_xyb_image(
     width: usize,
     height: usize,
     intensity_target: f32,
+    pool: &BufferPool,
 ) -> Image3F {
-    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target)
+    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool)
 }
 
 /// Subsamples an Image3F by 2x using box filter averaging.
@@ -521,7 +528,12 @@ fn compute_psycho_diff_malta(
 ///
 /// Matches C++ MaskPsychoImage (butteraugli.cc lines 1250-1264).
 /// Returns the computed mask and optionally accumulates AC differences.
-fn mask_psycho_image(ps0: &PsychoImage, ps1: &PsychoImage, diff_ac: Option<&mut ImageF>) -> ImageF {
+fn mask_psycho_image(
+    ps0: &PsychoImage,
+    ps1: &PsychoImage,
+    diff_ac: Option<&mut ImageF>,
+    pool: &BufferPool,
+) -> ImageF {
     let width = ps0.width();
     let height = ps0.height();
 
@@ -532,7 +544,7 @@ fn mask_psycho_image(ps0: &PsychoImage, ps1: &PsychoImage, diff_ac: Option<&mut 
     combine_channels_for_masking(&ps1.hf, &ps1.uhf, &mut mask1);
 
     // Compute mask using DiffPrecompute, blur, and FuzzyErosion
-    compute_mask_from_images(&mask0, &mask1, diff_ac)
+    compute_mask_from_images(&mask0, &mask1, diff_ac, pool)
 }
 
 /// Combines channels to produce final diffmap.
@@ -630,14 +642,15 @@ fn compute_diffmap_single_resolution(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
+    pool: &BufferPool,
 ) -> ImageF {
     // Convert to XYB using butteraugli's OpsinDynamicsImage
-    let xyb1 = srgb_to_xyb_image(rgb1, width, height, params.intensity_target());
-    let xyb2 = srgb_to_xyb_image(rgb2, width, height, params.intensity_target());
+    let xyb1 = srgb_to_xyb_image(rgb1, width, height, params.intensity_target(), pool);
+    let xyb2 = srgb_to_xyb_image(rgb2, width, height, params.intensity_target(), pool);
 
     // Perform frequency decomposition
-    let ps1 = separate_frequencies(&xyb1);
-    let ps2 = separate_frequencies(&xyb2);
+    let ps1 = separate_frequencies(&xyb1, pool);
+    let ps2 = separate_frequencies(&xyb2, pool);
 
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
@@ -645,7 +658,7 @@ fn compute_diffmap_single_resolution(
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
     // This matches C++ MaskPsychoImage which calls CombineChannelsForMasking + Mask
-    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)));
+    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);
 
     // Compute DC (LF) differences
     let mut block_diff_dc = Image3F::new(width, height);
@@ -674,6 +687,7 @@ fn compute_diffmap_multiresolution(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
+    pool: &BufferPool,
 ) -> ImageF {
     // C++ uses 15 as threshold for multiresolution
     const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
@@ -689,12 +703,12 @@ fn compute_diffmap_multiresolution(
 
         // Single level only, not recursive (matches C++)
         sub_diffmap = Some(compute_diffmap_single_resolution(
-            &sub_rgb1, &sub_rgb2, sw, sh, params,
+            &sub_rgb1, &sub_rgb2, sw, sh, params, pool,
         ));
     }
 
     // Compute diffmap at full resolution
-    let mut diffmap = compute_diffmap_single_resolution(rgb1, rgb2, width, height, params);
+    let mut diffmap = compute_diffmap_single_resolution(rgb1, rgb2, width, height, params, pool);
 
     // Add supersampled subdiffmap if we computed one
     if let Some(sub) = sub_diffmap {
@@ -751,21 +765,22 @@ fn compute_diffmap_single_resolution_linear(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
+    pool: &BufferPool,
 ) -> ImageF {
     // Convert to XYB using butteraugli's OpsinDynamicsImage
-    let xyb1 = linear_rgb_to_xyb_image(rgb1, width, height, params.intensity_target());
-    let xyb2 = linear_rgb_to_xyb_image(rgb2, width, height, params.intensity_target());
+    let xyb1 = linear_rgb_to_xyb_image(rgb1, width, height, params.intensity_target(), pool);
+    let xyb2 = linear_rgb_to_xyb_image(rgb2, width, height, params.intensity_target(), pool);
 
     // Perform frequency decomposition
-    let ps1 = separate_frequencies(&xyb1);
-    let ps2 = separate_frequencies(&xyb2);
+    let ps1 = separate_frequencies(&xyb1, pool);
+    let ps2 = separate_frequencies(&xyb2, pool);
 
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
         compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
-    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)));
+    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);
 
     // Compute DC (LF) differences
     let mut block_diff_dc = Image3F::new(width, height);
@@ -791,6 +806,7 @@ fn compute_diffmap_multiresolution_linear(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
+    pool: &BufferPool,
 ) -> ImageF {
     const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 
@@ -804,12 +820,13 @@ fn compute_diffmap_multiresolution_linear(
         let (sub_rgb2, _, _) = subsample_linear_rgb_2x(rgb2, width, height);
 
         sub_diffmap = Some(compute_diffmap_single_resolution_linear(
-            &sub_rgb1, &sub_rgb2, sw, sh, params,
+            &sub_rgb1, &sub_rgb2, sw, sh, params, pool,
         ));
     }
 
     // Compute diffmap at full resolution
-    let mut diffmap = compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params);
+    let mut diffmap =
+        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params, pool);
 
     // Add supersampled subdiffmap if we computed one
     if let Some(sub) = sub_diffmap {
@@ -838,11 +855,13 @@ pub fn compute_butteraugli_impl(
         };
     }
 
+    let pool = BufferPool::new();
+
     // Handle very small images without multi-resolution
     let diffmap = if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
-        compute_diffmap_single_resolution(rgb1, rgb2, width, height, params)
+        compute_diffmap_single_resolution(rgb1, rgb2, width, height, params, &pool)
     } else {
-        compute_diffmap_multiresolution(rgb1, rgb2, width, height, params)
+        compute_diffmap_multiresolution(rgb1, rgb2, width, height, params, &pool)
     };
 
     // Compute global score
@@ -875,11 +894,13 @@ pub fn compute_butteraugli_linear_impl(
         };
     }
 
+    let pool = BufferPool::new();
+
     // Handle very small images without multi-resolution
     let diffmap = if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
-        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params)
+        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params, &pool)
     } else {
-        compute_diffmap_multiresolution_linear(rgb1, rgb2, width, height, params)
+        compute_diffmap_multiresolution_linear(rgb1, rgb2, width, height, params, &pool)
     };
 
     // Compute global score
@@ -896,20 +917,21 @@ fn compute_diffmap_single_resolution_xyb(
     xyb1: &Image3F,
     xyb2: &Image3F,
     params: &ButteraugliParams,
+    pool: &BufferPool,
 ) -> ImageF {
     let width = xyb1.width();
     let height = xyb1.height();
 
     // Perform frequency decomposition
-    let ps1 = separate_frequencies(xyb1);
-    let ps2 = separate_frequencies(xyb2);
+    let ps1 = separate_frequencies(xyb1, pool);
+    let ps2 = separate_frequencies(xyb2, pool);
 
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
         compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
-    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)));
+    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);
 
     // Compute DC (LF) differences
     let mut block_diff_dc = Image3F::new(width, height);

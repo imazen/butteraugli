@@ -12,7 +12,7 @@
 //! - Separate fast path for interior pixels (no bounds checking)
 //! - Explicit f32x8 SIMD for ~1.4x speedup
 
-use crate::image::ImageF;
+use crate::image::{BufferPool, ImageF};
 
 /// Computes normalized separable 5x5 weights for a given sigma.
 ///
@@ -62,13 +62,18 @@ pub fn compute_kernel(sigma: f32) -> Vec<f32> {
 /// This makes the subsequent vertical pass cache-friendly since it becomes
 /// a horizontal pass on the transposed image.
 #[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn convolve_horizontal_transpose(input: &ImageF, kernel: &[f32], border_ratio: f32) -> ImageF {
+fn convolve_horizontal_transpose(
+    input: &ImageF,
+    kernel: &[f32],
+    border_ratio: f32,
+    pool: &BufferPool,
+) -> ImageF {
     let width = input.width();
     let height = input.height();
     let half = kernel.len() / 2;
 
     // Output is transposed: height x width
-    let mut output = ImageF::from_pool_dirty(height, width);
+    let mut output = ImageF::from_pool_dirty(height, width, pool);
 
     // Compute total weight for interior pixels (no border clipping)
     let weight_no_border: f32 = kernel.iter().sum();
@@ -317,7 +322,7 @@ fn convolve_border_column_h(
 ///
 /// # Returns
 /// Blurred image
-pub fn gaussian_blur(input: &ImageF, sigma: f32) -> ImageF {
+pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     if sigma <= 0.0 {
         return input.clone();
     }
@@ -326,36 +331,41 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32) -> ImageF {
 
     // First pass: horizontal convolution with transpose
     // Result is height×width
-    let temp = convolve_horizontal_transpose(input, &kernel, 0.0);
+    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool);
 
     // Second pass: another horizontal convolution with transpose
     // This is equivalent to vertical convolution, result is width×height (original orientation)
-    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0);
-    temp.recycle();
+    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool);
+    temp.recycle(pool);
     result
 }
 /// Blur with border ratio parameter (matches C++ Blur signature).
-pub fn blur_with_border(input: &ImageF, sigma: f32, border_ratio: f32) -> ImageF {
+pub fn blur_with_border(
+    input: &ImageF,
+    sigma: f32,
+    border_ratio: f32,
+    pool: &BufferPool,
+) -> ImageF {
     if sigma <= 0.0 {
         return input.clone();
     }
 
     let kernel = compute_kernel(sigma);
-    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio);
-    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio);
-    temp.recycle();
+    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool);
+    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool);
+    temp.recycle(pool);
     result
 }
 
 /// Applies blur in-place (modifies the input image).
-pub fn gaussian_blur_inplace(image: &mut ImageF, sigma: f32) {
+pub fn gaussian_blur_inplace(image: &mut ImageF, sigma: f32, pool: &BufferPool) {
     if sigma <= 0.0 {
         return;
     }
 
-    let blurred = gaussian_blur(image, sigma);
+    let blurred = gaussian_blur(image, sigma, pool);
     image.copy_from(&blurred);
-    blurred.recycle();
+    blurred.recycle(pool);
 }
 
 /// Mirrors a coordinate outside image bounds.
@@ -386,20 +396,20 @@ fn mirror(mut x: i32, size: i32) -> usize {
 ///
 /// This matches C++ Separable5 which is used when kernel size == 5.
 /// SIMD-optimized for interior pixels.
-pub fn blur_mirrored_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
+pub fn blur_mirrored_5x5(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
     #[cfg(target_arch = "x86_64")]
     {
         use archmage::{SimdToken, X64V3Token, X64V4Token};
 
         if let Some(token) = X64V4Token::summon() {
-            return blur_mirrored_5x5_avx512(input, weights, token);
+            return blur_mirrored_5x5_avx512(input, weights, token, pool);
         }
         if let Some(token) = X64V3Token::summon() {
-            return blur_mirrored_5x5_avx2(input, weights, token);
+            return blur_mirrored_5x5_avx2(input, weights, token, pool);
         }
     }
 
-    blur_mirrored_5x5_scalar(input, weights)
+    blur_mirrored_5x5_scalar(input, weights, pool)
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -408,6 +418,7 @@ fn blur_mirrored_5x5_avx512(
     input: &ImageF,
     weights: &[f32; 3],
     token: archmage::X64V4Token,
+    pool: &BufferPool,
 ) -> ImageF {
     use magetypes::f32x16;
 
@@ -426,7 +437,7 @@ fn blur_mirrored_5x5_avx512(
     let iheight = height as i32;
 
     // Temporary for horizontal pass (NOT transposed for SIMD efficiency)
-    let mut temp = ImageF::from_pool_dirty(width, height);
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
 
     // Horizontal pass - SIMD for interior, scalar for borders
     let border = 2.min(width);
@@ -484,7 +495,7 @@ fn blur_mirrored_5x5_avx512(
     }
 
     // Vertical pass - row-major with SIMD on x dimension (cache-friendly)
-    let mut output = ImageF::from_pool_dirty(width, height);
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
@@ -565,7 +576,7 @@ fn blur_mirrored_5x5_avx512(
         }
     }
 
-    temp.recycle();
+    temp.recycle(pool);
     output
 }
 
@@ -575,6 +586,7 @@ fn blur_mirrored_5x5_avx2(
     input: &ImageF,
     weights: &[f32; 3],
     token: archmage::X64V3Token,
+    pool: &BufferPool,
 ) -> ImageF {
     use magetypes::f32x8;
 
@@ -592,7 +604,7 @@ fn blur_mirrored_5x5_avx2(
     let iwidth = width as i32;
     let iheight = height as i32;
 
-    let mut temp = ImageF::from_pool_dirty(width, height);
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
 
     let border = 2.min(width);
     let interior_end = if width > 4 { width - 2 } else { 0 };
@@ -650,7 +662,7 @@ fn blur_mirrored_5x5_avx2(
     }
 
     // Vertical pass - row-major with SIMD on x dimension (cache-friendly)
-    let mut output = ImageF::from_pool_dirty(width, height);
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
@@ -728,12 +740,12 @@ fn blur_mirrored_5x5_avx2(
         }
     }
 
-    temp.recycle();
+    temp.recycle(pool);
     output
 }
 
 #[inline]
-fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3]) -> ImageF {
+fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
     let width = input.width();
     let height = input.height();
 
@@ -744,7 +756,7 @@ fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3]) -> ImageF {
     let iwidth = width as i32;
     let iheight = height as i32;
 
-    let mut temp = ImageF::from_pool_dirty(height, width);
+    let mut temp = ImageF::from_pool_dirty(height, width, pool);
 
     for y in 0..height {
         let row = input.row(y);
@@ -760,7 +772,7 @@ fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3]) -> ImageF {
         }
     }
 
-    let mut output = ImageF::from_pool_dirty(width, height);
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
     for x in 0..width {
         let col = temp.row(x);
         for y in 0..height {
@@ -775,7 +787,7 @@ fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3]) -> ImageF {
         }
     }
 
-    temp.recycle();
+    temp.recycle(pool);
     output
 }
 
@@ -783,7 +795,7 @@ fn blur_mirrored_5x5_scalar(input: &ImageF, weights: &[f32; 3]) -> ImageF {
 ///
 /// This is faster than the general blur for sigma ~= 1.0.
 /// Uses clamp-and-renormalize boundary handling like the general blur.
-pub fn blur_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
+pub fn blur_5x5(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
     let width = input.width();
     let height = input.height();
 
@@ -803,7 +815,7 @@ pub fn blur_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
     ];
 
     // Temporary for horizontal pass (transposed)
-    let mut temp = ImageF::from_pool_dirty(height, width);
+    let mut temp = ImageF::from_pool_dirty(height, width, pool);
 
     // Horizontal pass with fast interior
     let border = 2.min(width);
@@ -864,7 +876,7 @@ pub fn blur_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
 
     // Vertical pass (on transposed data, so it's another horizontal pass)
     // Result goes back to original orientation
-    let mut output = ImageF::from_pool_dirty(width, height);
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
 
     let h_border = 2.min(height);
     let h_interior_end = if height > 2 { height - 2 } else { 0 };
@@ -923,7 +935,7 @@ pub fn blur_5x5(input: &ImageF, weights: &[f32; 3]) -> ImageF {
         }
     }
 
-    temp.recycle();
+    temp.recycle(pool);
     output
 }
 
@@ -953,8 +965,9 @@ mod tests {
     #[test]
     fn test_blur_constant_image() {
         // Blurring a constant image should give the same constant
+        let pool = BufferPool::new();
         let img = ImageF::filled(32, 32, 0.5);
-        let blurred = gaussian_blur(&img, 2.0);
+        let blurred = gaussian_blur(&img, 2.0, &pool);
 
         for y in 2..30 {
             for x in 2..30 {
@@ -972,10 +985,11 @@ mod tests {
     #[test]
     fn test_blur_reduces_delta() {
         // A single bright pixel should spread out
+        let pool = BufferPool::new();
         let mut img = ImageF::new(32, 32);
         img.set(16, 16, 1.0);
 
-        let blurred = gaussian_blur(&img, 2.0);
+        let blurred = gaussian_blur(&img, 2.0, &pool);
 
         // Center should be lower
         assert!(blurred.get(16, 16) < 1.0);
@@ -986,9 +1000,10 @@ mod tests {
 
     #[test]
     fn test_blur_5x5_constant() {
+        let pool = BufferPool::new();
         let img = ImageF::filled(32, 32, 0.5);
         let weights = [1.0f32, 0.5, 0.25]; // Example weights
-        let blurred = blur_5x5(&img, &weights);
+        let blurred = blur_5x5(&img, &weights, &pool);
 
         // Interior should stay constant
         for y in 4..28 {

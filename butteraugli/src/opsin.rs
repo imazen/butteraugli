@@ -9,7 +9,7 @@
 //! 3. Includes dynamic sensitivity based on blurred image
 
 use crate::blur::{blur_mirrored_5x5, compute_separable5_weights};
-use crate::image::Image3F;
+use crate::image::{BufferPool, Image3F};
 use imgref::ImgRef;
 use rgb::{RGB, RGB8};
 
@@ -151,7 +151,7 @@ pub fn opsin_absorbance(r: f32, g: f32, b: f32, clamp: bool) -> (f32, f32, f32) 
 /// # Returns
 /// XYB image (3 planes)
 #[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
+pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32, pool: &BufferPool) -> Image3F {
     let width = rgb.plane(0).width();
     let height = rgb.plane(0).height();
 
@@ -159,9 +159,9 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
     // C++ uses Separable5 (mirrored boundaries) for kernel size 5
     let sigma = 1.2;
     let weights = compute_separable5_weights(sigma);
-    let blurred_r = blur_mirrored_5x5(rgb.plane(0), &weights);
-    let blurred_g = blur_mirrored_5x5(rgb.plane(1), &weights);
-    let blurred_b = blur_mirrored_5x5(rgb.plane(2), &weights);
+    let blurred_r = blur_mirrored_5x5(rgb.plane(0), &weights, pool);
+    let blurred_g = blur_mirrored_5x5(rgb.plane(1), &weights, pool);
+    let blurred_b = blur_mirrored_5x5(rgb.plane(2), &weights, pool);
 
     // Create output XYB image
     let mut xyb = Image3F::new(width, height);
@@ -239,9 +239,9 @@ pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32) -> Image3F {
         }
     }
 
-    blurred_r.recycle();
-    blurred_g.recycle();
-    blurred_b.recycle();
+    blurred_r.recycle(pool);
+    blurred_g.recycle(pool);
+    blurred_b.recycle(pool);
     xyb
 }
 
@@ -260,6 +260,7 @@ pub fn srgb_to_xyb_butteraugli(
     width: usize,
     height: usize,
     intensity_target: f32,
+    pool: &BufferPool,
 ) -> Image3F {
     assert_eq!(rgb.len(), width * height * 3);
 
@@ -293,7 +294,7 @@ pub fn srgb_to_xyb_butteraugli(
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target)
+    opsin_dynamics_image(&linear, intensity_target, pool)
 }
 
 /// sRGB transfer function (gamma decoding) - slow version
@@ -339,6 +340,7 @@ pub fn linear_rgb_to_xyb_butteraugli(
     width: usize,
     height: usize,
     intensity_target: f32,
+    pool: &BufferPool,
 ) -> Image3F {
     assert_eq!(rgb.len(), width * height * 3);
 
@@ -355,7 +357,7 @@ pub fn linear_rgb_to_xyb_butteraugli(
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target)
+    opsin_dynamics_image(&linear, intensity_target, pool)
 }
 
 /// Converts planar linear RGB f32 data to butteraugli XYB.
@@ -381,6 +383,7 @@ pub fn linear_planar_to_xyb_butteraugli(
     height: usize,
     stride: usize,
     intensity_target: f32,
+    pool: &BufferPool,
 ) -> Image3F {
     assert!(stride >= width);
     assert!(r.len() >= stride * height);
@@ -402,7 +405,7 @@ pub fn linear_planar_to_xyb_butteraugli(
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target)
+    opsin_dynamics_image(&linear, intensity_target, pool)
 }
 
 /// Converts an sRGB image from ImgRef<RGB8> to butteraugli XYB.
@@ -415,7 +418,11 @@ pub fn linear_planar_to_xyb_butteraugli(
 ///
 /// # Returns
 /// XYB image (3 planes)
-pub(crate) fn imgref_srgb_to_xyb(img: ImgRef<RGB8>, intensity_target: f32) -> Image3F {
+pub(crate) fn imgref_srgb_to_xyb(
+    img: ImgRef<RGB8>,
+    intensity_target: f32,
+    pool: &BufferPool,
+) -> Image3F {
     let width = img.width();
     let height = img.height();
     let lut = &*SRGB_TO_LINEAR_LUT;
@@ -436,7 +443,7 @@ pub(crate) fn imgref_srgb_to_xyb(img: ImgRef<RGB8>, intensity_target: f32) -> Im
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target)
+    opsin_dynamics_image(&linear, intensity_target, pool)
 }
 
 /// Converts a linear RGB image from ImgRef<RGB<f32>> to butteraugli XYB.
@@ -449,7 +456,11 @@ pub(crate) fn imgref_srgb_to_xyb(img: ImgRef<RGB8>, intensity_target: f32) -> Im
 ///
 /// # Returns
 /// XYB image (3 planes)
-pub(crate) fn imgref_linear_to_xyb(img: ImgRef<RGB<f32>>, intensity_target: f32) -> Image3F {
+pub(crate) fn imgref_linear_to_xyb(
+    img: ImgRef<RGB<f32>>,
+    intensity_target: f32,
+    pool: &BufferPool,
+) -> Image3F {
     let width = img.width();
     let height = img.height();
 
@@ -469,7 +480,7 @@ pub(crate) fn imgref_linear_to_xyb(img: ImgRef<RGB<f32>>, intensity_target: f32)
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target)
+    opsin_dynamics_image(&linear, intensity_target, pool)
 }
 
 #[cfg(test)]

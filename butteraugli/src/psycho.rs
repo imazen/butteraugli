@@ -15,7 +15,7 @@ use crate::consts::{
     REMOVE_HF_RANGE, REMOVE_MF_RANGE, REMOVE_UHF_RANGE, SIGMA_HF, SIGMA_LF, SIGMA_UHF, SUPPRESS_S,
     SUPPRESS_XY, XMUL_LF_TO_VALS, YMUL_LF_TO_VALS, Y_TO_B_MUL_LF_TO_VALS,
 };
-use crate::image::{Image3F, ImageF};
+use crate::image::{BufferPool, Image3F, ImageF};
 
 /// Multi-scale psychovisual decomposition of an image.
 ///
@@ -187,17 +187,17 @@ fn suppress_x_by_y(in_y: &ImageF, inout_x: &mut ImageF) {
 }
 
 /// Separates LF (low frequency) and MF (medium frequency) components.
-fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F) {
+fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &BufferPool) {
     let sigma = SIGMA_LF as f32;
 
     for i in 0..3 {
         // Extract LF via blur
-        let blurred = gaussian_blur(xyb.plane(i), sigma);
+        let blurred = gaussian_blur(xyb.plane(i), sigma, pool);
         lf.plane_mut(i).copy_from(&blurred);
 
         // MF = original - LF
         subtract(xyb.plane(i), &blurred, mf.plane_mut(i));
-        blurred.recycle();
+        blurred.recycle(pool);
     }
 
     // Convert LF to vals space
@@ -205,7 +205,7 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F) {
 }
 
 /// Separates MF (medium frequency) and HF (high frequency) components.
-fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
+fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool) {
     let width = mf.width();
     let height = mf.height();
     let sigma = SIGMA_HF as f32;
@@ -216,9 +216,9 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
         hf[i].copy_from(mf.plane(i));
 
         // Blur MF
-        let blurred = gaussian_blur(mf.plane(i), sigma);
+        let blurred = gaussian_blur(mf.plane(i), sigma, pool);
         mf.plane_mut(i).copy_from(&blurred);
-        blurred.recycle();
+        blurred.recycle(pool);
 
         // HF = original - blurred
         let range = if i == 0 {
@@ -244,9 +244,9 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
     }
 
     // Blur B channel only (no HF/UHF for blue)
-    let blurred_b = gaussian_blur(mf.plane(2), sigma);
+    let blurred_b = gaussian_blur(mf.plane(2), sigma, pool);
     mf.plane_mut(2).copy_from(&blurred_b);
-    blurred_b.recycle();
+    blurred_b.recycle(pool);
 
     // Suppress X by Y in HF (use split borrow to avoid clone)
     let (hf_x, hf_y) = hf.split_at_mut(1);
@@ -254,7 +254,7 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2]) {
 }
 
 /// Separates HF (high frequency) and UHF (ultra high frequency) components.
-fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2]) {
+fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &BufferPool) {
     let width = hf[0].width();
     let height = hf[0].height();
     let sigma = SIGMA_UHF as f32;
@@ -264,9 +264,9 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2]) {
         uhf[i].copy_from(&hf[i]);
 
         // Blur HF
-        let blurred = gaussian_blur(&hf[i], sigma);
+        let blurred = gaussian_blur(&hf[i], sigma, pool);
         hf[i].copy_from(&blurred);
-        blurred.recycle();
+        blurred.recycle(pool);
 
         // UHF = original - blurred, with adjustments
         for y in 0..height {
@@ -303,20 +303,20 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2]) {
 ///
 /// This is the main entry point for creating a PsychoImage from
 /// an XYB color-space image.
-pub fn separate_frequencies(xyb: &Image3F) -> PsychoImage {
+pub fn separate_frequencies(xyb: &Image3F, pool: &BufferPool) -> PsychoImage {
     let width = xyb.width();
     let height = xyb.height();
 
     let mut ps = PsychoImage::new(width, height);
 
     // Separate into LF and MF
-    separate_lf_and_mf(xyb, &mut ps.lf, &mut ps.mf);
+    separate_lf_and_mf(xyb, &mut ps.lf, &mut ps.mf, pool);
 
     // Separate MF into MF and HF
-    separate_mf_and_hf(&mut ps.mf, &mut ps.hf);
+    separate_mf_and_hf(&mut ps.mf, &mut ps.hf, pool);
 
     // Separate HF into HF and UHF
-    separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf);
+    separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf, pool);
 
     ps
 }
@@ -356,6 +356,7 @@ mod tests {
     #[test]
     fn test_frequency_separation() {
         // Create a simple XYB image
+        let pool = BufferPool::new();
         let mut xyb = Image3F::new(32, 32);
         for y in 0..32 {
             for x in 0..32 {
@@ -367,7 +368,7 @@ mod tests {
             }
         }
 
-        let ps = separate_frequencies(&xyb);
+        let ps = separate_frequencies(&xyb, &pool);
 
         // Just verify it runs and produces valid data
         assert_eq!(ps.width(), 32);

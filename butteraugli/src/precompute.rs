@@ -25,7 +25,7 @@
 //! }
 //! ```
 
-use crate::image::{Image3F, ImageF};
+use crate::image::{BufferPool, Image3F, ImageF};
 use crate::opsin::{
     linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli, srgb_to_xyb_butteraugli,
 };
@@ -68,6 +68,9 @@ pub struct ButteraugliReference {
     height: usize,
     /// Parameters used for precomputation
     params: ButteraugliParams,
+    /// Reusable buffer pool for temporary ImageF allocations.
+    /// Owned by this instance so buffers are freed on drop.
+    pool: BufferPool,
 }
 
 impl ButteraugliReference {
@@ -102,9 +105,11 @@ impl ButteraugliReference {
             });
         }
 
+        let pool = BufferPool::new();
+
         // Precompute full resolution
-        let xyb = srgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target());
-        let psycho = separate_frequencies(&xyb);
+        let xyb = srgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target(), &pool);
+        let psycho = separate_frequencies(&xyb, &pool);
         let full = ScaleData { xyb, psycho };
 
         // Precompute half resolution if image is large enough
@@ -113,8 +118,9 @@ impl ButteraugliReference {
             && height >= MIN_SIZE_FOR_SUBSAMPLE
         {
             let (sub_rgb, sw, sh) = subsample_rgb_2x(rgb, width, height);
-            let sub_xyb = srgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target());
-            let sub_psycho = separate_frequencies(&sub_xyb);
+            let sub_xyb =
+                srgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
+            let sub_psycho = separate_frequencies(&sub_xyb, &pool);
             Some(ScaleData {
                 xyb: sub_xyb,
                 psycho: sub_psycho,
@@ -129,6 +135,7 @@ impl ButteraugliReference {
             width,
             height,
             params,
+            pool,
         })
     }
 
@@ -163,9 +170,12 @@ impl ButteraugliReference {
             });
         }
 
+        let pool = BufferPool::new();
+
         // Precompute full resolution
-        let xyb = linear_rgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target());
-        let psycho = separate_frequencies(&xyb);
+        let xyb =
+            linear_rgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target(), &pool);
+        let psycho = separate_frequencies(&xyb, &pool);
         let full = ScaleData { xyb, psycho };
 
         // Precompute half resolution if image is large enough
@@ -175,8 +185,8 @@ impl ButteraugliReference {
         {
             let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
             let sub_xyb =
-                linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target());
-            let sub_psycho = separate_frequencies(&sub_xyb);
+                linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
+            let sub_psycho = separate_frequencies(&sub_xyb, &pool);
             Some(ScaleData {
                 xyb: sub_xyb,
                 psycho: sub_psycho,
@@ -191,6 +201,7 @@ impl ButteraugliReference {
             width,
             height,
             params,
+            pool,
         })
     }
 
@@ -227,6 +238,8 @@ impl ButteraugliReference {
             });
         }
 
+        let pool = BufferPool::new();
+
         // Precompute full resolution
         let xyb = linear_planar_to_xyb_butteraugli(
             r,
@@ -236,8 +249,9 @@ impl ButteraugliReference {
             height,
             stride,
             params.intensity_target(),
+            &pool,
         );
-        let psycho = separate_frequencies(&xyb);
+        let psycho = separate_frequencies(&xyb, &pool);
         let full = ScaleData { xyb, psycho };
 
         // Precompute half resolution if image is large enough
@@ -256,8 +270,9 @@ impl ButteraugliReference {
                 sh,
                 sw,
                 params.intensity_target(),
+                &pool,
             );
-            let sub_psycho = separate_frequencies(&sub_xyb);
+            let sub_psycho = separate_frequencies(&sub_xyb, &pool);
             Some(ScaleData {
                 xyb: sub_xyb,
                 psycho: sub_psycho,
@@ -272,6 +287,7 @@ impl ButteraugliReference {
             width,
             height,
             params,
+            pool,
         })
     }
 
@@ -368,9 +384,14 @@ impl ButteraugliReference {
     /// Internal comparison implementation for sRGB input.
     fn compare_impl(&self, rgb: &[u8]) -> ButteraugliResult {
         // Convert distorted image to XYB and compute frequency decomposition
-        let xyb2 =
-            srgb_to_xyb_butteraugli(rgb, self.width, self.height, self.params.intensity_target());
-        let ps2 = separate_frequencies(&xyb2);
+        let xyb2 = srgb_to_xyb_butteraugli(
+            rgb,
+            self.width,
+            self.height,
+            self.params.intensity_target(),
+            &self.pool,
+        );
+        let ps2 = separate_frequencies(&xyb2, &self.pool);
 
         // Compute diffmap at full resolution using precomputed reference
         let mut diffmap = compute_diffmap_with_precomputed(
@@ -379,16 +400,29 @@ impl ButteraugliReference {
             self.width,
             self.height,
             &self.params,
+            &self.pool,
         );
 
         // Add half-resolution contribution if available
         if let Some(ref half) = self.half {
             let (sub_rgb, sw, sh) = subsample_rgb_2x(rgb, self.width, self.height);
-            let sub_xyb = srgb_to_xyb_butteraugli(&sub_rgb, sw, sh, self.params.intensity_target());
-            let sub_ps2 = separate_frequencies(&sub_xyb);
+            let sub_xyb = srgb_to_xyb_butteraugli(
+                &sub_rgb,
+                sw,
+                sh,
+                self.params.intensity_target(),
+                &self.pool,
+            );
+            let sub_ps2 = separate_frequencies(&sub_xyb, &self.pool);
 
-            let sub_diffmap =
-                compute_diffmap_with_precomputed(&half.psycho, &sub_ps2, sw, sh, &self.params);
+            let sub_diffmap = compute_diffmap_with_precomputed(
+                &half.psycho,
+                &sub_ps2,
+                sw,
+                sh,
+                &self.params,
+                &self.pool,
+            );
 
             add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
         }
@@ -408,8 +442,9 @@ impl ButteraugliReference {
             self.width,
             self.height,
             self.params.intensity_target(),
+            &self.pool,
         );
-        let ps2 = separate_frequencies(&xyb2);
+        let ps2 = separate_frequencies(&xyb2, &self.pool);
 
         let mut diffmap = compute_diffmap_with_precomputed(
             &self.full.psycho,
@@ -417,16 +452,28 @@ impl ButteraugliReference {
             self.width,
             self.height,
             &self.params,
+            &self.pool,
         );
 
         if let Some(ref half) = self.half {
             let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, self.width, self.height);
-            let sub_xyb =
-                linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, self.params.intensity_target());
-            let sub_ps2 = separate_frequencies(&sub_xyb);
+            let sub_xyb = linear_rgb_to_xyb_butteraugli(
+                &sub_rgb,
+                sw,
+                sh,
+                self.params.intensity_target(),
+                &self.pool,
+            );
+            let sub_ps2 = separate_frequencies(&sub_xyb, &self.pool);
 
-            let sub_diffmap =
-                compute_diffmap_with_precomputed(&half.psycho, &sub_ps2, sw, sh, &self.params);
+            let sub_diffmap = compute_diffmap_with_precomputed(
+                &half.psycho,
+                &sub_ps2,
+                sw,
+                sh,
+                &self.params,
+                &self.pool,
+            );
 
             add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
         }
@@ -455,8 +502,9 @@ impl ButteraugliReference {
             self.height,
             stride,
             self.params.intensity_target(),
+            &self.pool,
         );
-        let ps2 = separate_frequencies(&xyb2);
+        let ps2 = separate_frequencies(&xyb2, &self.pool);
 
         let mut diffmap = compute_diffmap_with_precomputed(
             &self.full.psycho,
@@ -464,6 +512,7 @@ impl ButteraugliReference {
             self.width,
             self.height,
             &self.params,
+            &self.pool,
         );
 
         if let Some(ref half) = self.half {
@@ -477,11 +526,18 @@ impl ButteraugliReference {
                 sh,
                 sw,
                 self.params.intensity_target(),
+                &self.pool,
             );
-            let sub_ps2 = separate_frequencies(&sub_xyb);
+            let sub_ps2 = separate_frequencies(&sub_xyb, &self.pool);
 
-            let sub_diffmap =
-                compute_diffmap_with_precomputed(&half.psycho, &sub_ps2, sw, sh, &self.params);
+            let sub_diffmap = compute_diffmap_with_precomputed(
+                &half.psycho,
+                &sub_ps2,
+                sw,
+                sh,
+                &self.params,
+                &self.pool,
+            );
 
             add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
         }
@@ -515,13 +571,14 @@ fn compute_diffmap_with_precomputed(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
+    pool: &BufferPool,
 ) -> ImageF {
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
         compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul());
 
     // Compute mask from both PsychoImages
-    let mask = mask_psycho_image(ps1, ps2, Some(block_diff_ac.plane_mut(1)));
+    let mask = mask_psycho_image(ps1, ps2, Some(block_diff_ac.plane_mut(1)), pool);
 
     // Compute DC (LF) differences
     let mut block_diff_dc = Image3F::new(width, height);
@@ -705,7 +762,12 @@ fn compute_psycho_diff_malta(
 }
 
 /// Computes mask from two PsychoImages.
-fn mask_psycho_image(ps0: &PsychoImage, ps1: &PsychoImage, diff_ac: Option<&mut ImageF>) -> ImageF {
+fn mask_psycho_image(
+    ps0: &PsychoImage,
+    ps1: &PsychoImage,
+    diff_ac: Option<&mut ImageF>,
+    pool: &BufferPool,
+) -> ImageF {
     let width = ps0.width();
     let height = ps0.height();
 
@@ -714,7 +776,7 @@ fn mask_psycho_image(ps0: &PsychoImage, ps1: &PsychoImage, diff_ac: Option<&mut 
     combine_channels_for_masking(&ps0.hf, &ps0.uhf, &mut mask0);
     combine_channels_for_masking(&ps1.hf, &ps1.uhf, &mut mask1);
 
-    compute_mask_from_images(&mask0, &mask1, diff_ac)
+    compute_mask_from_images(&mask0, &mask1, diff_ac, pool)
 }
 
 /// Combines channels to produce final diffmap - multiversioned for autovectorization.

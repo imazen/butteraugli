@@ -136,14 +136,6 @@ pub mod reference_data;
 pub use imgref::{Img, ImgRef, ImgVec};
 pub use rgb::{RGB, RGB8};
 
-/// Clears the thread-local ImageF buffer pool, freeing cached memory.
-///
-/// Call this after a batch of butteraugli operations to release pooled buffers.
-/// The pool is automatically reused within a thread, so clearing is optional.
-pub fn clear_buffer_pool() {
-    image::ImageF::clear_pool();
-}
-
 /// Error type for butteraugli operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
