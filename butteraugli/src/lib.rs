@@ -243,22 +243,6 @@ impl std::fmt::Display for ButteraugliError {
 
 impl std::error::Error for ButteraugliError {}
 
-/// Controls which Malta patterns 13-16 are used in the HF/UHF bands.
-///
-/// In libjxl's butteraugli, patterns 13-16 are identical copies of patterns 8,7,6,5
-/// (9-sample straight lines). The standalone google/butteraugli has different patterns
-/// 13-16: 8-sample S-curves. See <https://github.com/libjxl/libjxl/issues/4623>.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum MaltaVariant {
-    /// Patterns 13-16 are copies of 8,7,6,5 (9 samples each).
-    /// This matches libjxl's butteraugli implementation.
-    #[default]
-    Libjxl,
-    /// Patterns 13-16 are original S-curves (8 samples each).
-    /// This matches the standalone google/butteraugli implementation.
-    StandaloneGoogle,
-}
-
 /// Butteraugli comparison parameters.
 ///
 /// Use the builder pattern to construct:
@@ -277,7 +261,6 @@ pub struct ButteraugliParams {
     intensity_target: f32,
     compute_diffmap: bool,
     single_resolution: bool,
-    malta_variant: MaltaVariant,
 }
 
 impl Default for ButteraugliParams {
@@ -288,7 +271,6 @@ impl Default for ButteraugliParams {
             intensity_target: 80.0,
             compute_diffmap: false,
             single_resolution: false,
-            malta_variant: MaltaVariant::default(),
         }
     }
 }
@@ -371,22 +353,6 @@ impl ButteraugliParams {
     #[must_use]
     pub fn single_resolution(&self) -> bool {
         self.single_resolution
-    }
-
-    /// Sets which Malta pattern variant to use for HF/UHF bands.
-    ///
-    /// See [`MaltaVariant`] for details on the difference between libjxl
-    /// and standalone google/butteraugli patterns 13-16.
-    #[must_use]
-    pub fn with_malta_variant(mut self, malta_variant: MaltaVariant) -> Self {
-        self.malta_variant = malta_variant;
-        self
-    }
-
-    /// Returns the Malta pattern variant.
-    #[must_use]
-    pub fn malta_variant(&self) -> MaltaVariant {
-        self.malta_variant
     }
 
     /// Validates that all parameter values are in acceptable ranges.

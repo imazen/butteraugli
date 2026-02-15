@@ -28,9 +28,7 @@
 use crate::image::{BufferPool, Image3F, ImageF};
 use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli};
 use crate::psycho::{separate_frequencies, PsychoImage};
-use crate::{
-    check_finite_f32, ButteraugliError, ButteraugliParams, ButteraugliResult, MaltaVariant,
-};
+use crate::{check_finite_f32, ButteraugliError, ButteraugliParams, ButteraugliResult};
 
 /// Minimum image dimension for multi-resolution processing.
 const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
@@ -553,13 +551,8 @@ fn compute_diffmap_with_precomputed(
     pool: &BufferPool,
 ) -> ImageF {
     // Compute AC differences using Malta filter
-    let mut block_diff_ac = compute_psycho_diff_malta(
-        ps1,
-        ps2,
-        params.hf_asymmetry(),
-        params.xmul(),
-        params.malta_variant(),
-    );
+    let mut block_diff_ac =
+        compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul());
 
     // Compute mask from both PsychoImages
     let mask = mask_psycho_image(ps1, ps2, Some(block_diff_ac.plane_mut(1)), pool);
@@ -603,11 +596,9 @@ fn compute_psycho_diff_malta(
     ps1: &PsychoImage,
     hf_asymmetry: f32,
     _xmul: f32,
-    malta_variant: MaltaVariant,
 ) -> Image3F {
     let width = ps0.width();
     let height = ps0.height();
-    let use_google_patterns = malta_variant == MaltaVariant::StandaloneGoogle;
 
     let mut block_diff_ac = Image3F::new(width, height);
 
@@ -619,7 +610,6 @@ fn compute_psycho_diff_malta(
         W_UHF_MALTA / hf_asymmetry as f64,
         NORM1_UHF,
         false,
-        use_google_patterns,
     );
     {
         let ac = block_diff_ac.plane_mut(1);
@@ -640,7 +630,6 @@ fn compute_psycho_diff_malta(
         W_UHF_MALTA_X / hf_asymmetry as f64,
         NORM1_UHF_X,
         false,
-        use_google_patterns,
     );
     {
         let ac = block_diff_ac.plane_mut(0);
@@ -653,7 +642,7 @@ fn compute_psycho_diff_malta(
         }
     }
 
-    // HF channels (LF Malta — google patterns don't affect LF variant)
+    // HF channels (LF Malta)
     let sqrt_hf_asym = hf_asymmetry.sqrt();
 
     let hf_y_diff = malta_diff_map(
@@ -663,7 +652,6 @@ fn compute_psycho_diff_malta(
         W_HF_MALTA / sqrt_hf_asym as f64,
         NORM1_HF,
         true,
-        false,
     );
     {
         let ac = block_diff_ac.plane_mut(1);
@@ -683,7 +671,6 @@ fn compute_psycho_diff_malta(
         W_HF_MALTA_X / sqrt_hf_asym as f64,
         NORM1_HF_X,
         true,
-        false,
     );
     {
         let ac = block_diff_ac.plane_mut(0);
@@ -704,7 +691,6 @@ fn compute_psycho_diff_malta(
         W_MF_MALTA,
         NORM1_MF,
         true,
-        false,
     );
     {
         let ac = block_diff_ac.plane_mut(1);
@@ -724,7 +710,6 @@ fn compute_psycho_diff_malta(
         W_MF_MALTA_X,
         NORM1_MF_X,
         true,
-        false,
     );
     {
         let ac = block_diff_ac.plane_mut(0);
