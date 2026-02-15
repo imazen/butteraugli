@@ -98,59 +98,44 @@ pub fn fuzzy_erosion(from: &ImageF, to: &mut ImageF) {
     const K_STEP: usize = 3;
 
     for y in 0..height {
+        let row_c = from.row(y);
+        let row_up = if y >= K_STEP { Some(from.row(y - K_STEP)) } else { None };
+        let row_dn = if y + K_STEP < height { Some(from.row(y + K_STEP)) } else { None };
+        let out_row = to.row_mut(y);
+
         for x in 0..width {
-            let mut min0 = from.get(x, y);
+            let mut min0 = row_c[x];
             let mut min1 = 2.0 * min0;
             let mut min2 = min1;
 
             // Check neighbors at distance K_STEP (C++ exact order)
             if x >= K_STEP {
-                store_min3(from.get(x - K_STEP, y), &mut min0, &mut min1, &mut min2);
-                if y >= K_STEP {
-                    store_min3(
-                        from.get(x - K_STEP, y - K_STEP),
-                        &mut min0,
-                        &mut min1,
-                        &mut min2,
-                    );
+                store_min3(row_c[x - K_STEP], &mut min0, &mut min1, &mut min2);
+                if let Some(r) = row_up {
+                    store_min3(r[x - K_STEP], &mut min0, &mut min1, &mut min2);
                 }
-                if y + K_STEP < height {
-                    store_min3(
-                        from.get(x - K_STEP, y + K_STEP),
-                        &mut min0,
-                        &mut min1,
-                        &mut min2,
-                    );
+                if let Some(r) = row_dn {
+                    store_min3(r[x - K_STEP], &mut min0, &mut min1, &mut min2);
                 }
             }
             if x + K_STEP < width {
-                store_min3(from.get(x + K_STEP, y), &mut min0, &mut min1, &mut min2);
-                if y >= K_STEP {
-                    store_min3(
-                        from.get(x + K_STEP, y - K_STEP),
-                        &mut min0,
-                        &mut min1,
-                        &mut min2,
-                    );
+                store_min3(row_c[x + K_STEP], &mut min0, &mut min1, &mut min2);
+                if let Some(r) = row_up {
+                    store_min3(r[x + K_STEP], &mut min0, &mut min1, &mut min2);
                 }
-                if y + K_STEP < height {
-                    store_min3(
-                        from.get(x + K_STEP, y + K_STEP),
-                        &mut min0,
-                        &mut min1,
-                        &mut min2,
-                    );
+                if let Some(r) = row_dn {
+                    store_min3(r[x + K_STEP], &mut min0, &mut min1, &mut min2);
                 }
             }
-            if y >= K_STEP {
-                store_min3(from.get(x, y - K_STEP), &mut min0, &mut min1, &mut min2);
+            if let Some(r) = row_up {
+                store_min3(r[x], &mut min0, &mut min1, &mut min2);
             }
-            if y + K_STEP < height {
-                store_min3(from.get(x, y + K_STEP), &mut min0, &mut min1, &mut min2);
+            if let Some(r) = row_dn {
+                store_min3(r[x], &mut min0, &mut min1, &mut min2);
             }
 
             // C++: 0.45f * min0 + 0.3f * min1 + 0.25f * min2
-            to.set(x, y, 0.45 * min0 + 0.3 * min1 + 0.25 * min2);
+            out_row[x] = 0.45 * min0 + 0.3 * min1 + 0.25 * min2;
         }
     }
 }
@@ -216,14 +201,19 @@ pub fn compute_mask(
     // Final mask computation
     let mut mask = ImageF::new(width, height);
     for y in 0..height {
+        let eroded_row = eroded0.row(y);
+        let mask_row = mask.row_mut(y);
         for x in 0..width {
-            mask.set(x, y, eroded0.get(x, y));
+            mask_row[x] = eroded_row[x];
+        }
 
-            if let Some(ref mut ac) = diff_ac {
-                // C++: kMaskToErrorMul * diff * diff
-                let diff = blurred0.get(x, y) - blurred1.get(x, y);
-                let prev = ac.get(x, y);
-                ac.set(x, y, prev + MASK_TO_ERROR_MUL * diff * diff);
+        if let Some(ref mut ac) = diff_ac {
+            let b0 = blurred0.row(y);
+            let b1 = blurred1.row(y);
+            let ac_row = ac.row_mut(y);
+            for x in 0..width {
+                let diff = b0[x] - b1[x];
+                ac_row[x] += MASK_TO_ERROR_MUL * diff * diff;
             }
         }
     }

@@ -104,15 +104,15 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
     // Heuristic from C++: lower resolution images have less error
     const K_HEURISTIC_MIXING_VALUE: f32 = 0.3;
 
+    let blend = 1.0 - K_HEURISTIC_MIXING_VALUE * weight;
     for y in 0..height {
+        let src_y = (y / 2).min(src.height() - 1);
+        let src_row = src.row(src_y);
+        let dst_row = dest.row_mut(y);
+        let src_w = src.width();
         for x in 0..width {
-            let src_x = x / 2;
-            let src_y = y / 2;
-            let src_val = src.get(src_x.min(src.width() - 1), src_y.min(src.height() - 1));
-
-            let prev = dest.get(x, y);
-            let mixed = prev * (1.0 - K_HEURISTIC_MIXING_VALUE * weight) + weight * src_val;
-            dest.set(x, y, mixed);
+            let src_val = src_row[(x / 2).min(src_w - 1)];
+            dst_row[x] = dst_row[x] * blend + weight * src_val;
         }
     }
 }
@@ -326,10 +326,14 @@ fn compute_psycho_diff_malta(
         false, // use full Malta
         use_google_patterns,
     );
-    for y in 0..height {
-        for x in 0..width {
-            let v = block_diff_ac.plane(1).get(x, y) + uhf_y_diff.get(x, y);
-            block_diff_ac.plane_mut(1).set(x, y, v);
+    {
+        let ac = block_diff_ac.plane_mut(1);
+        for y in 0..height {
+            let src = uhf_y_diff.row(y);
+            let dst = ac.row_mut(y);
+            for x in 0..width {
+                dst[x] += src[x];
+            }
         }
     }
 
@@ -343,10 +347,14 @@ fn compute_psycho_diff_malta(
         false,
         use_google_patterns,
     );
-    for y in 0..height {
-        for x in 0..width {
-            let v = block_diff_ac.plane(0).get(x, y) + uhf_x_diff.get(x, y);
-            block_diff_ac.plane_mut(0).set(x, y, v);
+    {
+        let ac = block_diff_ac.plane_mut(0);
+        for y in 0..height {
+            let src = uhf_x_diff.row(y);
+            let dst = ac.row_mut(y);
+            for x in 0..width {
+                dst[x] += src[x];
+            }
         }
     }
 
@@ -363,10 +371,14 @@ fn compute_psycho_diff_malta(
         true, // use LF Malta
         false,
     );
-    for y in 0..height {
-        for x in 0..width {
-            let v = block_diff_ac.plane(1).get(x, y) + hf_y_diff.get(x, y);
-            block_diff_ac.plane_mut(1).set(x, y, v);
+    {
+        let ac = block_diff_ac.plane_mut(1);
+        for y in 0..height {
+            let src = hf_y_diff.row(y);
+            let dst = ac.row_mut(y);
+            for x in 0..width {
+                dst[x] += src[x];
+            }
         }
     }
 
@@ -380,10 +392,14 @@ fn compute_psycho_diff_malta(
         true,
         false,
     );
-    for y in 0..height {
-        for x in 0..width {
-            let v = block_diff_ac.plane(0).get(x, y) + hf_x_diff.get(x, y);
-            block_diff_ac.plane_mut(0).set(x, y, v);
+    {
+        let ac = block_diff_ac.plane_mut(0);
+        for y in 0..height {
+            let src = hf_x_diff.row(y);
+            let dst = ac.row_mut(y);
+            for x in 0..width {
+                dst[x] += src[x];
+            }
         }
     }
 
@@ -398,10 +414,14 @@ fn compute_psycho_diff_malta(
         true,
         false,
     );
-    for y in 0..height {
-        for x in 0..width {
-            let v = block_diff_ac.plane(1).get(x, y) + mf_y_diff.get(x, y);
-            block_diff_ac.plane_mut(1).set(x, y, v);
+    {
+        let ac = block_diff_ac.plane_mut(1);
+        for y in 0..height {
+            let src = mf_y_diff.row(y);
+            let dst = ac.row_mut(y);
+            for x in 0..width {
+                dst[x] += src[x];
+            }
         }
     }
 
@@ -415,10 +435,14 @@ fn compute_psycho_diff_malta(
         true,
         false,
     );
-    for y in 0..height {
-        for x in 0..width {
-            let v = block_diff_ac.plane(0).get(x, y) + mf_x_diff.get(x, y);
-            block_diff_ac.plane_mut(0).set(x, y, v);
+    {
+        let ac = block_diff_ac.plane_mut(0);
+        for y in 0..height {
+            let src = mf_x_diff.row(y);
+            let dst = ac.row_mut(y);
+            for x in 0..width {
+                dst[x] += src[x];
+            }
         }
     }
 
@@ -500,41 +524,30 @@ fn combine_channels_to_diffmap(
     let mut diffmap = ImageF::new(width, height);
 
     for y in 0..height {
+        let mask_row = mask.row(y);
+        let dc0 = block_diff_dc.plane(0).row(y);
+        let dc1 = block_diff_dc.plane(1).row(y);
+        let dc2 = block_diff_dc.plane(2).row(y);
+        let ac0 = block_diff_ac.plane(0).row(y);
+        let ac1 = block_diff_ac.plane(1).row(y);
+        let ac2 = block_diff_ac.plane(2).row(y);
+        let out = diffmap.row_mut(y);
+
         for x in 0..width {
-            let val = mask.get(x, y) as f64;
+            let val = mask_row[x] as f64;
 
             // Compute masking factors from the mask value
             // MaskY is used for AC, MaskDcY is used for DC
             let maskval = mask_y(val) as f32;
             let dc_maskval = mask_dc_y(val) as f32;
 
-            // Get difference values for each channel
-            let diff_dc = [
-                block_diff_dc.plane(0).get(x, y),
-                block_diff_dc.plane(1).get(x, y),
-                block_diff_dc.plane(2).get(x, y),
-            ];
-            let diff_ac = [
-                block_diff_ac.plane(0).get(x, y),
-                block_diff_ac.plane(1).get(x, y),
-                block_diff_ac.plane(2).get(x, y),
-            ];
-
-            // Apply xmul to X channel (index 0)
-            let diff_ac_scaled = [diff_ac[0] * xmul, diff_ac[1], diff_ac[2]];
-            let diff_dc_scaled = [diff_dc[0] * xmul, diff_dc[1], diff_dc[2]];
-
-            // MaskColor: sum of all channels multiplied by mask
-            // C++: color[0] * mask + color[1] * mask + color[2] * mask
-            let dc_masked = diff_dc_scaled[0] * dc_maskval
-                + diff_dc_scaled[1] * dc_maskval
-                + diff_dc_scaled[2] * dc_maskval;
-            let ac_masked = diff_ac_scaled[0] * maskval
-                + diff_ac_scaled[1] * maskval
-                + diff_ac_scaled[2] * maskval;
+            // Apply xmul to X channel (index 0) and sum with mask
+            let dc_masked =
+                dc0[x] * xmul * dc_maskval + dc1[x] * dc_maskval + dc2[x] * dc_maskval;
+            let ac_masked = ac0[x] * xmul * maskval + ac1[x] * maskval + ac2[x] * maskval;
 
             // Final diffmap value is sqrt of sum
-            diffmap.set(x, y, (dc_masked + ac_masked).sqrt());
+            out[x] = (dc_masked + ac_masked).sqrt();
         }
     }
 
@@ -560,10 +573,10 @@ fn compute_score_from_diffmap(diffmap: &ImageF) -> f64 {
     let mut max_val = 0.0f32;
 
     for y in 0..height {
+        let row = diffmap.row(y);
         for x in 0..width {
-            let v = diffmap.get(x, y);
-            if v > max_val {
-                max_val = v;
+            if row[x] > max_val {
+                max_val = row[x];
             }
         }
     }
@@ -656,12 +669,15 @@ fn compute_diffmap_single_resolution_linear(
     // Compute DC (LF) differences
     let mut block_diff_dc = Image3F::new(width, height);
     for c in 0..3 {
+        let w = WMUL[6 + c] as f32;
+        let dc = block_diff_dc.plane_mut(c);
         for y in 0..height {
+            let lf1 = ps1.lf.plane(c).row(y);
+            let lf2 = ps2.lf.plane(c).row(y);
+            let dst = dc.row_mut(y);
             for x in 0..width {
-                let d = ps1.lf.plane(c).get(x, y) - ps2.lf.plane(c).get(x, y);
-                block_diff_dc
-                    .plane_mut(c)
-                    .set(x, y, d * d * WMUL[6 + c] as f32);
+                let d = lf1[x] - lf2[x];
+                dst[x] = d * d * w;
             }
         }
     }
@@ -806,12 +822,15 @@ fn compute_diffmap_single_resolution_xyb(
     // Compute DC (LF) differences
     let mut block_diff_dc = Image3F::new(width, height);
     for c in 0..3 {
+        let w = WMUL[6 + c] as f32;
+        let dc = block_diff_dc.plane_mut(c);
         for y in 0..height {
+            let lf1 = ps1.lf.plane(c).row(y);
+            let lf2 = ps2.lf.plane(c).row(y);
+            let dst = dc.row_mut(y);
             for x in 0..width {
-                let d = ps1.lf.plane(c).get(x, y) - ps2.lf.plane(c).get(x, y);
-                block_diff_dc
-                    .plane_mut(c)
-                    .set(x, y, d * d * WMUL[6 + c] as f32);
+                let d = lf1[x] - lf2[x];
+                dst[x] = d * d * w;
             }
         }
     }
