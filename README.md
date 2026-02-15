@@ -63,7 +63,7 @@ butteraugli --help
 
 ```toml
 [dependencies]
-butteraugli = "0.4"
+butteraugli = "0.6"
 ```
 
 ### Input Formats
@@ -132,20 +132,16 @@ SIMD-optimized via [`wide`](https://crates.io/crates/wide) with runtime dispatch
 
 ## Accuracy
 
-Validated against C++ libjxl butteraugli via FFI bindings:
+Validated against C++ libjxl `butteraugli_main` via FFI bindings on 191 synthetic test cases and 10 real photographs:
 
 | Test Type | Difference |
 |-----------|------------|
+| Real photographs (10 images) | <0.0003% |
+| Synthetic patterns (191 cases) | <0.004% |
 | sRGB/linear conversion | Exact |
 | Gamma function | Exact |
-| Frequency bands | <0.01% |
-| Real images | ~1-2% |
-| Uniform/checkerboard | <0.1% |
-| Gradient patterns | ~0.3% |
 
-**Reference Tests:** 185 passed, 6 failed (20% tolerance)
-
-Six edge cases with blur distortions show ~20-32% divergence, but these don't affect typical image comparisons.
+**Reference Tests:** 191 passed, 0 failed at 20% tolerance. 97% of cases match within 0.004%.
 
 ## API Comparison with C++ libjxl
 
