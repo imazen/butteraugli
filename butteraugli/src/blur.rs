@@ -379,8 +379,7 @@ fn gaussian_blur_dispatch_scalar(
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
     let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, convolve_interior_scalar);
-    let result =
-        convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, convolve_interior_scalar);
+    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, convolve_interior_scalar);
     temp.recycle(pool);
     result
 }
@@ -446,13 +445,8 @@ fn blur_with_border_dispatch_scalar(
     let kernel = compute_kernel(sigma);
     let temp =
         convolve_horizontal_transpose(input, &kernel, border_ratio, pool, convolve_interior_scalar);
-    let result = convolve_horizontal_transpose(
-        &temp,
-        &kernel,
-        border_ratio,
-        pool,
-        convolve_interior_scalar,
-    );
+    let result =
+        convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, convolve_interior_scalar);
     temp.recycle(pool);
     result
 }
@@ -832,7 +826,12 @@ fn blur_mirrored_5x5_v3(
     output
 }
 
-fn blur_mirrored_5x5_scalar(_token: archmage::ScalarToken, input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
+fn blur_mirrored_5x5_scalar(
+    _token: archmage::ScalarToken,
+    input: &ImageF,
+    weights: &[f32; 3],
+    pool: &BufferPool,
+) -> ImageF {
     let width = input.width();
     let height = input.height();
 

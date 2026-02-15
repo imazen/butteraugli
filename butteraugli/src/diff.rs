@@ -90,7 +90,9 @@ fn subsample_2x(input: &Image3F) -> Image3F {
 
 /// Converts sRGB u8 buffer to linear f32.
 fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
-    rgb.iter().map(|&v| crate::opsin::srgb_to_linear(v)).collect()
+    rgb.iter()
+        .map(|&v| crate::opsin::srgb_to_linear(v))
+        .collect()
 }
 
 /// Adds a supersampled (upscaled 2x) diffmap to the destination.
@@ -126,13 +128,7 @@ fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
 
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
-fn l2_diff_v4(
-    token: archmage::X64V4Token,
-    i0: &ImageF,
-    i1: &ImageF,
-    w: f32,
-    diffmap: &mut ImageF,
-) {
+fn l2_diff_v4(token: archmage::X64V4Token, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     use magetypes::simd::f32x16;
 
     let width = i0.width();
@@ -169,13 +165,7 @@ fn l2_diff_v4(
 
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
-fn l2_diff_v3(
-    token: archmage::X64V3Token,
-    i0: &ImageF,
-    i1: &ImageF,
-    w: f32,
-    diffmap: &mut ImageF,
-) {
+fn l2_diff_v3(token: archmage::X64V3Token, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     use magetypes::simd::f32x8;
 
     let width = i0.width();
@@ -210,7 +200,13 @@ fn l2_diff_v3(
     }
 }
 
-fn l2_diff_scalar(_token: archmage::ScalarToken, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
+fn l2_diff_scalar(
+    _token: archmage::ScalarToken,
+    i0: &ImageF,
+    i1: &ImageF,
+    w: f32,
+    diffmap: &mut ImageF,
+) {
     let width = i0.width();
     let height = i0.height();
 
@@ -542,8 +538,7 @@ fn combine_channels_to_diffmap(
             let dc_maskval = mask_dc_y(val) as f32;
 
             // Apply xmul to X channel (index 0) and sum with mask
-            let dc_masked =
-                dc0[x] * xmul * dc_maskval + dc1[x] * dc_maskval + dc2[x] * dc_maskval;
+            let dc_masked = dc0[x] * xmul * dc_maskval + dc1[x] * dc_maskval + dc2[x] * dc_maskval;
             let ac_masked = ac0[x] * xmul * maskval + ac1[x] * maskval + ac2[x] * maskval;
 
             // Final diffmap value is sqrt of sum
@@ -660,8 +655,13 @@ fn compute_diffmap_single_resolution_linear(
     let ps2 = separate_frequencies(&xyb2, pool);
 
     // Compute AC differences using Malta filter
-    let mut block_diff_ac =
-        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul(), params.malta_variant());
+    let mut block_diff_ac = compute_psycho_diff_malta(
+        &ps1,
+        &ps2,
+        params.hf_asymmetry(),
+        params.xmul(),
+        params.malta_variant(),
+    );
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
     let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);
@@ -813,8 +813,13 @@ fn compute_diffmap_single_resolution_xyb(
     let ps2 = separate_frequencies(xyb2, pool);
 
     // Compute AC differences using Malta filter
-    let mut block_diff_ac =
-        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul(), params.malta_variant());
+    let mut block_diff_ac = compute_psycho_diff_malta(
+        &ps1,
+        &ps2,
+        params.hf_asymmetry(),
+        params.xmul(),
+        params.malta_variant(),
+    );
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
     let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);

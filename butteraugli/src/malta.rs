@@ -881,161 +881,105 @@ fn malta_unit_lf_interior(data: &[f32], center: usize, stride: usize) -> f32 {
 
     // Pattern 1: x grows, y constant (sparse horizontal)
     {
-        let sum = at!(c - 4)
-            + at!(c - 2)
-            + at!(c)
-            + at!(c + 2)
-            + at!(c + 4);
+        let sum = at!(c - 4) + at!(c - 2) + at!(c) + at!(c + 2) + at!(c + 4);
         retval += sum * sum;
     }
 
     // Pattern 2: y grows, x constant (sparse vertical)
     {
-        let sum = at!(c - xs4)
-            + at!(c - xs2)
-            + at!(c)
-            + at!(c + xs2)
-            + at!(c + xs4);
+        let sum = at!(c - xs4) + at!(c - xs2) + at!(c) + at!(c + xs2) + at!(c + xs4);
         retval += sum * sum;
     }
 
     // Pattern 3: both grow (diagonal)
     {
-        let sum = at!(c - xs3 - 3)
-            + at!(c - xs2 - 2)
-            + at!(c)
-            + at!(c + xs2 + 2)
-            + at!(c + xs3 + 3);
+        let sum =
+            at!(c - xs3 - 3) + at!(c - xs2 - 2) + at!(c) + at!(c + xs2 + 2) + at!(c + xs3 + 3);
         retval += sum * sum;
     }
 
     // Pattern 4: y grows, x shrinks
     {
-        let sum = at!(c - xs3 + 3)
-            + at!(c - xs2 + 2)
-            + at!(c)
-            + at!(c + xs2 - 2)
-            + at!(c + xs3 - 3);
+        let sum =
+            at!(c - xs3 + 3) + at!(c - xs2 + 2) + at!(c) + at!(c + xs2 - 2) + at!(c + xs3 - 3);
         retval += sum * sum;
     }
 
     // Pattern 5: y grows, x shifts 1 to -1
     {
-        let sum = at!(c - xs4 + 1)
-            + at!(c - xs2 + 1)
-            + at!(c)
-            + at!(c + xs2 - 1)
-            + at!(c + xs4 - 1);
+        let sum =
+            at!(c - xs4 + 1) + at!(c - xs2 + 1) + at!(c) + at!(c + xs2 - 1) + at!(c + xs4 - 1);
         retval += sum * sum;
     }
 
     // Pattern 6: y grows, x shifts -1 to 1
     {
-        let sum = at!(c - xs4 - 1)
-            + at!(c - xs2 - 1)
-            + at!(c)
-            + at!(c + xs2 + 1)
-            + at!(c + xs4 + 1);
+        let sum =
+            at!(c - xs4 - 1) + at!(c - xs2 - 1) + at!(c) + at!(c + xs2 + 1) + at!(c + xs4 + 1);
         retval += sum * sum;
     }
 
     // Pattern 7: x grows, y shifts -1 to 1
     {
-        let sum = at!(c - 4 - xs)
-            + at!(c - 2 - xs)
-            + at!(c)
-            + at!(c + 2 + xs)
-            + at!(c + 4 + xs);
+        let sum = at!(c - 4 - xs) + at!(c - 2 - xs) + at!(c) + at!(c + 2 + xs) + at!(c + 4 + xs);
         retval += sum * sum;
     }
 
     // Pattern 8: x grows, y shifts 1 to -1
     {
-        let sum = at!(c - 4 + xs)
-            + at!(c - 2 + xs)
-            + at!(c)
-            + at!(c + 2 - xs)
-            + at!(c + 4 - xs);
+        let sum = at!(c - 4 + xs) + at!(c - 2 + xs) + at!(c) + at!(c + 2 - xs) + at!(c + 4 - xs);
         retval += sum * sum;
     }
 
     // Pattern 9: steep slope
     {
-        let sum = at!(c - xs3 - 2)
-            + at!(c - xs2 - 1)
-            + at!(c)
-            + at!(c + xs2 + 1)
-            + at!(c + xs3 + 2);
+        let sum =
+            at!(c - xs3 - 2) + at!(c - xs2 - 1) + at!(c) + at!(c + xs2 + 1) + at!(c + xs3 + 2);
         retval += sum * sum;
     }
 
     // Pattern 10: steep slope other way
     {
-        let sum = at!(c - xs3 + 2)
-            + at!(c - xs2 + 1)
-            + at!(c)
-            + at!(c + xs2 - 1)
-            + at!(c + xs3 - 2);
+        let sum =
+            at!(c - xs3 + 2) + at!(c - xs2 + 1) + at!(c) + at!(c + xs2 - 1) + at!(c + xs3 - 2);
         retval += sum * sum;
     }
 
     // Pattern 11: shallow slope
     {
-        let sum = at!(c - xs2 - 3)
-            + at!(c - xs - 2)
-            + at!(c)
-            + at!(c + xs + 2)
-            + at!(c + xs2 + 3);
+        let sum = at!(c - xs2 - 3) + at!(c - xs - 2) + at!(c) + at!(c + xs + 2) + at!(c + xs2 + 3);
         retval += sum * sum;
     }
 
     // Pattern 12: shallow slope other way
     {
-        let sum = at!(c - xs2 + 3)
-            + at!(c - xs + 2)
-            + at!(c)
-            + at!(c + xs - 2)
-            + at!(c + xs2 - 3);
+        let sum = at!(c - xs2 + 3) + at!(c - xs + 2) + at!(c) + at!(c + xs - 2) + at!(c + xs2 - 3);
         retval += sum * sum;
     }
 
     // Pattern 13: curved path
     {
-        let sum = at!(c - 4 + xs2)
-            + at!(c - 2 + xs)
-            + at!(c)
-            + at!(c + 2 - xs)
-            + at!(c + 4 - xs2);
+        let sum = at!(c - 4 + xs2) + at!(c - 2 + xs) + at!(c) + at!(c + 2 - xs) + at!(c + 4 - xs2);
         retval += sum * sum;
     }
 
     // Pattern 14: curved other direction
     {
-        let sum = at!(c - 4 - xs2)
-            + at!(c - 2 - xs)
-            + at!(c)
-            + at!(c + 2 + xs)
-            + at!(c + 4 + xs2);
+        let sum = at!(c - 4 - xs2) + at!(c - 2 - xs) + at!(c) + at!(c + 2 + xs) + at!(c + 4 + xs2);
         retval += sum * sum;
     }
 
     // Pattern 15: vertical with shift
     {
-        let sum = at!(c - xs4 - 2)
-            + at!(c - xs2 - 1)
-            + at!(c)
-            + at!(c + xs2 + 1)
-            + at!(c + xs4 + 2);
+        let sum =
+            at!(c - xs4 - 2) + at!(c - xs2 - 1) + at!(c) + at!(c + xs2 + 1) + at!(c + xs4 + 2);
         retval += sum * sum;
     }
 
     // Pattern 16: vertical other shift
     {
-        let sum = at!(c - xs4 + 2)
-            + at!(c - xs2 + 1)
-            + at!(c)
-            + at!(c + xs2 - 1)
-            + at!(c + xs4 - 2);
+        let sum =
+            at!(c - xs4 + 2) + at!(c - xs2 + 1) + at!(c) + at!(c + xs2 - 1) + at!(c + xs4 - 2);
         retval += sum * sum;
     }
 
@@ -1084,50 +1028,246 @@ fn malta_unit_interior_8x_v3(
 
     // Patterns 1-12: identical between libjxl and google/butteraugli
     // Pattern 1: horizontal
-    { let s = ld!(-4) + ld!(-3) + ld!(-2) + ld!(-1) + ld!(0) + ld!(1) + ld!(2) + ld!(3) + ld!(4); r += s * s; }
+    {
+        let s = ld!(-4) + ld!(-3) + ld!(-2) + ld!(-1) + ld!(0) + ld!(1) + ld!(2) + ld!(3) + ld!(4);
+        r += s * s;
+    }
     // Pattern 2: vertical
-    { let s = ld!(-xs4) + ld!(-xs3) + ld!(-xs2) + ld!(-xs) + ld!(0) + ld!(xs) + ld!(xs2) + ld!(xs3) + ld!(xs4); r += s * s; }
+    {
+        let s = ld!(-xs4)
+            + ld!(-xs3)
+            + ld!(-xs2)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2)
+            + ld!(xs3)
+            + ld!(xs4);
+        r += s * s;
+    }
     // Pattern 3: diagonal \
-    { let s = ld!(-xs3 - 3) + ld!(-xs2 - 2) + ld!(-xs - 1) + ld!(0) + ld!(xs + 1) + ld!(xs2 + 2) + ld!(xs3 + 3); r += s * s; }
+    {
+        let s = ld!(-xs3 - 3)
+            + ld!(-xs2 - 2)
+            + ld!(-xs - 1)
+            + ld!(0)
+            + ld!(xs + 1)
+            + ld!(xs2 + 2)
+            + ld!(xs3 + 3);
+        r += s * s;
+    }
     // Pattern 4: diagonal /
-    { let s = ld!(-xs3 + 3) + ld!(-xs2 + 2) + ld!(-xs + 1) + ld!(0) + ld!(xs - 1) + ld!(xs2 - 2) + ld!(xs3 - 3); r += s * s; }
+    {
+        let s = ld!(-xs3 + 3)
+            + ld!(-xs2 + 2)
+            + ld!(-xs + 1)
+            + ld!(0)
+            + ld!(xs - 1)
+            + ld!(xs2 - 2)
+            + ld!(xs3 - 3);
+        r += s * s;
+    }
     // Pattern 5
-    { let s = ld!(-xs4 + 1) + ld!(-xs3 + 1) + ld!(-xs2 + 1) + ld!(-xs) + ld!(0) + ld!(xs) + ld!(xs2 - 1) + ld!(xs3 - 1) + ld!(xs4 - 1); r += s * s; }
+    {
+        let s = ld!(-xs4 + 1)
+            + ld!(-xs3 + 1)
+            + ld!(-xs2 + 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 - 1)
+            + ld!(xs3 - 1)
+            + ld!(xs4 - 1);
+        r += s * s;
+    }
     // Pattern 6
-    { let s = ld!(-xs4 - 1) + ld!(-xs3 - 1) + ld!(-xs2 - 1) + ld!(-xs) + ld!(0) + ld!(xs) + ld!(xs2 + 1) + ld!(xs3 + 1) + ld!(xs4 + 1); r += s * s; }
+    {
+        let s = ld!(-xs4 - 1)
+            + ld!(-xs3 - 1)
+            + ld!(-xs2 - 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 + 1)
+            + ld!(xs3 + 1)
+            + ld!(xs4 + 1);
+        r += s * s;
+    }
     // Pattern 7
-    { let s = ld!(-4 - xs) + ld!(-3 - xs) + ld!(-2 - xs) + ld!(-1) + ld!(0) + ld!(1) + ld!(2 + xs) + ld!(3 + xs) + ld!(4 + xs); r += s * s; }
+    {
+        let s = ld!(-4 - xs)
+            + ld!(-3 - xs)
+            + ld!(-2 - xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 + xs)
+            + ld!(3 + xs)
+            + ld!(4 + xs);
+        r += s * s;
+    }
     // Pattern 8
-    { let s = ld!(-4 + xs) + ld!(-3 + xs) + ld!(-2 + xs) + ld!(-1) + ld!(0) + ld!(1) + ld!(2 - xs) + ld!(3 - xs) + ld!(4 - xs); r += s * s; }
+    {
+        let s = ld!(-4 + xs)
+            + ld!(-3 + xs)
+            + ld!(-2 + xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 - xs)
+            + ld!(3 - xs)
+            + ld!(4 - xs);
+        r += s * s;
+    }
     // Pattern 9
-    { let s = ld!(-xs3 - 2) + ld!(-xs2 - 1) + ld!(-xs - 1) + ld!(0) + ld!(xs + 1) + ld!(xs2 + 1) + ld!(xs3 + 2); r += s * s; }
+    {
+        let s = ld!(-xs3 - 2)
+            + ld!(-xs2 - 1)
+            + ld!(-xs - 1)
+            + ld!(0)
+            + ld!(xs + 1)
+            + ld!(xs2 + 1)
+            + ld!(xs3 + 2);
+        r += s * s;
+    }
     // Pattern 10
-    { let s = ld!(-xs3 + 2) + ld!(-xs2 + 1) + ld!(-xs + 1) + ld!(0) + ld!(xs - 1) + ld!(xs2 - 1) + ld!(xs3 - 2); r += s * s; }
+    {
+        let s = ld!(-xs3 + 2)
+            + ld!(-xs2 + 1)
+            + ld!(-xs + 1)
+            + ld!(0)
+            + ld!(xs - 1)
+            + ld!(xs2 - 1)
+            + ld!(xs3 - 2);
+        r += s * s;
+    }
     // Pattern 11
-    { let s = ld!(-xs2 - 3) + ld!(-xs - 2) + ld!(-xs - 1) + ld!(0) + ld!(xs + 1) + ld!(xs + 2) + ld!(xs2 + 3); r += s * s; }
+    {
+        let s = ld!(-xs2 - 3)
+            + ld!(-xs - 2)
+            + ld!(-xs - 1)
+            + ld!(0)
+            + ld!(xs + 1)
+            + ld!(xs + 2)
+            + ld!(xs2 + 3);
+        r += s * s;
+    }
     // Pattern 12
-    { let s = ld!(-xs2 + 3) + ld!(-xs + 2) + ld!(-xs + 1) + ld!(0) + ld!(xs - 1) + ld!(xs - 2) + ld!(xs2 - 3); r += s * s; }
+    {
+        let s = ld!(-xs2 + 3)
+            + ld!(-xs + 2)
+            + ld!(-xs + 1)
+            + ld!(0)
+            + ld!(xs - 1)
+            + ld!(xs - 2)
+            + ld!(xs2 - 3);
+        r += s * s;
+    }
 
     if use_google_patterns {
         // Google/butteraugli original: 8-sample S-curves
         // Pattern 13
-        { let s = ld!(xs2 - 4) + ld!(xs2 - 3) + ld!(xs - 2) + ld!(xs - 1) + ld!(0) + ld!(1) + ld!(-xs + 2) + ld!(-xs + 3); r += s * s; }
+        {
+            let s = ld!(xs2 - 4)
+                + ld!(xs2 - 3)
+                + ld!(xs - 2)
+                + ld!(xs - 1)
+                + ld!(0)
+                + ld!(1)
+                + ld!(-xs + 2)
+                + ld!(-xs + 3);
+            r += s * s;
+        }
         // Pattern 14
-        { let s = ld!(-xs2 - 4) + ld!(-xs2 - 3) + ld!(-xs - 2) + ld!(-xs - 1) + ld!(0) + ld!(1) + ld!(xs + 2) + ld!(xs + 3); r += s * s; }
+        {
+            let s = ld!(-xs2 - 4)
+                + ld!(-xs2 - 3)
+                + ld!(-xs - 2)
+                + ld!(-xs - 1)
+                + ld!(0)
+                + ld!(1)
+                + ld!(xs + 2)
+                + ld!(xs + 3);
+            r += s * s;
+        }
         // Pattern 15
-        { let s = ld!(-xs4 - 2) + ld!(-xs3 - 2) + ld!(-xs2 - 1) + ld!(-xs - 1) + ld!(0) + ld!(xs) + ld!(xs2 + 1) + ld!(xs3 + 1); r += s * s; }
+        {
+            let s = ld!(-xs4 - 2)
+                + ld!(-xs3 - 2)
+                + ld!(-xs2 - 1)
+                + ld!(-xs - 1)
+                + ld!(0)
+                + ld!(xs)
+                + ld!(xs2 + 1)
+                + ld!(xs3 + 1);
+            r += s * s;
+        }
         // Pattern 16
-        { let s = ld!(-xs4 + 2) + ld!(-xs3 + 2) + ld!(-xs2 + 1) + ld!(-xs + 1) + ld!(0) + ld!(xs) + ld!(xs2 - 1) + ld!(xs3 - 1); r += s * s; }
+        {
+            let s = ld!(-xs4 + 2)
+                + ld!(-xs3 + 2)
+                + ld!(-xs2 + 1)
+                + ld!(-xs + 1)
+                + ld!(0)
+                + ld!(xs)
+                + ld!(xs2 - 1)
+                + ld!(xs3 - 1);
+            r += s * s;
+        }
     } else {
         // libjxl: patterns 13-16 are duplicates of 8,7,6,5
         // Pattern 13 (same offsets as 8)
-        { let s = ld!(-4 + xs) + ld!(-3 + xs) + ld!(-2 + xs) + ld!(-1) + ld!(0) + ld!(1) + ld!(2 - xs) + ld!(3 - xs) + ld!(4 - xs); r += s * s; }
+        {
+            let s = ld!(-4 + xs)
+                + ld!(-3 + xs)
+                + ld!(-2 + xs)
+                + ld!(-1)
+                + ld!(0)
+                + ld!(1)
+                + ld!(2 - xs)
+                + ld!(3 - xs)
+                + ld!(4 - xs);
+            r += s * s;
+        }
         // Pattern 14 (same offsets as 7)
-        { let s = ld!(-4 - xs) + ld!(-3 - xs) + ld!(-2 - xs) + ld!(-1) + ld!(0) + ld!(1) + ld!(2 + xs) + ld!(3 + xs) + ld!(4 + xs); r += s * s; }
+        {
+            let s = ld!(-4 - xs)
+                + ld!(-3 - xs)
+                + ld!(-2 - xs)
+                + ld!(-1)
+                + ld!(0)
+                + ld!(1)
+                + ld!(2 + xs)
+                + ld!(3 + xs)
+                + ld!(4 + xs);
+            r += s * s;
+        }
         // Pattern 15 (same offsets as 6)
-        { let s = ld!(-xs4 - 1) + ld!(-xs3 - 1) + ld!(-xs2 - 1) + ld!(-xs) + ld!(0) + ld!(xs) + ld!(xs2 + 1) + ld!(xs3 + 1) + ld!(xs4 + 1); r += s * s; }
+        {
+            let s = ld!(-xs4 - 1)
+                + ld!(-xs3 - 1)
+                + ld!(-xs2 - 1)
+                + ld!(-xs)
+                + ld!(0)
+                + ld!(xs)
+                + ld!(xs2 + 1)
+                + ld!(xs3 + 1)
+                + ld!(xs4 + 1);
+            r += s * s;
+        }
         // Pattern 16 (same offsets as 5)
-        { let s = ld!(-xs4 + 1) + ld!(-xs3 + 1) + ld!(-xs2 + 1) + ld!(-xs) + ld!(0) + ld!(xs) + ld!(xs2 - 1) + ld!(xs3 - 1) + ld!(xs4 - 1); r += s * s; }
+        {
+            let s = ld!(-xs4 + 1)
+                + ld!(-xs3 + 1)
+                + ld!(-xs2 + 1)
+                + ld!(-xs)
+                + ld!(0)
+                + ld!(xs)
+                + ld!(xs2 - 1)
+                + ld!(xs3 - 1)
+                + ld!(xs4 - 1);
+            r += s * s;
+        }
     }
 
     r
@@ -1164,37 +1304,85 @@ fn malta_unit_lf_interior_8x_v3(
     let mut r = f32x8::splat(token, 0.0);
 
     // Pattern 1: sparse horizontal
-    { let s = ld!(-4) + ld!(-2) + ld!(0) + ld!(2) + ld!(4); r += s * s; }
+    {
+        let s = ld!(-4) + ld!(-2) + ld!(0) + ld!(2) + ld!(4);
+        r += s * s;
+    }
     // Pattern 2: sparse vertical
-    { let s = ld!(-xs4) + ld!(-xs2) + ld!(0) + ld!(xs2) + ld!(xs4); r += s * s; }
+    {
+        let s = ld!(-xs4) + ld!(-xs2) + ld!(0) + ld!(xs2) + ld!(xs4);
+        r += s * s;
+    }
     // Pattern 3: diagonal
-    { let s = ld!(-xs3 - 3) + ld!(-xs2 - 2) + ld!(0) + ld!(xs2 + 2) + ld!(xs3 + 3); r += s * s; }
+    {
+        let s = ld!(-xs3 - 3) + ld!(-xs2 - 2) + ld!(0) + ld!(xs2 + 2) + ld!(xs3 + 3);
+        r += s * s;
+    }
     // Pattern 4: anti-diagonal
-    { let s = ld!(-xs3 + 3) + ld!(-xs2 + 2) + ld!(0) + ld!(xs2 - 2) + ld!(xs3 - 3); r += s * s; }
+    {
+        let s = ld!(-xs3 + 3) + ld!(-xs2 + 2) + ld!(0) + ld!(xs2 - 2) + ld!(xs3 - 3);
+        r += s * s;
+    }
     // Pattern 5
-    { let s = ld!(-xs4 + 1) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs4 - 1); r += s * s; }
+    {
+        let s = ld!(-xs4 + 1) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs4 - 1);
+        r += s * s;
+    }
     // Pattern 6
-    { let s = ld!(-xs4 - 1) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs4 + 1); r += s * s; }
+    {
+        let s = ld!(-xs4 - 1) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs4 + 1);
+        r += s * s;
+    }
     // Pattern 7
-    { let s = ld!(-4 - xs) + ld!(-2 - xs) + ld!(0) + ld!(2 + xs) + ld!(4 + xs); r += s * s; }
+    {
+        let s = ld!(-4 - xs) + ld!(-2 - xs) + ld!(0) + ld!(2 + xs) + ld!(4 + xs);
+        r += s * s;
+    }
     // Pattern 8
-    { let s = ld!(-4 + xs) + ld!(-2 + xs) + ld!(0) + ld!(2 - xs) + ld!(4 - xs); r += s * s; }
+    {
+        let s = ld!(-4 + xs) + ld!(-2 + xs) + ld!(0) + ld!(2 - xs) + ld!(4 - xs);
+        r += s * s;
+    }
     // Pattern 9
-    { let s = ld!(-xs3 - 2) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs3 + 2); r += s * s; }
+    {
+        let s = ld!(-xs3 - 2) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs3 + 2);
+        r += s * s;
+    }
     // Pattern 10
-    { let s = ld!(-xs3 + 2) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs3 - 2); r += s * s; }
+    {
+        let s = ld!(-xs3 + 2) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs3 - 2);
+        r += s * s;
+    }
     // Pattern 11
-    { let s = ld!(-xs2 - 3) + ld!(-xs - 2) + ld!(0) + ld!(xs + 2) + ld!(xs2 + 3); r += s * s; }
+    {
+        let s = ld!(-xs2 - 3) + ld!(-xs - 2) + ld!(0) + ld!(xs + 2) + ld!(xs2 + 3);
+        r += s * s;
+    }
     // Pattern 12
-    { let s = ld!(-xs2 + 3) + ld!(-xs + 2) + ld!(0) + ld!(xs - 2) + ld!(xs2 - 3); r += s * s; }
+    {
+        let s = ld!(-xs2 + 3) + ld!(-xs + 2) + ld!(0) + ld!(xs - 2) + ld!(xs2 - 3);
+        r += s * s;
+    }
     // Pattern 13
-    { let s = ld!(-4 + xs2) + ld!(-2 + xs) + ld!(0) + ld!(2 - xs) + ld!(4 - xs2); r += s * s; }
+    {
+        let s = ld!(-4 + xs2) + ld!(-2 + xs) + ld!(0) + ld!(2 - xs) + ld!(4 - xs2);
+        r += s * s;
+    }
     // Pattern 14
-    { let s = ld!(-4 - xs2) + ld!(-2 - xs) + ld!(0) + ld!(2 + xs) + ld!(4 + xs2); r += s * s; }
+    {
+        let s = ld!(-4 - xs2) + ld!(-2 - xs) + ld!(0) + ld!(2 + xs) + ld!(4 + xs2);
+        r += s * s;
+    }
     // Pattern 15
-    { let s = ld!(-xs4 - 2) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs4 + 2); r += s * s; }
+    {
+        let s = ld!(-xs4 - 2) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs4 + 2);
+        r += s * s;
+    }
     // Pattern 16
-    { let s = ld!(-xs4 + 2) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs4 - 2); r += s * s; }
+    {
+        let s = ld!(-xs4 + 2) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs4 - 2);
+        r += s * s;
+    }
 
     r
 }
@@ -1236,7 +1424,15 @@ pub fn malta_diff_map(
     use_lf: bool,
     use_google_patterns: bool,
 ) -> ImageF {
-    archmage::incant!(malta_diff_map_dispatch(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, use_google_patterns))
+    archmage::incant!(malta_diff_map_dispatch(
+        lum0,
+        lum1,
+        w_0gt1,
+        w_0lt1,
+        norm1,
+        use_lf,
+        use_google_patterns
+    ))
 }
 
 /// Shared implementation for Malta diff map.
@@ -1358,7 +1554,15 @@ where
 
             // Interior - delegate to dispatch closure
             if width > 8 {
-                interior_row(data, center_base, stride, width, use_lf, use_google_patterns, out);
+                interior_row(
+                    data,
+                    center_base,
+                    stride,
+                    width,
+                    use_lf,
+                    use_google_patterns,
+                    out,
+                );
             }
 
             // Right border (x = width-4..width)
@@ -1432,7 +1636,16 @@ fn malta_diff_map_dispatch_v3(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, use_google_patterns, interior)
+    malta_diff_map_impl(
+        lum0,
+        lum1,
+        w_0gt1,
+        w_0lt1,
+        norm1,
+        use_lf,
+        use_google_patterns,
+        interior,
+    )
 }
 
 /// Scalar fallback for Malta diff map.
@@ -1464,7 +1677,16 @@ fn malta_diff_map_dispatch_scalar(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, use_google_patterns, interior)
+    malta_diff_map_impl(
+        lum0,
+        lum1,
+        w_0gt1,
+        w_0lt1,
+        norm1,
+        use_lf,
+        use_google_patterns,
+        interior,
+    )
 }
 
 #[cfg(test)]

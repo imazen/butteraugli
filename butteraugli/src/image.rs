@@ -141,7 +141,9 @@ impl BufferPool {
                 buf
             }
             #[cfg(not(feature = "unsafe-performance"))]
-            { vec![0.0; needed] }
+            {
+                vec![0.0; needed]
+            }
         }
     }
 

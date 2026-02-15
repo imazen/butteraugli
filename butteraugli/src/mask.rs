@@ -99,8 +99,16 @@ pub fn fuzzy_erosion(from: &ImageF, to: &mut ImageF) {
 
     for y in 0..height {
         let row_c = from.row(y);
-        let row_up = if y >= K_STEP { Some(from.row(y - K_STEP)) } else { None };
-        let row_dn = if y + K_STEP < height { Some(from.row(y + K_STEP)) } else { None };
+        let row_up = if y >= K_STEP {
+            Some(from.row(y - K_STEP))
+        } else {
+            None
+        };
+        let row_dn = if y + K_STEP < height {
+            Some(from.row(y + K_STEP))
+        } else {
+            None
+        };
         let out_row = to.row_mut(y);
 
         for x in 0..width {
