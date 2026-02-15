@@ -28,7 +28,9 @@
 use crate::image::{BufferPool, Image3F, ImageF};
 use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli};
 use crate::psycho::{separate_frequencies, PsychoImage};
-use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, MaltaVariant};
+use crate::{
+    check_finite_f32, ButteraugliError, ButteraugliParams, ButteraugliResult, MaltaVariant,
+};
 
 /// Minimum image dimension for multi-resolution processing.
 const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
@@ -103,7 +105,12 @@ impl ButteraugliReference {
         height: usize,
         params: ButteraugliParams,
     ) -> Result<Self, ButteraugliError> {
-        let expected_size = width * height * 3;
+        params.validate()?;
+
+        let expected_size = width
+            .checked_mul(height)
+            .and_then(|wh| wh.checked_mul(3))
+            .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
 
         if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
             return Err(ButteraugliError::InvalidDimensions { width, height });
@@ -119,7 +126,8 @@ impl ButteraugliReference {
         // Convert sRGB u8 → linear f32 and delegate.
         // Subsampling must happen in linear space, not gamma-compressed sRGB.
         let linear = srgb_u8_to_linear_f32(rgb);
-        Self::new_linear(&linear, width, height, params)
+        // Skip re-validation in new_linear — params already validated above.
+        Self::new_linear_validated(&linear, width, height, params)
     }
 
     /// Precompute reference data from a linear RGB f32 image.
@@ -143,7 +151,22 @@ impl ButteraugliReference {
         height: usize,
         params: ButteraugliParams,
     ) -> Result<Self, ButteraugliError> {
-        let expected_size = width * height * 3;
+        params.validate()?;
+        Self::new_linear_validated(rgb, width, height, params)
+    }
+
+    /// Internal constructor that skips param validation (caller must have
+    /// already called `params.validate()`).
+    fn new_linear_validated(
+        rgb: &[f32],
+        width: usize,
+        height: usize,
+        params: ButteraugliParams,
+    ) -> Result<Self, ButteraugliError> {
+        let expected_size = width
+            .checked_mul(height)
+            .and_then(|wh| wh.checked_mul(3))
+            .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
 
         if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
             return Err(ButteraugliError::InvalidDimensions { width, height });
@@ -155,6 +178,8 @@ impl ButteraugliReference {
                 actual: rgb.len(),
             });
         }
+
+        check_finite_f32(rgb, "linear rgb")?;
 
         let pool = BufferPool::new();
 
@@ -217,17 +242,25 @@ impl ButteraugliReference {
         stride: usize,
         params: ButteraugliParams,
     ) -> Result<Self, ButteraugliError> {
+        params.validate()?;
+
         if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
             return Err(ButteraugliError::InvalidDimensions { width, height });
         }
 
-        let min_size = stride * height;
+        let min_size = stride
+            .checked_mul(height)
+            .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
         if r.len() < min_size || g.len() < min_size || b.len() < min_size {
             return Err(ButteraugliError::InvalidBufferSize {
                 expected: min_size,
                 actual: r.len().min(g.len()).min(b.len()),
             });
         }
+
+        check_finite_f32(&r[..min_size], "planar r")?;
+        check_finite_f32(&g[..min_size], "planar g")?;
+        check_finite_f32(&b[..min_size], "planar b")?;
 
         let pool = BufferPool::new();
 
@@ -253,13 +286,8 @@ impl ButteraugliReference {
             let (sub_r, sub_g, sub_b, sw, sh) =
                 subsample_planar_rgb_2x(r, g, b, width, height, stride);
             let sub_rgb = interleave_planar(&sub_r, &sub_g, &sub_b, sw, sh);
-            let sub_xyb = linear_rgb_to_xyb_butteraugli(
-                &sub_rgb,
-                sw,
-                sh,
-                params.intensity_target(),
-                &pool,
-            );
+            let sub_xyb =
+                linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
             let sub_psycho = separate_frequencies(&sub_xyb, &pool);
             Some(ScaleData {
                 xyb: sub_xyb,
@@ -301,7 +329,11 @@ impl ButteraugliReference {
             });
         }
 
-        Ok(self.compare_impl(rgb))
+        let result = self.compare_impl(rgb);
+        if !result.score.is_finite() {
+            return Err(ButteraugliError::NonFiniteResult);
+        }
+        Ok(result)
     }
 
     /// Compare a distorted linear RGB image against the precomputed reference.
@@ -322,7 +354,13 @@ impl ButteraugliReference {
             });
         }
 
-        Ok(self.compare_linear_impl(rgb))
+        check_finite_f32(rgb, "compare linear rgb")?;
+
+        let result = self.compare_linear_impl(rgb);
+        if !result.score.is_finite() {
+            return Err(ButteraugliError::NonFiniteResult);
+        }
+        Ok(result)
     }
 
     /// Compare a distorted planar linear RGB image against the precomputed reference.
@@ -351,7 +389,15 @@ impl ButteraugliReference {
             });
         }
 
-        Ok(self.compare_linear_planar_impl(r, g, b, stride))
+        check_finite_f32(&r[..min_size], "compare planar r")?;
+        check_finite_f32(&g[..min_size], "compare planar g")?;
+        check_finite_f32(&b[..min_size], "compare planar b")?;
+
+        let result = self.compare_linear_planar_impl(r, g, b, stride);
+        if !result.score.is_finite() {
+            return Err(ButteraugliError::NonFiniteResult);
+        }
+        Ok(result)
     }
 
     /// Width of the reference image.
@@ -507,8 +553,13 @@ fn compute_diffmap_with_precomputed(
     pool: &BufferPool,
 ) -> ImageF {
     // Compute AC differences using Malta filter
-    let mut block_diff_ac =
-        compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul(), params.malta_variant());
+    let mut block_diff_ac = compute_psycho_diff_malta(
+        ps1,
+        ps2,
+        params.hf_asymmetry(),
+        params.xmul(),
+        params.malta_variant(),
+    );
 
     // Compute mask from both PsychoImages
     let mask = mask_psycho_image(ps1, ps2, Some(block_diff_ac.plane_mut(1)), pool);
@@ -770,8 +821,7 @@ fn combine_channels_to_diffmap(
             let maskval = mask_y(val) as f32;
             let dc_maskval = mask_dc_y(val) as f32;
 
-            let dc_masked =
-                dc0[x] * xmul * dc_maskval + dc1[x] * dc_maskval + dc2[x] * dc_maskval;
+            let dc_masked = dc0[x] * xmul * dc_maskval + dc1[x] * dc_maskval + dc2[x] * dc_maskval;
             let ac_masked = ac0[x] * xmul * maskval + ac1[x] * maskval + ac2[x] * maskval;
 
             out[x] = (dc_masked + ac_masked).sqrt();
@@ -1235,7 +1285,10 @@ mod tests {
             ButteraugliReference::new(&rgb1, width, height, ButteraugliParams::default())
                 .expect("should create reference");
 
-        assert!(reference.half.is_some(), "should have half-resolution sub-level");
+        assert!(
+            reference.half.is_some(),
+            "should have half-resolution sub-level"
+        );
 
         let precomputed_result = reference.compare(&rgb2).expect("should compare");
 

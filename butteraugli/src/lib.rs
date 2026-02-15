@@ -137,10 +137,11 @@ pub use imgref::{Img, ImgRef, ImgVec};
 pub use rgb::{RGB, RGB8};
 
 /// Error type for butteraugli operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ButteraugliError {
     /// Image is too small (minimum 8x8).
+    #[non_exhaustive]
     ImageTooSmall {
         /// Image width.
         width: usize,
@@ -148,6 +149,7 @@ pub enum ButteraugliError {
         height: usize,
     },
     /// Image dimensions don't match.
+    #[non_exhaustive]
     DimensionMismatch {
         /// First image width.
         w1: usize,
@@ -159,6 +161,7 @@ pub enum ButteraugliError {
         h2: usize,
     },
     /// Image dimensions are invalid (legacy variant).
+    #[non_exhaustive]
     #[doc(hidden)]
     InvalidDimensions {
         /// Width provided.
@@ -167,6 +170,7 @@ pub enum ButteraugliError {
         height: usize,
     },
     /// Buffer size doesn't match expected size (legacy variant).
+    #[non_exhaustive]
     #[doc(hidden)]
     InvalidBufferSize {
         /// Expected buffer size.
@@ -174,6 +178,26 @@ pub enum ButteraugliError {
         /// Actual buffer size.
         actual: usize,
     },
+    /// A parameter value is out of valid range.
+    #[non_exhaustive]
+    InvalidParameter {
+        /// Parameter name.
+        name: &'static str,
+        /// The invalid value.
+        value: f64,
+        /// Why it's invalid.
+        reason: &'static str,
+    },
+    /// Image dimensions would overflow buffer size calculations.
+    #[non_exhaustive]
+    DimensionOverflow {
+        /// Image width.
+        width: usize,
+        /// Image height.
+        height: usize,
+    },
+    /// Score computation produced NaN or infinity (usually from non-finite input pixels).
+    NonFiniteResult,
 }
 
 impl std::fmt::Display for ButteraugliError {
@@ -192,6 +216,25 @@ impl std::fmt::Display for ButteraugliError {
                 write!(
                     f,
                     "buffer size {actual} doesn't match expected size {expected}"
+                )
+            }
+            Self::InvalidParameter {
+                name,
+                value,
+                reason,
+            } => {
+                write!(f, "invalid parameter {name}={value}: {reason}")
+            }
+            Self::DimensionOverflow { width, height } => {
+                write!(
+                    f,
+                    "image dimensions {width}x{height} overflow buffer size calculation"
+                )
+            }
+            Self::NonFiniteResult => {
+                write!(
+                    f,
+                    "score computation produced NaN or infinity (check input pixels)"
                 )
             }
         }
@@ -345,6 +388,69 @@ impl ButteraugliParams {
     pub fn malta_variant(&self) -> MaltaVariant {
         self.malta_variant
     }
+
+    /// Validates that all parameter values are in acceptable ranges.
+    ///
+    /// Called automatically by all public entry points. Returns an error if
+    /// any parameter would cause division by zero, NaN propagation, or
+    /// garbage results.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ButteraugliError::InvalidParameter`] if:
+    /// - `hf_asymmetry` is not finite or not positive
+    /// - `intensity_target` is not finite or not positive
+    /// - `xmul` is not finite or is negative
+    pub fn validate(&self) -> Result<(), ButteraugliError> {
+        if !self.hf_asymmetry.is_finite() || self.hf_asymmetry <= 0.0 {
+            return Err(ButteraugliError::InvalidParameter {
+                name: "hf_asymmetry",
+                value: self.hf_asymmetry as f64,
+                reason: "must be finite and positive",
+            });
+        }
+        if !self.intensity_target.is_finite() || self.intensity_target <= 0.0 {
+            return Err(ButteraugliError::InvalidParameter {
+                name: "intensity_target",
+                value: self.intensity_target as f64,
+                reason: "must be finite and positive",
+            });
+        }
+        if !self.xmul.is_finite() || self.xmul < 0.0 {
+            return Err(ButteraugliError::InvalidParameter {
+                name: "xmul",
+                value: self.xmul as f64,
+                reason: "must be finite and non-negative",
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Check that all values in a float slice are finite (not NaN or Inf).
+pub(crate) fn check_finite_f32(
+    data: &[f32],
+    context: &'static str,
+) -> Result<(), ButteraugliError> {
+    for &v in data {
+        if !v.is_finite() {
+            return Err(ButteraugliError::NonFiniteResult);
+        }
+    }
+    let _ = context;
+    Ok(())
+}
+
+/// Check that all pixels in an `ImgRef<RGB<f32>>` are finite.
+fn check_finite_rgb_imgref(img: ImgRef<RGB<f32>>) -> Result<(), ButteraugliError> {
+    for row in img.rows() {
+        for px in row {
+            if !px.r.is_finite() || !px.g.is_finite() || !px.b.is_finite() {
+                return Err(ButteraugliError::NonFiniteResult);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Quality threshold for "good" (images look the same).
@@ -398,6 +504,8 @@ pub fn butteraugli(
     img2: ImgRef<RGB8>,
     params: &ButteraugliParams,
 ) -> Result<ButteraugliResult, ButteraugliError> {
+    params.validate()?;
+
     let (w1, h1) = (img1.width(), img1.height());
     let (w2, h2) = (img2.width(), img2.height());
 
@@ -413,6 +521,10 @@ pub fn butteraugli(
     }
 
     let result = diff::compute_butteraugli_imgref(img1, img2, params, params.compute_diffmap);
+
+    if !result.score.is_finite() {
+        return Err(ButteraugliError::NonFiniteResult);
+    }
 
     Ok(ButteraugliResult {
         score: result.score,
@@ -442,6 +554,8 @@ pub fn butteraugli_linear(
     img2: ImgRef<RGB<f32>>,
     params: &ButteraugliParams,
 ) -> Result<ButteraugliResult, ButteraugliError> {
+    params.validate()?;
+
     let (w1, h1) = (img1.width(), img1.height());
     let (w2, h2) = (img2.width(), img2.height());
 
@@ -456,8 +570,15 @@ pub fn butteraugli_linear(
         return Err(ButteraugliError::DimensionMismatch { w1, h1, w2, h2 });
     }
 
+    check_finite_rgb_imgref(img1)?;
+    check_finite_rgb_imgref(img2)?;
+
     let result =
         diff::compute_butteraugli_linear_imgref(img1, img2, params, params.compute_diffmap);
+
+    if !result.score.is_finite() {
+        return Err(ButteraugliError::NonFiniteResult);
+    }
 
     Ok(ButteraugliResult {
         score: result.score,
@@ -501,7 +622,12 @@ pub fn compute_butteraugli(
     height: usize,
     params: &ButteraugliParams,
 ) -> Result<LegacyButteraugliResult, ButteraugliError> {
-    let expected_size = width * height * 3;
+    params.validate()?;
+
+    let expected_size = width
+        .checked_mul(height)
+        .and_then(|wh| wh.checked_mul(3))
+        .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
 
     if width < 8 || height < 8 {
         return Err(ButteraugliError::ImageTooSmall { width, height });
@@ -539,6 +665,10 @@ pub fn compute_butteraugli(
 
     let result = diff::compute_butteraugli_imgref(img1.as_ref(), img2.as_ref(), params, true);
 
+    if !result.score.is_finite() {
+        return Err(ButteraugliError::NonFiniteResult);
+    }
+
     Ok(LegacyButteraugliResult {
         score: result.score,
         diffmap: result.diffmap,
@@ -560,7 +690,12 @@ pub fn compute_butteraugli_linear(
     height: usize,
     params: &ButteraugliParams,
 ) -> Result<LegacyButteraugliResult, ButteraugliError> {
-    let expected_size = width * height * 3;
+    params.validate()?;
+
+    let expected_size = width
+        .checked_mul(height)
+        .and_then(|wh| wh.checked_mul(3))
+        .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
 
     if width < 8 || height < 8 {
         return Err(ButteraugliError::ImageTooSmall { width, height });
@@ -583,6 +718,9 @@ pub fn compute_butteraugli_linear(
         });
     }
 
+    check_finite_f32(rgb1, "rgb1")?;
+    check_finite_f32(rgb2, "rgb2")?;
+
     // Convert f32 slices to RGB<f32> and create Img
     let pixels1: Vec<RGB<f32>> = rgb1
         .chunks_exact(3)
@@ -598,6 +736,10 @@ pub fn compute_butteraugli_linear(
 
     let result =
         diff::compute_butteraugli_linear_imgref(img1.as_ref(), img2.as_ref(), params, true);
+
+    if !result.score.is_finite() {
+        return Err(ButteraugliError::NonFiniteResult);
+    }
 
     Ok(LegacyButteraugliResult {
         score: result.score,
@@ -700,5 +842,317 @@ mod tests {
         let diffmap = result.diffmap.unwrap();
         assert_eq!(diffmap.width(), width);
         assert_eq!(diffmap.height(), height);
+    }
+
+    // ================================================================
+    // Parameter validation tests
+    // ================================================================
+
+    fn make_test_images() -> (ImgVec<RGB8>, ImgVec<RGB8>) {
+        let width = 16;
+        let height = 16;
+        let pixels: Vec<RGB8> = vec![RGB8::new(128, 128, 128); width * height];
+        let img = Img::new(pixels, width, height);
+        (img.clone(), img)
+    }
+
+    #[test]
+    fn test_zero_hf_asymmetry_returns_error() {
+        let (img1, img2) = make_test_images();
+        let params = ButteraugliParams::new().with_hf_asymmetry(0.0);
+        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params);
+        assert!(
+            matches!(
+                result,
+                Err(ButteraugliError::InvalidParameter {
+                    name: "hf_asymmetry",
+                    ..
+                })
+            ),
+            "expected InvalidParameter for hf_asymmetry=0.0, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_negative_hf_asymmetry_returns_error() {
+        let (img1, img2) = make_test_images();
+        let params = ButteraugliParams::new().with_hf_asymmetry(-1.0);
+        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params);
+        assert!(
+            matches!(
+                result,
+                Err(ButteraugliError::InvalidParameter {
+                    name: "hf_asymmetry",
+                    ..
+                })
+            ),
+            "expected InvalidParameter for hf_asymmetry=-1.0, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_zero_intensity_target_returns_error() {
+        let (img1, img2) = make_test_images();
+        let params = ButteraugliParams::new().with_intensity_target(0.0);
+        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params);
+        assert!(
+            matches!(
+                result,
+                Err(ButteraugliError::InvalidParameter {
+                    name: "intensity_target",
+                    ..
+                })
+            ),
+            "expected InvalidParameter for intensity_target=0.0, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_nan_xmul_returns_error() {
+        let (img1, img2) = make_test_images();
+        let params = ButteraugliParams::new().with_xmul(f32::NAN);
+        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params);
+        assert!(
+            matches!(
+                result,
+                Err(ButteraugliError::InvalidParameter { name: "xmul", .. })
+            ),
+            "expected InvalidParameter for xmul=NaN, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_inf_hf_asymmetry_returns_error() {
+        let (img1, img2) = make_test_images();
+        let params = ButteraugliParams::new().with_hf_asymmetry(f32::INFINITY);
+        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params);
+        assert!(
+            matches!(
+                result,
+                Err(ButteraugliError::InvalidParameter {
+                    name: "hf_asymmetry",
+                    ..
+                })
+            ),
+            "expected InvalidParameter for hf_asymmetry=Inf, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_negative_xmul_returns_error() {
+        let (img1, img2) = make_test_images();
+        let params = ButteraugliParams::new().with_xmul(-0.5);
+        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params);
+        assert!(
+            matches!(
+                result,
+                Err(ButteraugliError::InvalidParameter { name: "xmul", .. })
+            ),
+            "expected InvalidParameter for xmul=-0.5, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_zero_xmul_is_valid() {
+        // xmul=0 is allowed (silences X channel, not a bug)
+        let (img1, img2) = make_test_images();
+        let params = ButteraugliParams::new().with_xmul(0.0);
+        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params);
+        assert!(result.is_ok(), "xmul=0.0 should be valid, got {result:?}");
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_overflow_dimensions_returns_error() {
+        // width * height * 3 would overflow usize on 64-bit
+        let width = usize::MAX / 2;
+        let height = 3;
+        let rgb: Vec<u8> = vec![0; 8]; // doesn't matter, overflow comes first
+        let result = compute_butteraugli(&rgb, &rgb, width, height, &ButteraugliParams::default());
+        assert!(
+            matches!(result, Err(ButteraugliError::DimensionOverflow { .. })),
+            "expected DimensionOverflow, got {:?}",
+            result.as_ref().err()
+        );
+    }
+
+    #[test]
+    fn test_nan_pixels_returns_non_finite_result() {
+        let width = 16;
+        let height = 16;
+        // All-NaN pixels propagate through the entire pipeline to produce NaN score.
+        // A single NaN pixel may get absorbed by averaging/clamping in the algorithm,
+        // but a fully-NaN image guarantees NaN propagation.
+        let pixels1: Vec<RGB<f32>> = vec![RGB::new(f32::NAN, f32::NAN, f32::NAN); width * height];
+        let pixels2: Vec<RGB<f32>> = vec![RGB::new(0.5, 0.5, 0.5); width * height];
+
+        let img1 = Img::new(pixels1, width, height);
+        let img2 = Img::new(pixels2, width, height);
+
+        let result =
+            butteraugli_linear(img1.as_ref(), img2.as_ref(), &ButteraugliParams::default());
+        assert!(
+            matches!(result, Err(ButteraugliError::NonFiniteResult)),
+            "expected NonFiniteResult for NaN input pixels, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_inf_pixels_returns_non_finite_result() {
+        let width = 16;
+        let height = 16;
+        let pixels1: Vec<RGB<f32>> =
+            vec![RGB::new(f32::INFINITY, f32::INFINITY, f32::INFINITY); width * height];
+        let pixels2: Vec<RGB<f32>> = vec![RGB::new(0.5, 0.5, 0.5); width * height];
+
+        let img1 = Img::new(pixels1, width, height);
+        let img2 = Img::new(pixels2, width, height);
+
+        let result =
+            butteraugli_linear(img1.as_ref(), img2.as_ref(), &ButteraugliParams::default());
+        assert!(
+            matches!(result, Err(ButteraugliError::NonFiniteResult)),
+            "expected NonFiniteResult for Inf input pixels, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_default_params_still_valid() {
+        assert!(ButteraugliParams::default().validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_method_directly() {
+        // Valid params
+        assert!(ButteraugliParams::new()
+            .with_hf_asymmetry(1.5)
+            .with_intensity_target(250.0)
+            .with_xmul(0.5)
+            .validate()
+            .is_ok());
+
+        // Each invalid param
+        assert!(ButteraugliParams::new()
+            .with_hf_asymmetry(0.0)
+            .validate()
+            .is_err());
+        assert!(ButteraugliParams::new()
+            .with_hf_asymmetry(-1.0)
+            .validate()
+            .is_err());
+        assert!(ButteraugliParams::new()
+            .with_hf_asymmetry(f32::NAN)
+            .validate()
+            .is_err());
+        assert!(ButteraugliParams::new()
+            .with_hf_asymmetry(f32::INFINITY)
+            .validate()
+            .is_err());
+        assert!(ButteraugliParams::new()
+            .with_intensity_target(0.0)
+            .validate()
+            .is_err());
+        assert!(ButteraugliParams::new()
+            .with_intensity_target(-10.0)
+            .validate()
+            .is_err());
+        assert!(ButteraugliParams::new().with_xmul(-0.1).validate().is_err());
+        assert!(ButteraugliParams::new()
+            .with_xmul(f32::NAN)
+            .validate()
+            .is_err());
+
+        // xmul=0 is valid
+        assert!(ButteraugliParams::new().with_xmul(0.0).validate().is_ok());
+    }
+
+    #[test]
+    fn test_validation_on_linear_api() {
+        let width = 16;
+        let height = 16;
+        let pixels: Vec<RGB<f32>> = vec![RGB::new(0.5, 0.5, 0.5); width * height];
+        let img = Img::new(pixels, width, height);
+
+        let params = ButteraugliParams::new().with_hf_asymmetry(0.0);
+        let result = butteraugli_linear(img.as_ref(), img.as_ref(), &params);
+        assert!(matches!(
+            result,
+            Err(ButteraugliError::InvalidParameter {
+                name: "hf_asymmetry",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn test_validation_on_precompute_api() {
+        let width = 32;
+        let height = 32;
+        let rgb: Vec<u8> = vec![128; width * height * 3];
+
+        let params = ButteraugliParams::new().with_intensity_target(0.0);
+        let result = ButteraugliReference::new(&rgb, width, height, params);
+        assert!(matches!(
+            result,
+            Err(ButteraugliError::InvalidParameter {
+                name: "intensity_target",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn test_validation_on_precompute_linear_api() {
+        let width = 32;
+        let height = 32;
+        let rgb: Vec<f32> = vec![0.5; width * height * 3];
+
+        let params = ButteraugliParams::new().with_hf_asymmetry(-1.0);
+        let result = ButteraugliReference::new_linear(&rgb, width, height, params);
+        assert!(matches!(
+            result,
+            Err(ButteraugliError::InvalidParameter {
+                name: "hf_asymmetry",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn test_validation_on_precompute_planar_api() {
+        let width = 32;
+        let height = 32;
+        let channel: Vec<f32> = vec![0.5; width * height];
+
+        let params = ButteraugliParams::new().with_xmul(f32::NAN);
+        let result = ButteraugliReference::new_linear_planar(
+            &channel, &channel, &channel, width, height, width, params,
+        );
+        assert!(matches!(
+            result,
+            Err(ButteraugliError::InvalidParameter { name: "xmul", .. })
+        ));
+    }
+
+    #[test]
+    fn test_error_display() {
+        let err = ButteraugliError::InvalidParameter {
+            name: "hf_asymmetry",
+            value: 0.0,
+            reason: "must be finite and positive",
+        };
+        assert_eq!(
+            err.to_string(),
+            "invalid parameter hf_asymmetry=0: must be finite and positive"
+        );
+
+        let err = ButteraugliError::DimensionOverflow {
+            width: 1000000,
+            height: 1000000,
+        };
+        assert!(err.to_string().contains("overflow"));
+
+        let err = ButteraugliError::NonFiniteResult;
+        assert!(err.to_string().contains("NaN"));
     }
 }
