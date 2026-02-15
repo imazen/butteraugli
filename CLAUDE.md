@@ -4,8 +4,8 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 
 ## Known Bugs
 
-None currently known. Parity with libjxl `butteraugli_main` verified at <0.001% on
-10 real photographs (GB82 corpus, Q75 JPEG, 576x768).
+None currently known. Parity with libjxl `butteraugli_main` verified at <0.0003% on
+21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 
 ## Parity Status (2026-02-14)
 
