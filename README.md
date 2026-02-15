@@ -63,7 +63,7 @@ butteraugli --help
 
 ```toml
 [dependencies]
-butteraugli = "0.6"
+butteraugli = "0.7"
 ```
 
 ### Input Formats
