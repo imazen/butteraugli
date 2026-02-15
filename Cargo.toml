@@ -3,7 +3,7 @@ resolver = "2"
 members = ["butteraugli", "butteraugli-cli"]
 
 [workspace.package]
-version = "0.6.1"
+version = "0.6.2"
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/imazen/butteraugli"
@@ -12,7 +12,7 @@ authors = ["Lilith River <lilith@imazen.io>"]
 rust-version = "1.85"
 
 [workspace.dependencies]
-butteraugli = { path = "butteraugli", version = "0.6.1" }
+butteraugli = { path = "butteraugli", version = "0.6.2" }
 wide = "0.7"
 multiversion = "0.8"
 multiversed = "0.2"
