@@ -7,6 +7,83 @@ use imgref::ImgVec;
 use std::cell::RefCell;
 use std::ops::{Index, IndexMut};
 
+/// Get a pixel value, using unchecked access with `unsafe-performance`.
+///
+/// # Safety
+/// With `unsafe-performance`, caller must ensure coordinates are in bounds.
+#[cfg(feature = "unsafe-performance")]
+macro_rules! img_get {
+    ($img:expr, $x:expr, $y:expr) => {
+        unsafe { $img.get_unchecked($x, $y) }
+    };
+}
+
+#[cfg(not(feature = "unsafe-performance"))]
+macro_rules! img_get {
+    ($img:expr, $x:expr, $y:expr) => {
+        $img.get($x, $y)
+    };
+}
+
+/// Set a pixel value, using unchecked access with `unsafe-performance`.
+///
+/// # Safety
+/// With `unsafe-performance`, caller must ensure coordinates are in bounds.
+#[cfg(feature = "unsafe-performance")]
+macro_rules! img_set {
+    ($img:expr, $x:expr, $y:expr, $val:expr) => {
+        unsafe { $img.set_unchecked($x, $y, $val) }
+    };
+}
+
+#[cfg(not(feature = "unsafe-performance"))]
+macro_rules! img_set {
+    ($img:expr, $x:expr, $y:expr, $val:expr) => {
+        $img.set($x, $y, $val)
+    };
+}
+
+/// Get a row slice, using unchecked access with `unsafe-performance`.
+///
+/// # Safety
+/// With `unsafe-performance`, caller must ensure `y < height`.
+#[cfg(feature = "unsafe-performance")]
+macro_rules! img_row {
+    ($img:expr, $y:expr) => {
+        unsafe { $img.row_unchecked($y) }
+    };
+}
+
+#[cfg(not(feature = "unsafe-performance"))]
+macro_rules! img_row {
+    ($img:expr, $y:expr) => {
+        $img.row($y)
+    };
+}
+
+/// Get a mutable row slice, using unchecked access with `unsafe-performance`.
+///
+/// # Safety
+/// With `unsafe-performance`, caller must ensure `y < height`.
+#[cfg(feature = "unsafe-performance")]
+macro_rules! img_row_mut {
+    ($img:expr, $y:expr) => {
+        unsafe { $img.row_mut_unchecked($y) }
+    };
+}
+
+#[cfg(not(feature = "unsafe-performance"))]
+macro_rules! img_row_mut {
+    ($img:expr, $y:expr) => {
+        $img.row_mut($y)
+    };
+}
+
+pub(crate) use img_get;
+pub(crate) use img_row;
+pub(crate) use img_row_mut;
+pub(crate) use img_set;
+
 /// Reusable buffer pool for `ImageF` allocations.
 ///
 /// Avoids repeated mmap/munmap for large temporary buffers. Owned by the
@@ -26,6 +103,8 @@ impl BufferPool {
 
     /// Takes a buffer of at least `needed` elements from the pool (best-fit).
     /// Returns stale data — caller must zero-fill if needed.
+    ///
+    /// With `unsafe-performance`, new allocations skip zero-fill entirely.
     pub(crate) fn take(&self, needed: usize) -> Vec<f32> {
         let mut pool = self.buffers.borrow_mut();
         let mut best_idx = None;
@@ -41,11 +120,28 @@ impl BufferPool {
             let mut buf = pool.swap_remove(idx);
             buf.truncate(needed);
             if buf.len() < needed {
+                #[cfg(feature = "unsafe-performance")]
+                {
+                    buf.reserve(needed - buf.len());
+                    // SAFETY: f32 has no validity invariant beyond being initialized.
+                    // Callers (from_pool_dirty) overwrite all data before reading.
+                    unsafe { buf.set_len(needed) };
+                }
+                #[cfg(not(feature = "unsafe-performance"))]
                 buf.resize(needed, 0.0);
             }
             buf
         } else {
-            vec![0.0; needed]
+            #[cfg(feature = "unsafe-performance")]
+            {
+                let mut buf = Vec::with_capacity(needed);
+                // SAFETY: f32 has no validity invariant beyond being initialized.
+                // Callers (from_pool_dirty) overwrite all data before reading.
+                unsafe { buf.set_len(needed) };
+                buf
+            }
+            #[cfg(not(feature = "unsafe-performance"))]
+            { vec![0.0; needed] }
         }
     }
 
@@ -197,6 +293,50 @@ impl ImageF {
         self.data[y * self.stride + x] = value;
     }
 
+    /// Gets a pixel value without bounds checking.
+    ///
+    /// # Safety
+    /// Caller must ensure `y * stride + x < data.len()`.
+    #[cfg(feature = "unsafe-performance")]
+    #[inline(always)]
+    #[must_use]
+    pub(crate) unsafe fn get_unchecked(&self, x: usize, y: usize) -> f32 {
+        *self.data.get_unchecked(y * self.stride + x)
+    }
+
+    /// Sets a pixel value without bounds checking.
+    ///
+    /// # Safety
+    /// Caller must ensure `y * stride + x < data.len()`.
+    #[cfg(feature = "unsafe-performance")]
+    #[inline(always)]
+    pub(crate) unsafe fn set_unchecked(&mut self, x: usize, y: usize, value: f32) {
+        *self.data.get_unchecked_mut(y * self.stride + x) = value;
+    }
+
+    /// Returns a row slice without bounds checking.
+    ///
+    /// # Safety
+    /// Caller must ensure `y < height`.
+    #[cfg(feature = "unsafe-performance")]
+    #[inline(always)]
+    #[must_use]
+    pub(crate) unsafe fn row_unchecked(&self, y: usize) -> &[f32] {
+        let start = y * self.stride;
+        self.data.get_unchecked(start..start + self.width)
+    }
+
+    /// Returns a mutable row slice without bounds checking.
+    ///
+    /// # Safety
+    /// Caller must ensure `y < height`.
+    #[cfg(feature = "unsafe-performance")]
+    #[inline(always)]
+    pub(crate) unsafe fn row_mut_unchecked(&mut self, y: usize) -> &mut [f32] {
+        let start = y * self.stride;
+        self.data.get_unchecked_mut(start..start + self.width)
+    }
+
     /// Returns a raw pointer to the data for SIMD operations.
     #[inline]
     #[must_use]
@@ -222,25 +362,6 @@ impl ImageF {
     #[inline]
     pub fn data_mut(&mut self) -> &mut [f32] {
         &mut self.data
-    }
-
-    /// Creates a new image using a pooled buffer if available.
-    ///
-    /// The buffer is zero-filled. When done with the image, call `.recycle()`
-    /// to return the buffer to the pool instead of freeing it.
-    #[must_use]
-    pub fn from_pool(width: usize, height: usize, pool: &BufferPool) -> Self {
-        let stride = (width + 15) & !15;
-        let needed = stride * height;
-        let mut data = pool.take(needed);
-        data.fill(0.0);
-
-        Self {
-            data,
-            width,
-            height,
-            stride,
-        }
     }
 
     /// Creates a new image using a pooled buffer if available, WITHOUT zero-filling.
