@@ -211,9 +211,7 @@ pub fn compute_mask(
     for y in 0..height {
         let eroded_row = eroded0.row(y);
         let mask_row = mask.row_mut(y);
-        for x in 0..width {
-            mask_row[x] = eroded_row[x];
-        }
+        mask_row[..width].copy_from_slice(&eroded_row[..width]);
 
         if let Some(ref mut ac) = diff_ac {
             let b0 = blurred0.row(y);

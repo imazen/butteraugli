@@ -22,6 +22,7 @@ use crate::image::ImageF;
 /// With `unsafe-performance`: unchecked access (caller must pre-validate range).
 /// Without: normal bounds-checked indexing.
 #[cfg(feature = "unsafe-performance")]
+#[allow(clippy::inline_always)]
 #[inline(always)]
 fn data_at(data: &[f32], idx: usize) -> f32 {
     // SAFETY: callers assert the full access range before any calls to this function.
@@ -29,7 +30,7 @@ fn data_at(data: &[f32], idx: usize) -> f32 {
 }
 
 #[cfg(not(feature = "unsafe-performance"))]
-#[inline(always)]
+#[inline]
 fn data_at(data: &[f32], idx: usize) -> f32 {
     data[idx]
 }
@@ -39,14 +40,15 @@ fn data_at(data: &[f32], idx: usize) -> f32 {
 /// With `unsafe-performance`: pointer cast (caller must pre-validate range).
 /// Without: slice + try_into with bounds check.
 #[cfg(feature = "unsafe-performance")]
+#[allow(clippy::inline_always)]
 #[inline(always)]
 fn load_8(data: &[f32], start: usize) -> &[f32; 8] {
     // SAFETY: callers assert the full access range before any calls to this function.
-    unsafe { &*(data.as_ptr().add(start) as *const [f32; 8]) }
+    unsafe { &*data.as_ptr().add(start).cast::<[f32; 8]>() }
 }
 
 #[cfg(not(feature = "unsafe-performance"))]
-#[inline(always)]
+#[inline]
 fn load_8(data: &[f32], start: usize) -> &[f32; 8] {
     data[start..start + 8].try_into().unwrap()
 }
