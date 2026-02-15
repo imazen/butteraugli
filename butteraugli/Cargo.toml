@@ -15,6 +15,8 @@ categories = ["multimedia::images", "algorithms", "graphics"]
 exclude = [
     # Comparison outputs from local testing
     "comparison_outputs/",
+    # Examples are local dev tools, not useful to crate consumers
+    "examples/",
     # Tests that require jpegli-internals-sys (cpp-parity feature, not on crates.io)
     "tests/cpp_parity.rs",
     "tests/cpp_fuzz.rs",
