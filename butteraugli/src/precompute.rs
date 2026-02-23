@@ -27,8 +27,8 @@
 
 use crate::image::{BufferPool, Image3F, ImageF};
 use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli};
-use crate::psycho::{separate_frequencies, PsychoImage};
-use crate::{check_finite_f32, ButteraugliError, ButteraugliParams, ButteraugliResult};
+use crate::psycho::{PsychoImage, separate_frequencies};
+use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite_f32};
 
 /// Minimum image dimension for multi-resolution processing.
 const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
@@ -533,8 +533,8 @@ fn interleave_planar_stride(
 // ============================================================================
 
 use crate::consts::{
-    NORM1_HF, NORM1_HF_X, NORM1_MF, NORM1_MF_X, NORM1_UHF, NORM1_UHF_X, WMUL, W_HF_MALTA,
-    W_HF_MALTA_X, W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X,
+    NORM1_HF, NORM1_HF_X, NORM1_MF, NORM1_MF_X, NORM1_UHF, NORM1_UHF_X, W_HF_MALTA, W_HF_MALTA_X,
+    W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X, WMUL,
 };
 use crate::malta::malta_diff_map;
 use crate::mask::{
@@ -1160,7 +1160,7 @@ mod tests {
         let precomputed_result = reference.compare(&rgb2).expect("should compare");
 
         // Compute using new API
-        use crate::{butteraugli, Img, RGB8};
+        use crate::{Img, RGB8, butteraugli};
         let pixels1: Vec<RGB8> = rgb1
             .chunks_exact(3)
             .map(|c| RGB8::new(c[0], c[1], c[2]))
@@ -1227,7 +1227,7 @@ mod tests {
         let precomputed_result = reference.compare_linear(&rgb2).expect("should compare");
 
         // Compute using new API
-        use crate::{butteraugli_linear, Img, RGB};
+        use crate::{Img, RGB, butteraugli_linear};
         let pixels1: Vec<RGB<f32>> = rgb1
             .chunks_exact(3)
             .map(|c| RGB::new(c[0], c[1], c[2]))
@@ -1278,7 +1278,7 @@ mod tests {
         let precomputed_result = reference.compare(&rgb2).expect("should compare");
 
         // Compute using new API
-        use crate::{butteraugli, Img, RGB8};
+        use crate::{Img, RGB8, butteraugli};
         let pixels1: Vec<RGB8> = rgb1
             .chunks_exact(3)
             .map(|c| RGB8::new(c[0], c[1], c[2]))

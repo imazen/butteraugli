@@ -3,9 +3,10 @@
 //! This module ties together all the components to compute the
 //! perceptual difference between two images.
 
+use crate::ButteraugliParams;
 use crate::consts::{
-    NORM1_HF, NORM1_HF_X, NORM1_MF, NORM1_MF_X, NORM1_UHF, NORM1_UHF_X, WMUL, W_HF_MALTA,
-    W_HF_MALTA_X, W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X,
+    NORM1_HF, NORM1_HF_X, NORM1_MF, NORM1_MF_X, NORM1_UHF, NORM1_UHF_X, W_HF_MALTA, W_HF_MALTA_X,
+    W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X, WMUL,
 };
 use crate::image::{BufferPool, Image3F, ImageF};
 use crate::malta::malta_diff_map;
@@ -13,8 +14,7 @@ use crate::mask::{
     combine_channels_for_masking, compute_mask as compute_mask_from_images, mask_dc_y, mask_y,
 };
 use crate::opsin::linear_rgb_to_xyb_butteraugli;
-use crate::psycho::{separate_frequencies, PsychoImage};
-use crate::ButteraugliParams;
+use crate::psycho::{PsychoImage, separate_frequencies};
 use imgref::ImgRef;
 use rgb::{RGB, RGB8};
 

@@ -6,7 +6,7 @@
 
 mod common;
 
-use butteraugli::{butteraugli, ButteraugliParams, Img, BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD, RGB8};
+use butteraugli::{BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD, ButteraugliParams, Img, RGB8, butteraugli};
 use std::fs;
 use std::path::Path;
 

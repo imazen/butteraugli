@@ -63,22 +63,14 @@ pub fn linear_to_srgb_u8(v: f32) -> u8 {
 #[inline]
 #[must_use]
 fn mixed_cbrt(v: f32) -> f32 {
-    if v < 0.0 {
-        -((-v).cbrt())
-    } else {
-        v.cbrt()
-    }
+    if v < 0.0 { -((-v).cbrt()) } else { v.cbrt() }
 }
 
 /// Inverse of mixed cube root.
 #[inline]
 #[must_use]
 fn mixed_cube(v: f32) -> f32 {
-    if v < 0.0 {
-        -((-v).powi(3))
-    } else {
-        v.powi(3)
-    }
+    if v < 0.0 { -((-v).powi(3)) } else { v.powi(3) }
 }
 
 /// Converts linear RGB to XYB color space.

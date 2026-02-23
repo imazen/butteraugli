@@ -1,4 +1,4 @@
-use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8};
+use butteraugli::{ButteraugliParams, Img, RGB8, butteraugli};
 use std::env;
 use std::fs::File;
 use std::io::{BufReader, Write};

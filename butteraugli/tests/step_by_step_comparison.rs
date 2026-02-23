@@ -9,8 +9,8 @@ use butteraugli::image::ImageF;
 use butteraugli::opsin::srgb_to_xyb_butteraugli;
 use butteraugli::psycho::separate_frequencies;
 use jpegli_internals_sys::{
-    butteraugli_blur, butteraugli_compare_full, butteraugli_opsin_dynamics,
-    butteraugli_separate_frequencies, BUTTERAUGLI_OK,
+    BUTTERAUGLI_OK, butteraugli_blur, butteraugli_compare_full, butteraugli_opsin_dynamics,
+    butteraugli_separate_frequencies,
 };
 
 // ============================================================================

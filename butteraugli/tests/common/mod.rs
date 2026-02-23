@@ -73,11 +73,7 @@ pub fn get_flower_small_path() -> PathBuf {
 /// Try to get path to the flower_small test image.
 pub fn try_get_flower_small_path() -> Option<PathBuf> {
     let path = try_get_testdata_dir()?.join("jxl/flower/flower_small.rgb.png");
-    if path.exists() {
-        Some(path)
-    } else {
-        None
-    }
+    if path.exists() { Some(path) } else { None }
 }
 
 /// Find cjpegli binary.

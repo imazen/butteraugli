@@ -6,7 +6,7 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use butteraugli::{butteraugli, ButteraugliParams, ButteraugliResult, Img, ImgVec, RGB8};
+use butteraugli::{ButteraugliParams, ButteraugliResult, Img, ImgVec, RGB8, butteraugli};
 use clap::{ArgAction, ColorChoice, Parser, ValueEnum};
 use colored::Colorize;
 use image::GenericImageView;

@@ -5,10 +5,10 @@
 //! Compares intermediate pipeline stages between Rust and C++ implementations.
 
 use butteraugli::opsin::srgb_to_xyb_butteraugli;
-use butteraugli::{compute_butteraugli, ButteraugliParams};
+use butteraugli::{ButteraugliParams, compute_butteraugli};
 use jpegli_internals_sys::{
-    butteraugli_compare_full, butteraugli_opsin_dynamics, butteraugli_srgb_to_linear,
-    BUTTERAUGLI_OK,
+    BUTTERAUGLI_OK, butteraugli_compare_full, butteraugli_opsin_dynamics,
+    butteraugli_srgb_to_linear,
 };
 
 // ============================================================================

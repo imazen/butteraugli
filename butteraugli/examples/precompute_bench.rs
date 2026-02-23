@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo run --release --example precompute_bench
 
-use butteraugli::{butteraugli, ButteraugliParams, ButteraugliReference, Img, RGB8};
+use butteraugli::{ButteraugliParams, ButteraugliReference, Img, RGB8, butteraugli};
 use std::time::Instant;
 
 fn main() {

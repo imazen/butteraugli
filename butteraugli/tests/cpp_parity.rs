@@ -6,10 +6,10 @@
 
 mod common;
 
-use butteraugli::{compute_butteraugli, ButteraugliParams};
+use butteraugli::{ButteraugliParams, compute_butteraugli};
 use jpegli_internals_sys::{
-    butteraugli_blur, butteraugli_compare, butteraugli_fast_log2f, butteraugli_gamma,
-    butteraugli_srgb_to_linear, BUTTERAUGLI_OK,
+    BUTTERAUGLI_OK, butteraugli_blur, butteraugli_compare, butteraugli_fast_log2f,
+    butteraugli_gamma, butteraugli_srgb_to_linear,
 };
 use std::fs;
 use std::path::{Path, PathBuf};

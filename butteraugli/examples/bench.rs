@@ -1,4 +1,4 @@
-use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8};
+use butteraugli::{ButteraugliParams, Img, RGB8, butteraugli};
 use std::time::Instant;
 
 fn main() {

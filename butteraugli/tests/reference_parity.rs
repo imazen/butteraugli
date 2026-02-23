@@ -5,7 +5,7 @@
 //!
 //! Run with: `cargo test --test reference_parity`
 
-use butteraugli::{butteraugli, reference_data, ButteraugliParams, Img, RGB8};
+use butteraugli::{ButteraugliParams, Img, RGB8, butteraugli, reference_data};
 
 /// Convert RGB byte slice to Vec<RGB8>
 fn rgb_bytes_to_pixels(rgb: &[u8]) -> Vec<RGB8> {

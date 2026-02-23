@@ -990,43 +990,59 @@ mod tests {
     #[test]
     fn test_validate_method_directly() {
         // Valid params
-        assert!(ButteraugliParams::new()
-            .with_hf_asymmetry(1.5)
-            .with_intensity_target(250.0)
-            .with_xmul(0.5)
-            .validate()
-            .is_ok());
+        assert!(
+            ButteraugliParams::new()
+                .with_hf_asymmetry(1.5)
+                .with_intensity_target(250.0)
+                .with_xmul(0.5)
+                .validate()
+                .is_ok()
+        );
 
         // Each invalid param
-        assert!(ButteraugliParams::new()
-            .with_hf_asymmetry(0.0)
-            .validate()
-            .is_err());
-        assert!(ButteraugliParams::new()
-            .with_hf_asymmetry(-1.0)
-            .validate()
-            .is_err());
-        assert!(ButteraugliParams::new()
-            .with_hf_asymmetry(f32::NAN)
-            .validate()
-            .is_err());
-        assert!(ButteraugliParams::new()
-            .with_hf_asymmetry(f32::INFINITY)
-            .validate()
-            .is_err());
-        assert!(ButteraugliParams::new()
-            .with_intensity_target(0.0)
-            .validate()
-            .is_err());
-        assert!(ButteraugliParams::new()
-            .with_intensity_target(-10.0)
-            .validate()
-            .is_err());
+        assert!(
+            ButteraugliParams::new()
+                .with_hf_asymmetry(0.0)
+                .validate()
+                .is_err()
+        );
+        assert!(
+            ButteraugliParams::new()
+                .with_hf_asymmetry(-1.0)
+                .validate()
+                .is_err()
+        );
+        assert!(
+            ButteraugliParams::new()
+                .with_hf_asymmetry(f32::NAN)
+                .validate()
+                .is_err()
+        );
+        assert!(
+            ButteraugliParams::new()
+                .with_hf_asymmetry(f32::INFINITY)
+                .validate()
+                .is_err()
+        );
+        assert!(
+            ButteraugliParams::new()
+                .with_intensity_target(0.0)
+                .validate()
+                .is_err()
+        );
+        assert!(
+            ButteraugliParams::new()
+                .with_intensity_target(-10.0)
+                .validate()
+                .is_err()
+        );
         assert!(ButteraugliParams::new().with_xmul(-0.1).validate().is_err());
-        assert!(ButteraugliParams::new()
-            .with_xmul(f32::NAN)
-            .validate()
-            .is_err());
+        assert!(
+            ButteraugliParams::new()
+                .with_xmul(f32::NAN)
+                .validate()
+                .is_err()
+        );
 
         // xmul=0 is valid
         assert!(ButteraugliParams::new().with_xmul(0.0).validate().is_ok());
