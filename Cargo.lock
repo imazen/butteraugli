@@ -144,7 +144,7 @@ checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
 
 [[package]]
 name = "butteraugli"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "approx",
  "archmage",
@@ -164,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "butteraugli-cli"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "butteraugli",
  "clap",
@@ -562,9 +562,9 @@ dependencies = [
 
 [[package]]
 name = "multiversed"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c9e35cde63acf798488527726605124e9204879e85ad5261fd1e91eb235d4ed"
+checksum = "1a8ad9482ab04a7fefc0fd05928433fb866e2ec3204e2ea0e9dccfeb5cbf7b7e"
 dependencies = [
  "proc-macro2",
  "quote",
