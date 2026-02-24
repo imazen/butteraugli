@@ -283,9 +283,16 @@ impl ButteraugliReference {
         {
             let (sub_r, sub_g, sub_b, sw, sh) =
                 subsample_planar_rgb_2x(r, g, b, width, height, stride);
-            let sub_rgb = interleave_planar(&sub_r, &sub_g, &sub_b, sw, sh);
-            let sub_xyb =
-                linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
+            let sub_xyb = linear_planar_to_xyb_butteraugli(
+                &sub_r,
+                &sub_g,
+                &sub_b,
+                sw,
+                sh,
+                sw,
+                params.intensity_target(),
+                &pool,
+            );
             let sub_psycho = separate_frequencies(&sub_xyb, &pool);
             Some(ScaleData {
                 xyb: sub_xyb,
@@ -489,43 +496,63 @@ impl ButteraugliReference {
         b: &[f32],
         stride: usize,
     ) -> ButteraugliResult {
-        // Interleave planar → interleaved for the single-level path
-        let rgb = interleave_planar_stride(r, g, b, self.width, self.height, stride);
-        self.compare_linear_impl(&rgb)
-    }
-}
+        // Convert distorted planar data directly to XYB (no interleave round-trip)
+        let xyb2 = linear_planar_to_xyb_butteraugli(
+            r,
+            g,
+            b,
+            self.width,
+            self.height,
+            stride,
+            self.params.intensity_target(),
+            &self.pool,
+        );
+        let ps2 = separate_frequencies(&xyb2, &self.pool);
 
-/// Interleaves planar RGB data (R, G, B each width*height) into [RGBRGB...].
-fn interleave_planar(r: &[f32], g: &[f32], b: &[f32], width: usize, height: usize) -> Vec<f32> {
-    let n = width * height;
-    let mut out = Vec::with_capacity(n * 3);
-    for i in 0..n {
-        out.push(r[i]);
-        out.push(g[i]);
-        out.push(b[i]);
-    }
-    out
-}
+        // Compute diffmap at full resolution using precomputed reference
+        let mut diffmap = compute_diffmap_with_precomputed(
+            &self.full.psycho,
+            &ps2,
+            self.width,
+            self.height,
+            &self.params,
+            &self.pool,
+        );
 
-/// Interleaves planar RGB data with stride into [RGBRGB...].
-fn interleave_planar_stride(
-    r: &[f32],
-    g: &[f32],
-    b: &[f32],
-    width: usize,
-    height: usize,
-    stride: usize,
-) -> Vec<f32> {
-    let mut out = Vec::with_capacity(width * height * 3);
-    for y in 0..height {
-        let row_offset = y * stride;
-        for x in 0..width {
-            out.push(r[row_offset + x]);
-            out.push(g[row_offset + x]);
-            out.push(b[row_offset + x]);
+        // Add single half-resolution sub-level
+        if let Some(ref half) = self.half {
+            let (sub_r, sub_g, sub_b, sw, sh) =
+                subsample_planar_rgb_2x(r, g, b, self.width, self.height, stride);
+            let sub_xyb = linear_planar_to_xyb_butteraugli(
+                &sub_r,
+                &sub_g,
+                &sub_b,
+                sw,
+                sh,
+                sw,
+                self.params.intensity_target(),
+                &self.pool,
+            );
+            let sub_ps = separate_frequencies(&sub_xyb, &self.pool);
+
+            let sub_diffmap = compute_diffmap_with_precomputed(
+                &half.psycho,
+                &sub_ps,
+                sw,
+                sh,
+                &self.params,
+                &self.pool,
+            );
+            add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
+        }
+
+        let score = compute_score_from_diffmap(&diffmap);
+
+        ButteraugliResult {
+            score,
+            diffmap: Some(diffmap.into_imgvec()),
         }
     }
-    out
 }
 
 // ============================================================================
