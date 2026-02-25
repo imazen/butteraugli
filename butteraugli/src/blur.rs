@@ -288,6 +288,56 @@ fn convolve_interior_neon(
     }
 }
 
+/// WASM SIMD128 interior convolution with polyfilled f32x8 (2×wasm v128).
+#[cfg(target_arch = "wasm32")]
+#[archmage::rite]
+fn convolve_interior_wasm128(
+    token: archmage::Wasm128Token,
+    input: &ImageF,
+    scaled_kernel: &[f32],
+    border1: usize,
+    border2: usize,
+    half: usize,
+    output: &mut ImageF,
+) {
+    use magetypes::simd::f32x8;
+    let height = input.height();
+    let kernel_len = scaled_kernel.len();
+    let simd_chunks = (border2 - border1) / 8;
+
+    for y in 0..height {
+        let row_in = input.row(y);
+
+        for chunk_idx in 0..simd_chunks {
+            let x = border1 + chunk_idx * 8;
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len + 7];
+            let mut sum = f32x8::zero(token);
+
+            for (j, &k) in scaled_kernel.iter().enumerate() {
+                let loaded = f32x8::load(token, (&base[j..j + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, k), sum);
+            }
+
+            let results = sum.to_array();
+            for (i, &val) in results.iter().enumerate() {
+                output.set(y, x + i, val);
+            }
+        }
+
+        let simd_end = border1 + simd_chunks * 8;
+        for x in simd_end..border2 {
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len];
+            let sum: f32 = base
+                .iter()
+                .zip(scaled_kernel)
+                .fold(0.0f32, |acc, (&r, &k)| r.mul_add(k, acc));
+            output.set(y, x, sum);
+        }
+    }
+}
+
 /// Scalar fallback for interior convolution.
 #[allow(clippy::inline_always)]
 #[inline(always)]
@@ -385,7 +435,10 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     if sigma <= 0.0 {
         return input.clone();
     }
-    archmage::incant!(gaussian_blur_dispatch(input, sigma, pool), [v4, v3, neon])
+    archmage::incant!(
+        gaussian_blur_dispatch(input, sigma, pool),
+        [v4, v3, neon, wasm128]
+    )
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -442,6 +495,24 @@ fn gaussian_blur_dispatch_neon(
     result
 }
 
+#[cfg(target_arch = "wasm32")]
+#[archmage::arcane]
+fn gaussian_blur_dispatch_wasm128(
+    token: archmage::Wasm128Token,
+    input: &ImageF,
+    sigma: f32,
+    pool: &BufferPool,
+) -> ImageF {
+    let kernel = compute_kernel(sigma);
+    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
+        convolve_interior_wasm128(token, inp, sk, b1, b2, h, out);
+    };
+    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, interior);
+    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, interior);
+    temp.recycle(pool);
+    result
+}
+
 fn gaussian_blur_dispatch_scalar(
     _token: archmage::ScalarToken,
     input: &ImageF,
@@ -467,7 +538,7 @@ pub fn blur_with_border(
     }
     archmage::incant!(
         blur_with_border_dispatch(input, sigma, border_ratio, pool),
-        [v4, v3, neon]
+        [v4, v3, neon, wasm128]
     )
 }
 
@@ -521,6 +592,25 @@ fn blur_with_border_dispatch_neon(
     let kernel = compute_kernel(sigma);
     let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
         convolve_interior_neon(token, inp, sk, b1, b2, h, out);
+    };
+    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool, interior);
+    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, interior);
+    temp.recycle(pool);
+    result
+}
+
+#[cfg(target_arch = "wasm32")]
+#[archmage::arcane]
+fn blur_with_border_dispatch_wasm128(
+    token: archmage::Wasm128Token,
+    input: &ImageF,
+    sigma: f32,
+    border_ratio: f32,
+    pool: &BufferPool,
+) -> ImageF {
+    let kernel = compute_kernel(sigma);
+    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
+        convolve_interior_wasm128(token, inp, sk, b1, b2, h, out);
     };
     let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool, interior);
     let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, interior);
@@ -584,7 +674,10 @@ fn mirror(mut x: i32, size: i32) -> usize {
 /// This matches C++ Separable5 which is used when kernel size == 5.
 /// SIMD-optimized for interior pixels.
 pub fn blur_mirrored_5x5(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
-    archmage::incant!(blur_mirrored_5x5(input, weights, pool), [v4, v3, neon])
+    archmage::incant!(
+        blur_mirrored_5x5(input, weights, pool),
+        [v4, v3, neon, wasm128]
+    )
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -1001,6 +1094,165 @@ fn blur_mirrored_5x5_neon(
     }
 
     // Vertical pass - row-major with SIMD on x dimension (cache-friendly)
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let v_border = 2.min(height);
+    let v_interior_end = if height > 4 { height - 2 } else { 0 };
+
+    for y in 0..v_border {
+        let iy = y as i32;
+        let rm2 = temp.row(mirror(iy - 2, iheight));
+        let rm1 = temp.row(mirror(iy - 1, iheight));
+        let r0 = temp.row(y);
+        let rp1 = temp.row(mirror(iy + 1, iheight));
+        let rp2 = temp.row(mirror(iy + 2, iheight));
+        let out = output.row_mut(y);
+        let mut x = 0;
+        while x + 8 <= width {
+            let vm2 = f32x8::load(token, (&rm2[x..x + 8]).try_into().unwrap());
+            let vm1 = f32x8::load(token, (&rm1[x..x + 8]).try_into().unwrap());
+            let v0 = f32x8::load(token, (&r0[x..x + 8]).try_into().unwrap());
+            let vp1 = f32x8::load(token, (&rp1[x..x + 8]).try_into().unwrap());
+            let vp2 = f32x8::load(token, (&rp2[x..x + 8]).try_into().unwrap());
+            let sum = v0 * w0_v + (vm1 + vp1) * w1_v + (vm2 + vp2) * w2_v;
+            sum.store((&mut out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+        while x < width {
+            out[x] = r0[x] * w0 + (rm1[x] + rp1[x]) * w1 + (rm2[x] + rp2[x]) * w2;
+            x += 1;
+        }
+    }
+
+    for y in v_border..v_interior_end {
+        let rm2 = temp.row(y - 2);
+        let rm1 = temp.row(y - 1);
+        let r0 = temp.row(y);
+        let rp1 = temp.row(y + 1);
+        let rp2 = temp.row(y + 2);
+        let out = output.row_mut(y);
+        let mut x = 0;
+        while x + 8 <= width {
+            let vm2 = f32x8::load(token, (&rm2[x..x + 8]).try_into().unwrap());
+            let vm1 = f32x8::load(token, (&rm1[x..x + 8]).try_into().unwrap());
+            let v0 = f32x8::load(token, (&r0[x..x + 8]).try_into().unwrap());
+            let vp1 = f32x8::load(token, (&rp1[x..x + 8]).try_into().unwrap());
+            let vp2 = f32x8::load(token, (&rp2[x..x + 8]).try_into().unwrap());
+            let sum = v0 * w0_v + (vm1 + vp1) * w1_v + (vm2 + vp2) * w2_v;
+            sum.store((&mut out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+        while x < width {
+            out[x] = r0[x] * w0 + (rm1[x] + rp1[x]) * w1 + (rm2[x] + rp2[x]) * w2;
+            x += 1;
+        }
+    }
+
+    for y in v_interior_end..height {
+        let iy = y as i32;
+        let rm2 = temp.row(mirror(iy - 2, iheight));
+        let rm1 = temp.row(mirror(iy - 1, iheight));
+        let r0 = temp.row(y);
+        let rp1 = temp.row(mirror(iy + 1, iheight));
+        let rp2 = temp.row(mirror(iy + 2, iheight));
+        let out = output.row_mut(y);
+        let mut x = 0;
+        while x + 8 <= width {
+            let vm2 = f32x8::load(token, (&rm2[x..x + 8]).try_into().unwrap());
+            let vm1 = f32x8::load(token, (&rm1[x..x + 8]).try_into().unwrap());
+            let v0 = f32x8::load(token, (&r0[x..x + 8]).try_into().unwrap());
+            let vp1 = f32x8::load(token, (&rp1[x..x + 8]).try_into().unwrap());
+            let vp2 = f32x8::load(token, (&rp2[x..x + 8]).try_into().unwrap());
+            let sum = v0 * w0_v + (vm1 + vp1) * w1_v + (vm2 + vp2) * w2_v;
+            sum.store((&mut out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+        while x < width {
+            out[x] = r0[x] * w0 + (rm1[x] + rp1[x]) * w1 + (rm2[x] + rp2[x]) * w2;
+            x += 1;
+        }
+    }
+
+    temp.recycle(pool);
+    output
+}
+
+#[cfg(target_arch = "wasm32")]
+#[archmage::arcane]
+fn blur_mirrored_5x5_wasm128(
+    token: archmage::Wasm128Token,
+    input: &ImageF,
+    weights: &[f32; 3],
+    pool: &BufferPool,
+) -> ImageF {
+    use magetypes::simd::f32x8;
+
+    let width = input.width();
+    let height = input.height();
+
+    let w0 = weights[0];
+    let w1 = weights[1];
+    let w2 = weights[2];
+
+    let w0_v = f32x8::splat(token, w0);
+    let w1_v = f32x8::splat(token, w1);
+    let w2_v = f32x8::splat(token, w2);
+
+    let iwidth = width as i32;
+    let iheight = height as i32;
+
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+
+    let border = 2.min(width);
+    let interior_end = if width > 4 { width - 2 } else { 0 };
+
+    for y in 0..height {
+        let row = input.row(y);
+        let out_row = temp.row_mut(y);
+
+        for x in 0..border {
+            let ix = x as i32;
+            let v_m2 = row[mirror(ix - 2, iwidth)];
+            let v_m1 = row[mirror(ix - 1, iwidth)];
+            let v_0 = row[x];
+            let v_p1 = row[mirror(ix + 1, iwidth)];
+            let v_p2 = row[mirror(ix + 2, iwidth)];
+            out_row[x] = v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2;
+        }
+
+        let mut x = border;
+        while x + 8 <= interior_end {
+            let v_m2 = f32x8::load(token, (&row[x - 2..x + 6]).try_into().unwrap());
+            let v_m1 = f32x8::load(token, (&row[x - 1..x + 7]).try_into().unwrap());
+            let v_0 = f32x8::load(token, (&row[x..x + 8]).try_into().unwrap());
+            let v_p1 = f32x8::load(token, (&row[x + 1..x + 9]).try_into().unwrap());
+            let v_p2 = f32x8::load(token, (&row[x + 2..x + 10]).try_into().unwrap());
+
+            let sum = v_0 * w0_v + (v_m1 + v_p1) * w1_v + (v_m2 + v_p2) * w2_v;
+            sum.store((&mut out_row[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+
+        while x < interior_end {
+            let v_m2 = row[x - 2];
+            let v_m1 = row[x - 1];
+            let v_0 = row[x];
+            let v_p1 = row[x + 1];
+            let v_p2 = row[x + 2];
+            out_row[x] = v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2;
+            x += 1;
+        }
+
+        for x in interior_end..width {
+            let ix = x as i32;
+            let v_m2 = row[mirror(ix - 2, iwidth)];
+            let v_m1 = row[mirror(ix - 1, iwidth)];
+            let v_0 = row[x];
+            let v_p1 = row[mirror(ix + 1, iwidth)];
+            let v_p2 = row[mirror(ix + 2, iwidth)];
+            out_row[x] = v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2;
+        }
+    }
+
     let mut output = ImageF::from_pool_dirty(width, height, pool);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };

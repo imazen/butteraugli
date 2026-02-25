@@ -3,6 +3,9 @@
 //! These tests verify butteraugli score quality using jpegli roundtripped images.
 //! The goal is to ensure the Rust butteraugli implementation provides meaningful
 //! perceptual quality scores.
+//!
+//! Requires mozjpeg/jpeg-decoder which don't compile on wasm32.
+#![cfg(not(target_arch = "wasm32"))]
 
 mod common;
 

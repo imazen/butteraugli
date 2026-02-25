@@ -60,15 +60,17 @@ simd_aligned = "0.6.1"
 # Image I/O for testing
 png = "0.17"
 
+# Testing utilities
+approx = "0.5"
+
+# Date/time for reference data generation
+chrono = "0.4"
+
+# These don't compile on wasm32 — gate them to non-wasm targets
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # JPEG encoding/decoding for roundtrip tests
 mozjpeg = "0.10"
 jpeg-decoder = "0.3"
 
-# Testing utilities
-approx = "0.5"
-
 # Property-based testing
 proptest = "1.4"
-
-# Date/time for reference data generation
-chrono = "0.4"

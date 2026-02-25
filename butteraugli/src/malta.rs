@@ -1251,7 +1251,7 @@ pub fn malta_diff_map(
 ) -> ImageF {
     archmage::incant!(
         malta_diff_map_dispatch(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf),
-        [v3, neon]
+        [v3, neon, wasm128]
     )
 }
 
@@ -1814,6 +1814,384 @@ fn malta_diff_map_dispatch_neon(
             x += 8;
         }
         // Scalar remainder
+        while x < width - 4 {
+            let center = center_base + x;
+            out[x] = if use_lf {
+                malta_unit_lf_interior(data, center, stride)
+            } else {
+                malta_unit_interior(data, center, stride)
+            };
+            x += 1;
+        }
+    };
+
+    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, interior)
+}
+
+/// WASM SIMD128 HF Malta filter for 8 consecutive interior pixels (polyfilled 2×v128).
+#[cfg(target_arch = "wasm32")]
+#[archmage::rite]
+fn malta_unit_interior_8x_wasm128(
+    token: archmage::Wasm128Token,
+    data: &[f32],
+    center: usize,
+    stride: usize,
+) -> magetypes::simd::f32x8 {
+    use magetypes::simd::f32x8;
+
+    let xs = stride as isize;
+    let xs2 = xs * 2;
+    let xs3 = xs * 3;
+    let xs4 = xs * 4;
+
+    let reach = 4 * stride + 4;
+    assert!(center >= reach && center + reach + 8 <= data.len());
+
+    macro_rules! ld {
+        ($off:expr) => {{
+            let o: isize = $off;
+            let start = (center as isize + o) as usize;
+            f32x8::load(token, load_8(data, start))
+        }};
+    }
+
+    let mut r = f32x8::splat(token, 0.0);
+
+    // Pattern 1: horizontal
+    {
+        let s = ld!(-4) + ld!(-3) + ld!(-2) + ld!(-1) + ld!(0) + ld!(1) + ld!(2) + ld!(3) + ld!(4);
+        r += s * s;
+    }
+    // Pattern 2: vertical
+    {
+        let s = ld!(-xs4)
+            + ld!(-xs3)
+            + ld!(-xs2)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2)
+            + ld!(xs3)
+            + ld!(xs4);
+        r += s * s;
+    }
+    // Pattern 3: diagonal \
+    {
+        let s = ld!(-xs3 - 3)
+            + ld!(-xs2 - 2)
+            + ld!(-xs - 1)
+            + ld!(0)
+            + ld!(xs + 1)
+            + ld!(xs2 + 2)
+            + ld!(xs3 + 3);
+        r += s * s;
+    }
+    // Pattern 4: diagonal /
+    {
+        let s = ld!(-xs3 + 3)
+            + ld!(-xs2 + 2)
+            + ld!(-xs + 1)
+            + ld!(0)
+            + ld!(xs - 1)
+            + ld!(xs2 - 2)
+            + ld!(xs3 - 3);
+        r += s * s;
+    }
+    // Pattern 5
+    {
+        let s = ld!(-xs4 + 1)
+            + ld!(-xs3 + 1)
+            + ld!(-xs2 + 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 - 1)
+            + ld!(xs3 - 1)
+            + ld!(xs4 - 1);
+        r += s * s;
+    }
+    // Pattern 6
+    {
+        let s = ld!(-xs4 - 1)
+            + ld!(-xs3 - 1)
+            + ld!(-xs2 - 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 + 1)
+            + ld!(xs3 + 1)
+            + ld!(xs4 + 1);
+        r += s * s;
+    }
+    // Pattern 7
+    {
+        let s = ld!(-4 - xs)
+            + ld!(-3 - xs)
+            + ld!(-2 - xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 + xs)
+            + ld!(3 + xs)
+            + ld!(4 + xs);
+        r += s * s;
+    }
+    // Pattern 8
+    {
+        let s = ld!(-4 + xs)
+            + ld!(-3 + xs)
+            + ld!(-2 + xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 - xs)
+            + ld!(3 - xs)
+            + ld!(4 - xs);
+        r += s * s;
+    }
+    // Pattern 9
+    {
+        let s = ld!(-xs3 - 2)
+            + ld!(-xs2 - 1)
+            + ld!(-xs - 1)
+            + ld!(0)
+            + ld!(xs + 1)
+            + ld!(xs2 + 1)
+            + ld!(xs3 + 2);
+        r += s * s;
+    }
+    // Pattern 10
+    {
+        let s = ld!(-xs3 + 2)
+            + ld!(-xs2 + 1)
+            + ld!(-xs + 1)
+            + ld!(0)
+            + ld!(xs - 1)
+            + ld!(xs2 - 1)
+            + ld!(xs3 - 2);
+        r += s * s;
+    }
+    // Pattern 11
+    {
+        let s = ld!(-xs2 - 3)
+            + ld!(-xs - 2)
+            + ld!(-xs - 1)
+            + ld!(0)
+            + ld!(xs + 1)
+            + ld!(xs + 2)
+            + ld!(xs2 + 3);
+        r += s * s;
+    }
+    // Pattern 12
+    {
+        let s = ld!(-xs2 + 3)
+            + ld!(-xs + 2)
+            + ld!(-xs + 1)
+            + ld!(0)
+            + ld!(xs - 1)
+            + ld!(xs - 2)
+            + ld!(xs2 - 3);
+        r += s * s;
+    }
+    // Pattern 13 (same offsets as 8)
+    {
+        let s = ld!(-4 + xs)
+            + ld!(-3 + xs)
+            + ld!(-2 + xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 - xs)
+            + ld!(3 - xs)
+            + ld!(4 - xs);
+        r += s * s;
+    }
+    // Pattern 14 (same offsets as 7)
+    {
+        let s = ld!(-4 - xs)
+            + ld!(-3 - xs)
+            + ld!(-2 - xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 + xs)
+            + ld!(3 + xs)
+            + ld!(4 + xs);
+        r += s * s;
+    }
+    // Pattern 15 (same offsets as 6)
+    {
+        let s = ld!(-xs4 - 1)
+            + ld!(-xs3 - 1)
+            + ld!(-xs2 - 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 + 1)
+            + ld!(xs3 + 1)
+            + ld!(xs4 + 1);
+        r += s * s;
+    }
+    // Pattern 16 (same offsets as 5)
+    {
+        let s = ld!(-xs4 + 1)
+            + ld!(-xs3 + 1)
+            + ld!(-xs2 + 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 - 1)
+            + ld!(xs3 - 1)
+            + ld!(xs4 - 1);
+        r += s * s;
+    }
+
+    r
+}
+
+/// WASM SIMD128 LF Malta filter for 8 consecutive interior pixels (polyfilled 2×v128).
+#[cfg(target_arch = "wasm32")]
+#[archmage::rite]
+fn malta_unit_lf_interior_8x_wasm128(
+    token: archmage::Wasm128Token,
+    data: &[f32],
+    center: usize,
+    stride: usize,
+) -> magetypes::simd::f32x8 {
+    use magetypes::simd::f32x8;
+
+    let xs = stride as isize;
+    let xs2 = xs * 2;
+    let xs3 = xs * 3;
+    let xs4 = xs * 4;
+
+    let reach = 4 * stride + 4;
+    assert!(center >= reach && center + reach + 8 <= data.len());
+
+    macro_rules! ld {
+        ($off:expr) => {{
+            let o: isize = $off;
+            let start = (center as isize + o) as usize;
+            f32x8::load(token, load_8(data, start))
+        }};
+    }
+
+    let mut r = f32x8::splat(token, 0.0);
+
+    // Pattern 1: sparse horizontal
+    {
+        let s = ld!(-4) + ld!(-2) + ld!(0) + ld!(2) + ld!(4);
+        r += s * s;
+    }
+    // Pattern 2: sparse vertical
+    {
+        let s = ld!(-xs4) + ld!(-xs2) + ld!(0) + ld!(xs2) + ld!(xs4);
+        r += s * s;
+    }
+    // Pattern 3: diagonal
+    {
+        let s = ld!(-xs3 - 3) + ld!(-xs2 - 2) + ld!(0) + ld!(xs2 + 2) + ld!(xs3 + 3);
+        r += s * s;
+    }
+    // Pattern 4: anti-diagonal
+    {
+        let s = ld!(-xs3 + 3) + ld!(-xs2 + 2) + ld!(0) + ld!(xs2 - 2) + ld!(xs3 - 3);
+        r += s * s;
+    }
+    // Pattern 5
+    {
+        let s = ld!(-xs4 + 1) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs4 - 1);
+        r += s * s;
+    }
+    // Pattern 6
+    {
+        let s = ld!(-xs4 - 1) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs4 + 1);
+        r += s * s;
+    }
+    // Pattern 7
+    {
+        let s = ld!(-4 - xs) + ld!(-2 - xs) + ld!(0) + ld!(2 + xs) + ld!(4 + xs);
+        r += s * s;
+    }
+    // Pattern 8
+    {
+        let s = ld!(-4 + xs) + ld!(-2 + xs) + ld!(0) + ld!(2 - xs) + ld!(4 - xs);
+        r += s * s;
+    }
+    // Pattern 9
+    {
+        let s = ld!(-xs3 - 2) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs3 + 2);
+        r += s * s;
+    }
+    // Pattern 10
+    {
+        let s = ld!(-xs3 + 2) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs3 - 2);
+        r += s * s;
+    }
+    // Pattern 11
+    {
+        let s = ld!(-xs2 - 3) + ld!(-xs - 2) + ld!(0) + ld!(xs + 2) + ld!(xs2 + 3);
+        r += s * s;
+    }
+    // Pattern 12
+    {
+        let s = ld!(-xs2 + 3) + ld!(-xs + 2) + ld!(0) + ld!(xs - 2) + ld!(xs2 - 3);
+        r += s * s;
+    }
+    // Pattern 13
+    {
+        let s = ld!(-4 + xs2) + ld!(-2 + xs) + ld!(0) + ld!(2 - xs) + ld!(4 - xs2);
+        r += s * s;
+    }
+    // Pattern 14
+    {
+        let s = ld!(-4 - xs2) + ld!(-2 - xs) + ld!(0) + ld!(2 + xs) + ld!(4 + xs2);
+        r += s * s;
+    }
+    // Pattern 15
+    {
+        let s = ld!(-xs4 - 2) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs4 + 2);
+        r += s * s;
+    }
+    // Pattern 16
+    {
+        let s = ld!(-xs4 + 2) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs4 - 2);
+        r += s * s;
+    }
+
+    r
+}
+
+/// WASM SIMD128 dispatch for Malta diff map (polyfilled 2×v128).
+#[cfg(target_arch = "wasm32")]
+#[archmage::arcane]
+#[allow(clippy::too_many_arguments)]
+fn malta_diff_map_dispatch_wasm128(
+    token: archmage::Wasm128Token,
+    lum0: &ImageF,
+    lum1: &ImageF,
+    w_0gt1: f64,
+    w_0lt1: f64,
+    norm1: f64,
+    use_lf: bool,
+) -> ImageF {
+    let interior = |data: &[f32],
+                    center_base: usize,
+                    stride: usize,
+                    width: usize,
+                    use_lf: bool,
+                    out: &mut [f32]| {
+        let mut x = 4;
+        while x + 8 <= width - 4 {
+            let center = center_base + x;
+            let results = if use_lf {
+                malta_unit_lf_interior_8x_wasm128(token, data, center, stride)
+            } else {
+                malta_unit_interior_8x_wasm128(token, data, center, stride)
+            };
+            results.store((&mut out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
         while x < width - 4 {
             let center = center_base + x;
             out[x] = if use_lf {
