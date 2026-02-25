@@ -67,8 +67,11 @@ jobs:
       - name: Run reference parity tests
         run: cargo test -p butteraugli --test reference_parity
 
+      - name: Run cross-arch parity tests
+        run: cargo test -p butteraugli --test cross_arch_parity
+
   # ==========================================================================
-  # Cross-compiled testing (32-bit) via QEMU
+  # Cross-compiled testing via QEMU
   # ==========================================================================
   test-cross:
     name: Cross (${{ matrix.target }})
@@ -79,6 +82,7 @@ jobs:
         target:
           - i686-unknown-linux-gnu
           - armv7-unknown-linux-gnueabihf
+          - aarch64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust
@@ -92,6 +96,8 @@ jobs:
         run: cross build -p butteraugli --target ${{ matrix.target }}
       - name: Test (cross/QEMU)
         run: cross test -p butteraugli --lib --target ${{ matrix.target }}
+      - name: Cross-arch parity (cross/QEMU)
+        run: cross test -p butteraugli --test cross_arch_parity --target ${{ matrix.target }}
 
   # ==========================================================================
   # WASM compilation check (archmage supports wasm32-simd128)

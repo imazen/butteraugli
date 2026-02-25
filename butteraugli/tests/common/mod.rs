@@ -10,6 +10,8 @@
 //! Functions panic with helpful messages if resources aren't found.
 //! Use `try_*` variants for optional resources.
 
+pub mod generators;
+
 use std::path::PathBuf;
 
 /// Get path to the jpegli testdata directory.
