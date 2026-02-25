@@ -1249,9 +1249,10 @@ pub fn malta_diff_map(
     norm1: f64,
     use_lf: bool,
 ) -> ImageF {
-    archmage::incant!(malta_diff_map_dispatch(
-        lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf
-    ))
+    archmage::incant!(
+        malta_diff_map_dispatch(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf),
+        [v3]
+    )
 }
 
 /// Shared implementation for Malta diff map.

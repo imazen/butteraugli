@@ -123,7 +123,7 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
 ///
 /// Computes squared difference weighted by w and adds to diffmap.
 fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    archmage::incant!(l2_diff(i0, i1, w, diffmap));
+    archmage::incant!(l2_diff(i0, i1, w, diffmap), [v4, v3]);
 }
 
 #[cfg(target_arch = "x86_64")]

@@ -41,7 +41,7 @@ jobs:
           - ubuntu-22.04       # Ubuntu 22.04 LTS
           - macos-latest       # macOS ARM64 (Apple Silicon)
           - windows-latest     # Windows Server 2022
-          - windows-2019       # Windows Server 2019
+          - windows-2022       # Windows Server 2022
 
     steps:
       - uses: actions/checkout@v6

@@ -332,7 +332,7 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     if sigma <= 0.0 {
         return input.clone();
     }
-    archmage::incant!(gaussian_blur_dispatch(input, sigma, pool))
+    archmage::incant!(gaussian_blur_dispatch(input, sigma, pool), [v4, v3])
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -394,7 +394,10 @@ pub fn blur_with_border(
     if sigma <= 0.0 {
         return input.clone();
     }
-    archmage::incant!(blur_with_border_dispatch(input, sigma, border_ratio, pool))
+    archmage::incant!(
+        blur_with_border_dispatch(input, sigma, border_ratio, pool),
+        [v4, v3]
+    )
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -491,7 +494,7 @@ fn mirror(mut x: i32, size: i32) -> usize {
 /// This matches C++ Separable5 which is used when kernel size == 5.
 /// SIMD-optimized for interior pixels.
 pub fn blur_mirrored_5x5(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
-    archmage::incant!(blur_mirrored_5x5(input, weights, pool))
+    archmage::incant!(blur_mirrored_5x5(input, weights, pool), [v4, v3])
 }
 
 #[cfg(target_arch = "x86_64")]
