@@ -144,7 +144,7 @@ checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
 
 [[package]]
 name = "butteraugli"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "approx",
  "archmage",
@@ -164,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "butteraugli-cli"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "butteraugli",
  "clap",

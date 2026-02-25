@@ -123,7 +123,7 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
 ///
 /// Computes squared difference weighted by w and adds to diffmap.
 fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    archmage::incant!(l2_diff(i0, i1, w, diffmap), [v4, v3]);
+    archmage::incant!(l2_diff(i0, i1, w, diffmap), [v4, v3, neon]);
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -178,6 +178,49 @@ fn l2_diff_v3(token: archmage::X64V3Token, i0: &ImageF, i1: &ImageF, w: f32, dif
         let row_diff = diffmap.row_mut(y);
 
         // SIMD path: process 8 elements at a time
+        let chunks = row_diff.len() / 8;
+        for i in 0..chunks {
+            let x = i * 8;
+            let v0 = f32x8::load(token, row0[x..x + 8].try_into().unwrap());
+            let v1 = f32x8::load(token, row1[x..x + 8].try_into().unwrap());
+            let curr = f32x8::load(token, row_diff[x..x + 8].try_into().unwrap());
+
+            let diff = v0 - v1;
+            let result = diff * diff * w_simd + curr;
+
+            result.store((&mut row_diff[x..x + 8]).try_into().unwrap());
+        }
+
+        // Scalar tail
+        let simd_width = chunks * 8;
+        for x in simd_width..width {
+            let diff = row0[x] - row1[x];
+            row_diff[x] += diff * diff * w;
+        }
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+#[archmage::arcane]
+fn l2_diff_neon(
+    token: archmage::NeonToken,
+    i0: &ImageF,
+    i1: &ImageF,
+    w: f32,
+    diffmap: &mut ImageF,
+) {
+    use magetypes::simd::f32x8;
+
+    let width = i0.width();
+    let height = i0.height();
+    let w_simd = f32x8::splat(token, w);
+
+    for y in 0..height {
+        let row0 = i0.row(y);
+        let row1 = i1.row(y);
+        let row_diff = diffmap.row_mut(y);
+
+        // SIMD path: process 8 elements at a time (2×NEON f32x4)
         let chunks = row_diff.len() / 8;
         for i in 0..chunks {
             let x = i * 8;
