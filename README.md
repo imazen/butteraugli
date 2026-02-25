@@ -126,7 +126,6 @@ SIMD-accelerated via [`archmage`](https://crates.io/crates/archmage) with runtim
 | x86-64-v4 | AVX-512 (Skylake-X, Zen 4+) |
 | x86-64-v3 | AVX2/FMA (Haswell+, Zen 1+) |
 | x86-64-v2 | SSE4.2 (Nehalem+) |
-| ARM64 | NEON (Apple Silicon, Cortex-A75+) |
 
 No C dependencies. Safe Rust by default (`unsafe-performance` is opt-in).
 
