@@ -158,13 +158,21 @@ Validated against libjxl's `butteraugli_main` on 21 real photograph pairs across
 
 ### XYB Note
 
-Butteraugli's internal XYB differs from jpegli's XYB (different nonlinearity, matrix coefficients, and formulas). Always provide RGB input; butteraugli handles the conversion internally.
+Butteraugli's internal "XYB" is **not** the same color space as JPEG XL / jpegli XYB. Key differences:
+
+- **Matrix coefficients**: Different opsin absorbance weights (e.g., row 2 is `[0.02, 0.02, 0.205]` vs jpegli's `[0.243, 0.205, 0.552]`)
+- **Nonlinearity**: Log-based Gamma function (FastLog2f), not cube root
+- **Dynamic adaptation**: Blurs the input, computes per-pixel sensitivity ratios, and modulates the opsin-transformed signal — jpegli XYB has no equivalent step
+- **Biases**: Large additive biases (`~1.76, ~1.76, ~12.23`) vs jpegli's small bias (`~0.0038`)
+
+Always provide RGB input (sRGB u8 or linear f32); butteraugli handles the conversion internally. Pre-converted XYB cannot be used because the dynamic sensitivity adaptation requires raw linear RGB.
 
 ## References
 
-- [Original butteraugli repository](https://github.com/google/butteraugli)
-- [JPEG XL (libjxl)](https://github.com/libjxl/libjxl)
+- [JPEG XL reference implementation (libjxl)](https://github.com/libjxl/libjxl) — canonical source for butteraugli
 - [Butteraugli paper](https://github.com/google/butteraugli/blob/master/doc/butteraugli-theory.pdf)
+
+> **Note:** The archived [google/butteraugli](https://github.com/google/butteraugli) repository is a standalone fork with little in common with the current butteraugli in libjxl. It should not be used as a reference. This crate ports from libjxl's `lib/extras/butteraugli.cc`.
 
 ## Development
 

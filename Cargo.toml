@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["butteraugli", "butteraugli-cli"]
+exclude = ["experiments"]
 
 [workspace.package]
 version = "0.7.2"

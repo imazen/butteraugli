@@ -1,0 +1,11 @@
+/home/lilith/work/butteraugli/experiments/xyb-comparison/target/debug/deps/yuvxyb_math-83e579c4ffc096b5.d: /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/lib.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/cbrtf.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/matrix.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/mul_add.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/pow_exp.rs
+
+/home/lilith/work/butteraugli/experiments/xyb-comparison/target/debug/deps/libyuvxyb_math-83e579c4ffc096b5.rlib: /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/lib.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/cbrtf.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/matrix.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/mul_add.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/pow_exp.rs
+
+/home/lilith/work/butteraugli/experiments/xyb-comparison/target/debug/deps/libyuvxyb_math-83e579c4ffc096b5.rmeta: /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/lib.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/cbrtf.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/matrix.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/mul_add.rs /home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/pow_exp.rs
+
+/home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/lib.rs:
+/home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/cbrtf.rs:
+/home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/matrix.rs:
+/home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/mul_add.rs:
+/home/lilith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/yuvxyb-math-0.1.0/src/pow_exp.rs:
