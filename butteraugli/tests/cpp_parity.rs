@@ -492,7 +492,11 @@ fn decode_jpeg(data: &[u8]) -> Vec<u8> {
 fn ssimulacra2_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(
         std::env::var("SSIMULACRA2_DIR")
-            .unwrap_or_else(|_| "/home/lilith/work/ssimulacra2".into()),
+            .unwrap_or_else(|_| {
+                // Default: sibling directory relative to workspace root
+                let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+                workspace.join("ssimulacra2").to_string_lossy().into_owned()
+            }),
     )
 }
 
