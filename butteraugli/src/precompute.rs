@@ -599,9 +599,9 @@ fn compute_diffmap_with_precomputed(
     combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul())
 }
 
-/// Computes LF (DC) squared difference - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn compute_lf_diff(p1: &ImageF, p2: &ImageF, w: f32, out: &mut ImageF) {
+/// Computes LF (DC) squared difference - autoversioned for autovectorization.
+#[archmage::autoversion]
+fn compute_lf_diff(_token: archmage::SimdToken, p1: &ImageF, p2: &ImageF, w: f32, out: &mut ImageF) {
     let width = p1.width();
     let height = p1.height();
 
@@ -806,9 +806,10 @@ fn mask_psycho_image(
     compute_mask_from_images(&mask0, &mask1, diff_ac, pool)
 }
 
-/// Combines channels to produce final diffmap - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
+/// Combines channels to produce final diffmap - autoversioned for autovectorization.
+#[archmage::autoversion]
 fn combine_channels_to_diffmap(
+    _token: archmage::SimdToken,
     mask: &ImageF,
     block_diff_dc: &Image3F,
     block_diff_ac: &Image3F,
@@ -843,9 +844,9 @@ fn combine_channels_to_diffmap(
     diffmap
 }
 
-/// L2 difference (symmetric) - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
+/// L2 difference (symmetric) - autoversioned for autovectorization.
+#[archmage::autoversion]
+fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     let width = i0.width();
     let height = i0.height();
 
@@ -861,9 +862,9 @@ fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     }
 }
 
-/// L2 difference asymmetric - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn l2_diff_asymmetric(i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffmap: &mut ImageF) {
+/// L2 difference asymmetric - autoversioned for autovectorization.
+#[archmage::autoversion]
+fn l2_diff_asymmetric(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffmap: &mut ImageF) {
     if w_0gt1 == 0.0 && w_0lt1 == 0.0 {
         return;
     }
@@ -913,9 +914,9 @@ fn l2_diff_asymmetric(i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffma
     }
 }
 
-/// Computes global score from diffmap - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn compute_score_from_diffmap(diffmap: &ImageF) -> f64 {
+/// Computes global score from diffmap - autoversioned for autovectorization.
+#[archmage::autoversion]
+fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> f64 {
     let width = diffmap.width();
     let height = diffmap.height();
 

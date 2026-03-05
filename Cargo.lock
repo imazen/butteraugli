@@ -78,9 +78,9 @@ dependencies = [
 
 [[package]]
 name = "archmage"
-version = "0.7.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61bd463aee29794a0318115ab857c2486842b28956c3f75365b304f1047b4758"
+checksum = "ffeedd6925c1a4a6790e2299d6873e91144eccab42700e58e7f881403c8cab8b"
 dependencies = [
  "archmage-macros",
  "safe_unaligned_simd",
@@ -88,9 +88,9 @@ dependencies = [
 
 [[package]]
 name = "archmage-macros"
-version = "0.7.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02b01e2d131ffadba47bdff5d5e1d5d8a3b9743dc6b3d6ce4847ae2d6d306058"
+checksum = "a408ca22a6097871cac60710d9b0b7af51edb3a7138ff5508e14ad039e84d26d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -153,8 +153,6 @@ dependencies = [
  "jpeg-decoder",
  "magetypes",
  "mozjpeg",
- "multiversed",
- "multiversion",
  "png 0.17.16",
  "proptest",
  "rgb",
@@ -502,9 +500,9 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "magetypes"
-version = "0.7.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d55dd4e83507ff9fe129b01669adca1e302ef346dac252ef59139c78def312a"
+checksum = "06cbec164a92d8c4236697aaebc6d45acd9e840590489046992ebf04905d32d6"
 dependencies = [
  "archmage",
 ]
@@ -558,39 +556,6 @@ dependencies = [
  "dunce",
  "libc",
  "nasm-rs",
-]
-
-[[package]]
-name = "multiversed"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a8ad9482ab04a7fefc0fd05928433fb866e2ec3204e2ea0e9dccfeb5cbf7b7e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "multiversion"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7edb7f0ff51249dfda9ab96b5823695e15a052dc15074c9dbf3d118afaf2c201"
-dependencies = [
- "multiversion-macros",
- "target-features",
-]
-
-[[package]]
-name = "multiversion-macros"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b093064383341eb3271f42e381cb8f10a01459478446953953c75d24bd339fc0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "target-features",
 ]
 
 [[package]]
@@ -832,9 +797,9 @@ dependencies = [
 
 [[package]]
 name = "safe_unaligned_simd"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1d612ce01a584cfab72164fb3f689112249fafeab7b4181c14601d19b34cb0a"
+checksum = "f9c874fb993656d484725d58fbfddb39dfcf98ebcadc1a1d09568aa6b39bafba"
 
 [[package]]
 name = "serde"
@@ -916,12 +881,6 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
-
-[[package]]
-name = "target-features"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1bbb9f3c5c463a01705937a24fdabc5047929ac764b2d5b9cf681c1f5041ed5"
 
 [[package]]
 name = "tempfile"

@@ -150,8 +150,8 @@ pub fn opsin_absorbance(r: f32, g: f32, b: f32, clamp: bool) -> (f32, f32, f32) 
 ///
 /// # Returns
 /// XYB image (3 planes)
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32, pool: &BufferPool) -> Image3F {
+#[archmage::autoversion]
+pub fn opsin_dynamics_image(_token: archmage::SimdToken, rgb: &Image3F, intensity_target: f32, pool: &BufferPool) -> Image3F {
     let width = rgb.plane(0).width();
     let height = rgb.plane(0).height();
 

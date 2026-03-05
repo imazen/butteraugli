@@ -129,7 +129,7 @@ fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
 fn l2_diff_v4(token: archmage::X64V4Token, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    use magetypes::simd::f32x16;
+    use magetypes::simd::v4::f32x16;
 
     let width = i0.width();
     let height = i0.height();
@@ -317,8 +317,8 @@ fn l2_diff_scalar(
 /// * `w_0gt1` - Weight when original > reconstructed (penalize blur)
 /// * `w_0lt1` - Weight when original < reconstructed (penalize artifacts)
 /// * `diffmap` - Output difference map (accumulated)
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn l2_diff_asymmetric(i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffmap: &mut ImageF) {
+#[archmage::autoversion]
+fn l2_diff_asymmetric(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffmap: &mut ImageF) {
     if w_0gt1 == 0.0 && w_0lt1 == 0.0 {
         return;
     }
@@ -584,8 +584,9 @@ fn mask_psycho_image(
 ///
 /// Matches C++ CombineChannelsToDiffmap (butteraugli.cc lines 1289-1315).
 /// Applies MaskY for AC differences and MaskDcY for DC differences.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
+#[archmage::autoversion]
 fn combine_channels_to_diffmap(
+    _token: archmage::SimdToken,
     mask: &ImageF,
     block_diff_dc: &Image3F,
     block_diff_ac: &Image3F,
@@ -630,8 +631,8 @@ fn combine_channels_to_diffmap(
 /// C++ ButteraugliScoreFromDiffmap (butteraugli.cc lines 1952-1962)
 /// returns the maximum value in the diffmap. The diffmap already has
 /// the global scaling applied via MaskY/MaskDcY.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn compute_score_from_diffmap(diffmap: &ImageF) -> f64 {
+#[archmage::autoversion]
+fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> f64 {
     let width = diffmap.width();
     let height = diffmap.height();
     let num_pixels = width * height;

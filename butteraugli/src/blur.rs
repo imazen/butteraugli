@@ -141,7 +141,7 @@ fn convolve_interior_v4(
     half: usize,
     output: &mut ImageF,
 ) {
-    use magetypes::simd::f32x16;
+    use magetypes::simd::v4::f32x16;
     let height = input.height();
     let kernel_len = scaled_kernel.len();
     let simd_chunks = (border2 - border1) / 16;
@@ -688,7 +688,7 @@ fn blur_mirrored_5x5_v4(
     weights: &[f32; 3],
     pool: &BufferPool,
 ) -> ImageF {
-    use magetypes::simd::f32x16;
+    use magetypes::simd::v4::f32x16;
 
     let width = input.width();
     let height = input.height();

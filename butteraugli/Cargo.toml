@@ -45,8 +45,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cpp-parit
 
 [dependencies]
 wide.workspace = true
-multiversion.workspace = true
-multiversed.workspace = true
 archmage.workspace = true
 magetypes.workspace = true
 imgref.workspace = true
