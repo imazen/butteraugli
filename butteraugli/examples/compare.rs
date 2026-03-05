@@ -80,22 +80,21 @@ fn main() {
     println!("{:.6}", result.score);
 
     // If --rawdistmap <path> is given, dump diffmap as PFM
-    if let Some(idx) = args.iter().position(|a| a == "--rawdistmap") {
-        if let Some(path) = args.get(idx + 1) {
-            if let Some(ref diffmap) = result.diffmap {
-                let w = diffmap.width();
-                let h = diffmap.height();
-                let mut f = File::create(path).unwrap();
-                write!(f, "Pf\n{w} {h}\n-1.0\n").unwrap();
-                // PFM stores bottom-to-top
-                for y in (0..h).rev() {
-                    let row = &diffmap.buf()[(y * diffmap.stride())..(y * diffmap.stride() + w)];
-                    for &val in row {
-                        f.write_all(&val.to_le_bytes()).unwrap();
-                    }
-                }
-                eprintln!("Wrote diffmap to {path}");
+    if let Some(idx) = args.iter().position(|a| a == "--rawdistmap")
+        && let Some(path) = args.get(idx + 1)
+        && let Some(ref diffmap) = result.diffmap
+    {
+        let w = diffmap.width();
+        let h = diffmap.height();
+        let mut f = File::create(path).unwrap();
+        write!(f, "Pf\n{w} {h}\n-1.0\n").unwrap();
+        // PFM stores bottom-to-top
+        for y in (0..h).rev() {
+            let row = &diffmap.buf()[(y * diffmap.stride())..(y * diffmap.stride() + w)];
+            for &val in row {
+                f.write_all(&val.to_le_bytes()).unwrap();
             }
         }
+        eprintln!("Wrote diffmap to {path}");
     }
 }

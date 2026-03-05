@@ -80,6 +80,8 @@
 #![allow(clippy::imprecise_flops)]
 #![allow(clippy::implicit_saturating_sub)]
 #![allow(clippy::useless_let_if_seq)]
+// archmage uses _token parameters implicitly via proc macros
+#![allow(clippy::used_underscore_binding)]
 
 // Internal modules - exposed with "internals" feature for testing/benchmarking
 #[cfg(feature = "internals")]

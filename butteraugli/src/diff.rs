@@ -318,7 +318,14 @@ fn l2_diff_scalar(
 /// * `w_0lt1` - Weight when original < reconstructed (penalize artifacts)
 /// * `diffmap` - Output difference map (accumulated)
 #[archmage::autoversion]
-fn l2_diff_asymmetric(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffmap: &mut ImageF) {
+fn l2_diff_asymmetric(
+    _token: archmage::SimdToken,
+    i0: &ImageF,
+    i1: &ImageF,
+    w_0gt1: f32,
+    w_0lt1: f32,
+    diffmap: &mut ImageF,
+) {
     if w_0gt1 == 0.0 && w_0lt1 == 0.0 {
         return;
     }

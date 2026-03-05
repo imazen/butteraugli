@@ -601,7 +601,13 @@ fn compute_diffmap_with_precomputed(
 
 /// Computes LF (DC) squared difference - autoversioned for autovectorization.
 #[archmage::autoversion]
-fn compute_lf_diff(_token: archmage::SimdToken, p1: &ImageF, p2: &ImageF, w: f32, out: &mut ImageF) {
+fn compute_lf_diff(
+    _token: archmage::SimdToken,
+    p1: &ImageF,
+    p2: &ImageF,
+    w: f32,
+    out: &mut ImageF,
+) {
     let width = p1.width();
     let height = p1.height();
 
@@ -864,7 +870,14 @@ fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffma
 
 /// L2 difference asymmetric - autoversioned for autovectorization.
 #[archmage::autoversion]
-fn l2_diff_asymmetric(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffmap: &mut ImageF) {
+fn l2_diff_asymmetric(
+    _token: archmage::SimdToken,
+    i0: &ImageF,
+    i1: &ImageF,
+    w_0gt1: f32,
+    w_0lt1: f32,
+    diffmap: &mut ImageF,
+) {
     if w_0gt1 == 0.0 && w_0lt1 == 0.0 {
         return;
     }

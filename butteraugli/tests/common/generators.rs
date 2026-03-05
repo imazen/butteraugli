@@ -152,7 +152,7 @@ pub fn gen_checkerboard(width: usize, height: usize, block_size: usize, lo: u8, 
     let mut data = Vec::with_capacity(width * height * 3);
     for y in 0..height {
         for x in 0..width {
-            let checker = ((x / block_size) + (y / block_size)) % 2 == 0;
+            let checker = ((x / block_size) + (y / block_size)).is_multiple_of(2);
             let val = if checker { hi } else { lo };
             data.push(val);
             data.push(val);
@@ -187,7 +187,11 @@ pub fn gen_checkerboard_inv(
 pub fn gen_stripes_h(width: usize, height: usize, stripe_height: usize, lo: u8, hi: u8) -> Vec<u8> {
     let mut data = Vec::with_capacity(width * height * 3);
     for y in 0..height {
-        let val = if (y / stripe_height) % 2 == 0 { hi } else { lo };
+        let val = if (y / stripe_height).is_multiple_of(2) {
+            hi
+        } else {
+            lo
+        };
         for _x in 0..width {
             data.push(val);
             data.push(val);
@@ -202,7 +206,11 @@ pub fn gen_stripes_v(width: usize, height: usize, stripe_width: usize, lo: u8, h
     let mut data = Vec::with_capacity(width * height * 3);
     for _y in 0..height {
         for x in 0..width {
-            let val = if (x / stripe_width) % 2 == 0 { hi } else { lo };
+            let val = if (x / stripe_width).is_multiple_of(2) {
+                hi
+            } else {
+                lo
+            };
             data.push(val);
             data.push(val);
             data.push(val);
