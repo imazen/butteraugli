@@ -419,6 +419,74 @@ impl ButteraugliReference {
         &self.params
     }
 
+    /// Precompute reference data from an `ImgRef<RGB8>` (sRGB).
+    ///
+    /// Convenience wrapper around [`new`](Self::new) that accepts `imgref` types.
+    ///
+    /// # Errors
+    /// Returns an error if the image is smaller than 8x8 pixels.
+    pub fn from_srgb(
+        img: imgref::ImgRef<rgb::RGB8>,
+        params: ButteraugliParams,
+    ) -> Result<Self, ButteraugliError> {
+        let rgb = crate::diff::imgref_rgb8_to_u8_vec(img);
+        Self::new(&rgb, img.width(), img.height(), params)
+    }
+
+    /// Precompute reference data from an `ImgRef<RGB<f32>>` (linear RGB).
+    ///
+    /// Convenience wrapper around [`new_linear`](Self::new_linear) that accepts `imgref` types.
+    ///
+    /// # Errors
+    /// Returns an error if the image is smaller than 8x8 pixels.
+    pub fn from_linear(
+        img: imgref::ImgRef<rgb::RGB<f32>>,
+        params: ButteraugliParams,
+    ) -> Result<Self, ButteraugliError> {
+        let rgb = crate::diff::imgref_rgbf32_to_f32_vec(img);
+        Self::new_linear(&rgb, img.width(), img.height(), params)
+    }
+
+    /// Compare a distorted sRGB image (as `ImgRef<RGB8>`) against the reference.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions don't match the reference.
+    pub fn compare_srgb(
+        &self,
+        img: imgref::ImgRef<rgb::RGB8>,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        if img.width() != self.width || img.height() != self.height {
+            return Err(ButteraugliError::DimensionMismatch {
+                w1: self.width,
+                h1: self.height,
+                w2: img.width(),
+                h2: img.height(),
+            });
+        }
+        let rgb = crate::diff::imgref_rgb8_to_u8_vec(img);
+        self.compare(&rgb)
+    }
+
+    /// Compare a distorted linear RGB image (as `ImgRef<RGB<f32>>`) against the reference.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions don't match the reference.
+    pub fn compare_linear_imgref(
+        &self,
+        img: imgref::ImgRef<rgb::RGB<f32>>,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        if img.width() != self.width || img.height() != self.height {
+            return Err(ButteraugliError::DimensionMismatch {
+                w1: self.width,
+                h1: self.height,
+                w2: img.width(),
+                h2: img.height(),
+            });
+        }
+        let rgb = crate::diff::imgref_rgbf32_to_f32_vec(img);
+        self.compare_linear(&rgb)
+    }
+
     /// Internal comparison implementation for sRGB input.
     ///
     /// Converts sRGB to linear and delegates to the linear path.

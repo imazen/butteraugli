@@ -654,8 +654,8 @@ pub(crate) fn compute_butteraugli_imgref(
     let height = img1.height();
 
     // Convert ImgRef to contiguous u8 slice (handles stride)
-    let rgb1 = imgref_rgb8_to_slice(img1);
-    let rgb2 = imgref_rgb8_to_slice(img2);
+    let rgb1 = imgref_rgb8_to_u8_vec(img1);
+    let rgb2 = imgref_rgb8_to_u8_vec(img2);
 
     // Use the existing proven implementation with multiresolution support
     let mut result = compute_butteraugli_impl(&rgb1, &rgb2, width, height, params);
@@ -679,8 +679,8 @@ pub(crate) fn compute_butteraugli_linear_imgref(
     let height = img1.height();
 
     // Convert ImgRef to contiguous f32 slice (handles stride)
-    let rgb1 = imgref_rgbf32_to_slice(img1);
-    let rgb2 = imgref_rgbf32_to_slice(img2);
+    let rgb1 = imgref_rgbf32_to_f32_vec(img1);
+    let rgb2 = imgref_rgbf32_to_f32_vec(img2);
 
     // Use the existing proven implementation with multiresolution support
     let mut result = compute_butteraugli_linear_impl(&rgb1, &rgb2, width, height, params);
@@ -694,7 +694,7 @@ pub(crate) fn compute_butteraugli_linear_imgref(
 }
 
 /// Converts ImgRef<RGB8> to a contiguous Vec<u8> in RGB order.
-fn imgref_rgb8_to_slice(img: ImgRef<RGB8>) -> Vec<u8> {
+pub(crate) fn imgref_rgb8_to_u8_vec(img: ImgRef<RGB8>) -> Vec<u8> {
     let width = img.width();
     let height = img.height();
     let mut out = Vec::with_capacity(width * height * 3);
@@ -711,7 +711,7 @@ fn imgref_rgb8_to_slice(img: ImgRef<RGB8>) -> Vec<u8> {
 }
 
 /// Converts ImgRef<RGB<f32>> to a contiguous Vec<f32> in RGB order.
-fn imgref_rgbf32_to_slice(img: ImgRef<RGB<f32>>) -> Vec<f32> {
+pub(crate) fn imgref_rgbf32_to_f32_vec(img: ImgRef<RGB<f32>>) -> Vec<f32> {
     let width = img.width();
     let height = img.height();
     let mut out = Vec::with_capacity(width * height * 3);
