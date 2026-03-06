@@ -194,9 +194,7 @@ impl ButteraugliReference {
             let sub_xyb =
                 linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
             let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-            Some(ScaleData {
-                psycho: sub_psycho,
-            })
+            Some(ScaleData { psycho: sub_psycho })
         } else {
             None
         };
@@ -291,9 +289,7 @@ impl ButteraugliReference {
                 &pool,
             );
             let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-            Some(ScaleData {
-                psycho: sub_psycho,
-            })
+            Some(ScaleData { psycho: sub_psycho })
         } else {
             None
         };

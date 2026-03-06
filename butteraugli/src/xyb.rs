@@ -12,7 +12,6 @@
 //!
 //! XYB values are computed from opsin mixing, not directly from RGB.
 
-
 use crate::consts::{
     XYB_NEG_OPSIN_ABSORBANCE_BIAS_CBRT, XYB_OPSIN_ABSORBANCE_BIAS, XYB_OPSIN_ABSORBANCE_MATRIX,
 };

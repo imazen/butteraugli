@@ -569,7 +569,6 @@ pub fn srgb_to_linear(v: u8) -> f32 {
     opsin::srgb_to_linear(v)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
