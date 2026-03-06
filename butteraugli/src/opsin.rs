@@ -424,6 +424,8 @@ pub fn linear_planar_to_xyb_butteraugli(
 ///
 /// # Returns
 /// XYB image (3 planes)
+// Used by cpp-parity tests (excluded from published crate)
+#[allow(dead_code)]
 pub(crate) fn imgref_srgb_to_xyb(
     img: ImgRef<RGB8>,
     intensity_target: f32,
@@ -462,6 +464,8 @@ pub(crate) fn imgref_srgb_to_xyb(
 ///
 /// # Returns
 /// XYB image (3 planes)
+// Used by cpp-parity tests (excluded from published crate)
+#[allow(dead_code)]
 pub(crate) fn imgref_linear_to_xyb(
     img: ImgRef<RGB<f32>>,
     intensity_target: f32,

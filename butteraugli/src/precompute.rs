@@ -39,8 +39,6 @@ const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 /// Precomputed data for a single resolution level.
 #[derive(Clone)]
 struct ScaleData {
-    /// XYB image (needed for mask computation which uses original XYB values)
-    xyb: Image3F,
     /// Frequency-decomposed psychovisual image
     psycho: PsychoImage,
 }
@@ -185,7 +183,7 @@ impl ButteraugliReference {
         let xyb =
             linear_rgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target(), &pool);
         let psycho = separate_frequencies(&xyb, &pool);
-        let full = ScaleData { xyb, psycho };
+        let full = ScaleData { psycho };
 
         // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
         let half = if !params.single_resolution()
@@ -197,7 +195,6 @@ impl ButteraugliReference {
                 linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
             let sub_psycho = separate_frequencies(&sub_xyb, &pool);
             Some(ScaleData {
-                xyb: sub_xyb,
                 psycho: sub_psycho,
             })
         } else {
@@ -274,7 +271,7 @@ impl ButteraugliReference {
             &pool,
         );
         let psycho = separate_frequencies(&xyb, &pool);
-        let full = ScaleData { xyb, psycho };
+        let full = ScaleData { psycho };
 
         // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
         let half = if !params.single_resolution()
@@ -295,7 +292,6 @@ impl ButteraugliReference {
             );
             let sub_psycho = separate_frequencies(&sub_xyb, &pool);
             Some(ScaleData {
-                xyb: sub_xyb,
                 psycho: sub_psycho,
             })
         } else {

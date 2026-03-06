@@ -39,55 +39,6 @@ fn linear_rgb_to_xyb_image(
     linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool)
 }
 
-/// Subsamples an Image3F by 2x using box filter averaging.
-///
-/// Each 2x2 block of pixels is averaged into a single pixel.
-/// Edge cases for odd dimensions are handled by scaling the edge values.
-#[allow(dead_code)]
-fn subsample_2x(input: &Image3F) -> Image3F {
-    let in_width = input.width();
-    let in_height = input.height();
-    let out_width = in_width.div_ceil(2);
-    let out_height = in_height.div_ceil(2);
-
-    let mut output = Image3F::new(out_width, out_height);
-
-    // Initialize to zero (already done by Image3F::new)
-
-    // Accumulate 2x2 blocks
-    for c in 0..3 {
-        for y in 0..in_height {
-            for x in 0..in_width {
-                let val = input.plane(c).get(x, y);
-                let ox = x / 2;
-                let oy = y / 2;
-                let prev = output.plane(c).get(ox, oy);
-                output.plane_mut(c).set(ox, oy, prev + 0.25 * val);
-            }
-        }
-
-        // Handle odd width - last column only has half the samples
-        if (in_width & 1) != 0 {
-            let last_col = out_width - 1;
-            for y in 0..out_height {
-                let prev = output.plane(c).get(last_col, y);
-                output.plane_mut(c).set(last_col, y, prev * 2.0);
-            }
-        }
-
-        // Handle odd height - last row only has half the samples
-        if (in_height & 1) != 0 {
-            let last_row = out_height - 1;
-            for x in 0..out_width {
-                let prev = output.plane(c).get(x, last_row);
-                output.plane_mut(c).set(x, last_row, prev * 2.0);
-            }
-        }
-    }
-
-    output
-}
-
 /// Converts sRGB u8 buffer to linear f32.
 fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
     rgb.iter()
@@ -122,186 +73,18 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
 /// L2 difference (symmetric).
 ///
 /// Computes squared difference weighted by w and adds to diffmap.
-fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    archmage::incant!(l2_diff(i0, i1, w, diffmap), [v4, v3, neon, wasm128]);
-}
-
-#[cfg(target_arch = "x86_64")]
-#[archmage::arcane]
-fn l2_diff_v4(token: archmage::X64V4Token, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    use magetypes::simd::v4::f32x16;
-
-    let width = i0.width();
+#[archmage::autoversion]
+fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     let height = i0.height();
-    let w_simd = f32x16::splat(token, w);
 
     for y in 0..height {
         let row0 = i0.row(y);
         let row1 = i1.row(y);
         let row_diff = diffmap.row_mut(y);
 
-        // SIMD path: process 16 elements at a time
-        let chunks = row_diff.len() / 16;
-        for i in 0..chunks {
-            let x = i * 16;
-            let v0 = f32x16::load(token, row0[x..x + 16].try_into().unwrap());
-            let v1 = f32x16::load(token, row1[x..x + 16].try_into().unwrap());
-            let curr = f32x16::load(token, row_diff[x..x + 16].try_into().unwrap());
-
+        for ((d, &v0), &v1) in row_diff.iter_mut().zip(row0.iter()).zip(row1.iter()) {
             let diff = v0 - v1;
-            let result = diff * diff * w_simd + curr;
-
-            result.store((&mut row_diff[x..x + 16]).try_into().unwrap());
-        }
-
-        // Scalar tail
-        let simd_width = chunks * 16;
-        for x in simd_width..width {
-            let diff = row0[x] - row1[x];
-            row_diff[x] += diff * diff * w;
-        }
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[archmage::arcane]
-fn l2_diff_v3(token: archmage::X64V3Token, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    use magetypes::simd::f32x8;
-
-    let width = i0.width();
-    let height = i0.height();
-    let w_simd = f32x8::splat(token, w);
-
-    for y in 0..height {
-        let row0 = i0.row(y);
-        let row1 = i1.row(y);
-        let row_diff = diffmap.row_mut(y);
-
-        // SIMD path: process 8 elements at a time
-        let chunks = row_diff.len() / 8;
-        for i in 0..chunks {
-            let x = i * 8;
-            let v0 = f32x8::load(token, row0[x..x + 8].try_into().unwrap());
-            let v1 = f32x8::load(token, row1[x..x + 8].try_into().unwrap());
-            let curr = f32x8::load(token, row_diff[x..x + 8].try_into().unwrap());
-
-            let diff = v0 - v1;
-            let result = diff * diff * w_simd + curr;
-
-            result.store((&mut row_diff[x..x + 8]).try_into().unwrap());
-        }
-
-        // Scalar tail
-        let simd_width = chunks * 8;
-        for x in simd_width..width {
-            let diff = row0[x] - row1[x];
-            row_diff[x] += diff * diff * w;
-        }
-    }
-}
-
-#[cfg(target_arch = "aarch64")]
-#[archmage::arcane]
-fn l2_diff_neon(
-    token: archmage::NeonToken,
-    i0: &ImageF,
-    i1: &ImageF,
-    w: f32,
-    diffmap: &mut ImageF,
-) {
-    use magetypes::simd::f32x8;
-
-    let width = i0.width();
-    let height = i0.height();
-    let w_simd = f32x8::splat(token, w);
-
-    for y in 0..height {
-        let row0 = i0.row(y);
-        let row1 = i1.row(y);
-        let row_diff = diffmap.row_mut(y);
-
-        // SIMD path: process 8 elements at a time (2×NEON f32x4)
-        let chunks = row_diff.len() / 8;
-        for i in 0..chunks {
-            let x = i * 8;
-            let v0 = f32x8::load(token, row0[x..x + 8].try_into().unwrap());
-            let v1 = f32x8::load(token, row1[x..x + 8].try_into().unwrap());
-            let curr = f32x8::load(token, row_diff[x..x + 8].try_into().unwrap());
-
-            let diff = v0 - v1;
-            let result = diff * diff * w_simd + curr;
-
-            result.store((&mut row_diff[x..x + 8]).try_into().unwrap());
-        }
-
-        // Scalar tail
-        let simd_width = chunks * 8;
-        for x in simd_width..width {
-            let diff = row0[x] - row1[x];
-            row_diff[x] += diff * diff * w;
-        }
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[archmage::arcane]
-fn l2_diff_wasm128(
-    token: archmage::Wasm128Token,
-    i0: &ImageF,
-    i1: &ImageF,
-    w: f32,
-    diffmap: &mut ImageF,
-) {
-    use magetypes::simd::f32x8;
-
-    let width = i0.width();
-    let height = i0.height();
-    let w_simd = f32x8::splat(token, w);
-
-    for y in 0..height {
-        let row0 = i0.row(y);
-        let row1 = i1.row(y);
-        let row_diff = diffmap.row_mut(y);
-
-        let chunks = row_diff.len() / 8;
-        for i in 0..chunks {
-            let x = i * 8;
-            let v0 = f32x8::load(token, row0[x..x + 8].try_into().unwrap());
-            let v1 = f32x8::load(token, row1[x..x + 8].try_into().unwrap());
-            let curr = f32x8::load(token, row_diff[x..x + 8].try_into().unwrap());
-
-            let diff = v0 - v1;
-            let result = diff * diff * w_simd + curr;
-
-            result.store((&mut row_diff[x..x + 8]).try_into().unwrap());
-        }
-
-        let simd_width = chunks * 8;
-        for x in simd_width..width {
-            let diff = row0[x] - row1[x];
-            row_diff[x] += diff * diff * w;
-        }
-    }
-}
-
-fn l2_diff_scalar(
-    _token: archmage::ScalarToken,
-    i0: &ImageF,
-    i1: &ImageF,
-    w: f32,
-    diffmap: &mut ImageF,
-) {
-    let width = i0.width();
-    let height = i0.height();
-
-    for y in 0..height {
-        let row0 = i0.row(y);
-        let row1 = i1.row(y);
-        let row_diff = diffmap.row_mut(y);
-
-        for x in 0..width {
-            let diff = row0[x] - row1[x];
-            row_diff[x] += diff * diff * w;
+            *d += diff * diff * w;
         }
     }
 }
@@ -664,23 +447,6 @@ fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> 
     max_val as f64
 }
 
-/// Computes butteraugli diffmap with multiresolution (sRGB u8 input).
-///
-/// Converts sRGB to linear first, then delegates to the linear path.
-/// This ensures subsampling happens in linear space (not gamma-compressed sRGB).
-fn compute_diffmap_multiresolution(
-    rgb1: &[u8],
-    rgb2: &[u8],
-    width: usize,
-    height: usize,
-    params: &ButteraugliParams,
-    pool: &BufferPool,
-) -> ImageF {
-    let linear1 = srgb_u8_to_linear_f32(rgb1);
-    let linear2 = srgb_u8_to_linear_f32(rgb2);
-    compute_diffmap_multiresolution_linear(&linear1, &linear2, width, height, params, pool)
-}
-
 /// Subsamples linear RGB f32 buffer by 2x for multi-resolution processing.
 fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
@@ -875,47 +641,6 @@ pub fn compute_butteraugli_linear_impl(
         score,
         diffmap: Some(diffmap),
     }
-}
-
-/// Computes the diffmap for a single resolution level from XYB images.
-fn compute_diffmap_single_resolution_xyb(
-    xyb1: &Image3F,
-    xyb2: &Image3F,
-    params: &ButteraugliParams,
-    pool: &BufferPool,
-) -> ImageF {
-    let width = xyb1.width();
-    let height = xyb1.height();
-
-    // Perform frequency decomposition
-    let ps1 = separate_frequencies(xyb1, pool);
-    let ps2 = separate_frequencies(xyb2, pool);
-
-    // Compute AC differences using Malta filter
-    let mut block_diff_ac =
-        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
-
-    // Compute mask from both PsychoImages (also accumulates some AC differences)
-    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);
-
-    // Compute DC (LF) differences
-    let mut block_diff_dc = Image3F::new(width, height);
-    for c in 0..3 {
-        let w = WMUL[6 + c] as f32;
-        let dc = block_diff_dc.plane_mut(c);
-        for y in 0..height {
-            let lf1 = ps1.lf.plane(c).row(y);
-            let lf2 = ps2.lf.plane(c).row(y);
-            let dst = dc.row_mut(y);
-            for x in 0..width {
-                let d = lf1[x] - lf2[x];
-                dst[x] = d * d * w;
-            }
-        }
-    }
-
-    // Combine channels to final diffmap using MaskY/MaskDcY
-    combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul())
 }
 
 /// Implementation of butteraugli comparison for ImgRef<RGB8>.
