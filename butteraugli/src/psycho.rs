@@ -145,43 +145,20 @@ fn xyb_low_freq_to_vals(lf: &mut Image3F) {
 /// Suppresses X channel based on Y channel values.
 ///
 /// High Y (luminance) values reduce sensitivity to X (chroma) differences.
-fn suppress_x_by_y(in_y: &ImageF, inout_x: &mut ImageF) {
-    let width = in_y.width();
+#[archmage::autoversion]
+fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut ImageF) {
     let height = in_y.height();
-
-    use wide::f32x8;
     let s = SUPPRESS_S as f32;
     let one_minus_s = 1.0 - s;
     let yw = SUPPRESS_XY as f32;
-    let s_simd = f32x8::splat(s);
-    let one_minus_s_simd = f32x8::splat(one_minus_s);
-    let yw_simd = f32x8::splat(yw);
 
     for y in 0..height {
         let row_y = in_y.row(y);
         let row_x = inout_x.row_mut(y);
 
-        // SIMD path: process 8 elements at a time
-        for (i, chunk) in row_x.chunks_exact_mut(8).enumerate() {
-            let x = i * 8;
-            let vy = f32x8::from(<[f32; 8]>::try_from(&row_y[x..x + 8]).unwrap());
-            let vx = f32x8::from(<[f32; 8]>::try_from(&*chunk).unwrap());
-
-            // scaler = (yw / (vy * vy + yw)) * one_minus_s + s
-            let denom = vy * vy + yw_simd;
-            let scaler = (yw_simd / denom) * one_minus_s_simd + s_simd;
-            let result = scaler * vx;
-
-            chunk.copy_from_slice(&<[f32; 8]>::from(result));
-        }
-
-        // Scalar tail
-        let simd_width = width / 8 * 8;
-        for x in simd_width..width {
-            let vy = row_y[x];
-            let vx = row_x[x];
+        for (vx, &vy) in row_x.iter_mut().zip(row_y.iter()) {
             let scaler = (yw / vy.mul_add(vy, yw)).mul_add(one_minus_s, s);
-            row_x[x] = scaler * vx;
+            *vx *= scaler;
         }
     }
 }

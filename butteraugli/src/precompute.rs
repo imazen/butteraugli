@@ -39,8 +39,6 @@ const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 /// Precomputed data for a single resolution level.
 #[derive(Clone)]
 struct ScaleData {
-    /// XYB image (needed for mask computation which uses original XYB values)
-    xyb: Image3F,
     /// Frequency-decomposed psychovisual image
     psycho: PsychoImage,
 }
@@ -185,7 +183,7 @@ impl ButteraugliReference {
         let xyb =
             linear_rgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target(), &pool);
         let psycho = separate_frequencies(&xyb, &pool);
-        let full = ScaleData { xyb, psycho };
+        let full = ScaleData { psycho };
 
         // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
         let half = if !params.single_resolution()
@@ -196,10 +194,7 @@ impl ButteraugliReference {
             let sub_xyb =
                 linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
             let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-            Some(ScaleData {
-                xyb: sub_xyb,
-                psycho: sub_psycho,
-            })
+            Some(ScaleData { psycho: sub_psycho })
         } else {
             None
         };
@@ -274,7 +269,7 @@ impl ButteraugliReference {
             &pool,
         );
         let psycho = separate_frequencies(&xyb, &pool);
-        let full = ScaleData { xyb, psycho };
+        let full = ScaleData { psycho };
 
         // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
         let half = if !params.single_resolution()
@@ -294,10 +289,7 @@ impl ButteraugliReference {
                 &pool,
             );
             let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-            Some(ScaleData {
-                xyb: sub_xyb,
-                psycho: sub_psycho,
-            })
+            Some(ScaleData { psycho: sub_psycho })
         } else {
             None
         };
@@ -421,6 +413,74 @@ impl ButteraugliReference {
     #[must_use]
     pub fn params(&self) -> &ButteraugliParams {
         &self.params
+    }
+
+    /// Precompute reference data from an `ImgRef<RGB8>` (sRGB).
+    ///
+    /// Convenience wrapper around [`new`](Self::new) that accepts `imgref` types.
+    ///
+    /// # Errors
+    /// Returns an error if the image is smaller than 8x8 pixels.
+    pub fn from_srgb(
+        img: imgref::ImgRef<rgb::RGB8>,
+        params: ButteraugliParams,
+    ) -> Result<Self, ButteraugliError> {
+        let rgb = crate::diff::imgref_rgb8_to_u8_vec(img);
+        Self::new(&rgb, img.width(), img.height(), params)
+    }
+
+    /// Precompute reference data from an `ImgRef<RGB<f32>>` (linear RGB).
+    ///
+    /// Convenience wrapper around [`new_linear`](Self::new_linear) that accepts `imgref` types.
+    ///
+    /// # Errors
+    /// Returns an error if the image is smaller than 8x8 pixels.
+    pub fn from_linear(
+        img: imgref::ImgRef<rgb::RGB<f32>>,
+        params: ButteraugliParams,
+    ) -> Result<Self, ButteraugliError> {
+        let rgb = crate::diff::imgref_rgbf32_to_f32_vec(img);
+        Self::new_linear(&rgb, img.width(), img.height(), params)
+    }
+
+    /// Compare a distorted sRGB image (as `ImgRef<RGB8>`) against the reference.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions don't match the reference.
+    pub fn compare_srgb(
+        &self,
+        img: imgref::ImgRef<rgb::RGB8>,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        if img.width() != self.width || img.height() != self.height {
+            return Err(ButteraugliError::DimensionMismatch {
+                w1: self.width,
+                h1: self.height,
+                w2: img.width(),
+                h2: img.height(),
+            });
+        }
+        let rgb = crate::diff::imgref_rgb8_to_u8_vec(img);
+        self.compare(&rgb)
+    }
+
+    /// Compare a distorted linear RGB image (as `ImgRef<RGB<f32>>`) against the reference.
+    ///
+    /// # Errors
+    /// Returns an error if dimensions don't match the reference.
+    pub fn compare_linear_imgref(
+        &self,
+        img: imgref::ImgRef<rgb::RGB<f32>>,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        if img.width() != self.width || img.height() != self.height {
+            return Err(ButteraugliError::DimensionMismatch {
+                w1: self.width,
+                h1: self.height,
+                w2: img.width(),
+                h2: img.height(),
+            });
+        }
+        let rgb = crate::diff::imgref_rgbf32_to_f32_vec(img);
+        self.compare_linear(&rgb)
     }
 
     /// Internal comparison implementation for sRGB input.
@@ -599,9 +659,15 @@ fn compute_diffmap_with_precomputed(
     combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul())
 }
 
-/// Computes LF (DC) squared difference - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn compute_lf_diff(p1: &ImageF, p2: &ImageF, w: f32, out: &mut ImageF) {
+/// Computes LF (DC) squared difference - autoversioned for autovectorization.
+#[archmage::autoversion]
+fn compute_lf_diff(
+    _token: archmage::SimdToken,
+    p1: &ImageF,
+    p2: &ImageF,
+    w: f32,
+    out: &mut ImageF,
+) {
     let width = p1.width();
     let height = p1.height();
 
@@ -806,9 +872,10 @@ fn mask_psycho_image(
     compute_mask_from_images(&mask0, &mask1, diff_ac, pool)
 }
 
-/// Combines channels to produce final diffmap - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
+/// Combines channels to produce final diffmap - autoversioned for autovectorization.
+#[archmage::autoversion]
 fn combine_channels_to_diffmap(
+    _token: archmage::SimdToken,
     mask: &ImageF,
     block_diff_dc: &Image3F,
     block_diff_ac: &Image3F,
@@ -843,9 +910,9 @@ fn combine_channels_to_diffmap(
     diffmap
 }
 
-/// L2 difference (symmetric) - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
+/// L2 difference (symmetric) - autoversioned for autovectorization.
+#[archmage::autoversion]
+fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     let width = i0.width();
     let height = i0.height();
 
@@ -861,9 +928,16 @@ fn l2_diff(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     }
 }
 
-/// L2 difference asymmetric - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn l2_diff_asymmetric(i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffmap: &mut ImageF) {
+/// L2 difference asymmetric - autoversioned for autovectorization.
+#[archmage::autoversion]
+fn l2_diff_asymmetric(
+    _token: archmage::SimdToken,
+    i0: &ImageF,
+    i1: &ImageF,
+    w_0gt1: f32,
+    w_0lt1: f32,
+    diffmap: &mut ImageF,
+) {
     if w_0gt1 == 0.0 && w_0lt1 == 0.0 {
         return;
     }
@@ -913,9 +987,9 @@ fn l2_diff_asymmetric(i0: &ImageF, i1: &ImageF, w_0gt1: f32, w_0lt1: f32, diffma
     }
 }
 
-/// Computes global score from diffmap - multiversioned for autovectorization.
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-fn compute_score_from_diffmap(diffmap: &ImageF) -> f64 {
+/// Computes global score from diffmap - autoversioned for autovectorization.
+#[archmage::autoversion]
+fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> f64 {
     let width = diffmap.width();
     let height = diffmap.height();
 

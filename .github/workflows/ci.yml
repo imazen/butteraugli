@@ -40,8 +40,9 @@ jobs:
           - ubuntu-latest      # Ubuntu 24.04
           - ubuntu-22.04       # Ubuntu 22.04 LTS
           - macos-latest       # macOS ARM64 (Apple Silicon)
+          - macos-26-intel     # macOS Intel x86_64
           - windows-latest     # Windows Server 2022
-          - windows-2022       # Windows Server 2022
+          - windows-11-arm     # Windows 11 ARM64
 
     steps:
       - uses: actions/checkout@v6

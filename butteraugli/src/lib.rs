@@ -80,16 +80,22 @@
 #![allow(clippy::imprecise_flops)]
 #![allow(clippy::implicit_saturating_sub)]
 #![allow(clippy::useless_let_if_seq)]
+// archmage uses _token parameters implicitly via proc macros
+#![allow(clippy::used_underscore_binding)]
 
-// Internal modules - exposed with "internals" feature for testing/benchmarking
+// Internal modules - exposed with "internals" feature for testing/benchmarking.
+// The pub(crate) variants allow dead_code because these modules contain items
+// that are only reachable via the "internals" feature or cpp-parity tests.
 #[cfg(feature = "internals")]
 pub mod blur;
 #[cfg(not(feature = "internals"))]
+#[allow(dead_code)]
 pub(crate) mod blur;
 
 #[cfg(feature = "internals")]
 pub mod consts;
 #[cfg(not(feature = "internals"))]
+#[allow(dead_code)]
 pub(crate) mod consts;
 
 mod diff;
@@ -97,9 +103,8 @@ mod diff;
 #[cfg(feature = "internals")]
 pub mod image;
 #[cfg(not(feature = "internals"))]
+#[allow(dead_code)]
 pub(crate) mod image;
-
-pub(crate) mod image_aligned;
 
 #[cfg(feature = "internals")]
 pub mod malta;
@@ -109,15 +114,16 @@ pub(crate) mod malta;
 #[cfg(feature = "internals")]
 pub mod mask;
 #[cfg(not(feature = "internals"))]
+#[allow(dead_code)]
 pub(crate) mod mask;
 
 #[cfg(feature = "internals")]
 pub mod opsin;
 #[cfg(not(feature = "internals"))]
+#[allow(dead_code)]
 pub(crate) mod opsin;
 
 pub mod precompute;
-// Re-export ButteraugliReference for convenience
 pub use precompute::ButteraugliReference;
 
 #[cfg(feature = "internals")]
@@ -125,6 +131,8 @@ pub mod psycho;
 #[cfg(not(feature = "internals"))]
 pub(crate) mod psycho;
 
+// Used by cpp-parity tests (excluded from published crate)
+#[allow(dead_code)]
 pub(crate) mod xyb;
 
 // C++ reference data for regression testing (auto-generated)
@@ -561,158 +569,6 @@ pub fn srgb_to_linear(v: u8) -> f32 {
     opsin::srgb_to_linear(v)
 }
 
-// ============================================================================
-// Legacy API (deprecated, will be removed in future versions)
-// ============================================================================
-
-/// Legacy result type that uses internal ImageF.
-///
-/// This is kept for backward compatibility during the transition period.
-#[doc(hidden)]
-pub struct LegacyButteraugliResult {
-    /// Global difference score.
-    pub score: f64,
-    /// Per-pixel difference map.
-    pub diffmap: Option<image::ImageF>,
-}
-
-/// Legacy function for backward compatibility.
-///
-/// Use [`butteraugli`] instead.
-#[deprecated(since = "0.4.0", note = "Use butteraugli() with ImgRef<RGB8> instead")]
-#[allow(clippy::missing_errors_doc)]
-pub fn compute_butteraugli(
-    rgb1: &[u8],
-    rgb2: &[u8],
-    width: usize,
-    height: usize,
-    params: &ButteraugliParams,
-) -> Result<LegacyButteraugliResult, ButteraugliError> {
-    params.validate()?;
-
-    let expected_size = width
-        .checked_mul(height)
-        .and_then(|wh| wh.checked_mul(3))
-        .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
-
-    if width < 8 || height < 8 {
-        return Err(ButteraugliError::ImageTooSmall { width, height });
-    }
-
-    if rgb1.len() != expected_size || rgb2.len() != expected_size {
-        return Err(ButteraugliError::DimensionMismatch {
-            w1: width,
-            h1: height,
-            w2: if rgb2.len() == expected_size {
-                width
-            } else {
-                0
-            },
-            h2: if rgb2.len() == expected_size {
-                height
-            } else {
-                0
-            },
-        });
-    }
-
-    // Convert u8 slices to RGB8 and create Img
-    let pixels1: Vec<RGB8> = rgb1
-        .chunks_exact(3)
-        .map(|c| RGB8::new(c[0], c[1], c[2]))
-        .collect();
-    let pixels2: Vec<RGB8> = rgb2
-        .chunks_exact(3)
-        .map(|c| RGB8::new(c[0], c[1], c[2]))
-        .collect();
-
-    let img1 = Img::new(pixels1, width, height);
-    let img2 = Img::new(pixels2, width, height);
-
-    let result = diff::compute_butteraugli_imgref(img1.as_ref(), img2.as_ref(), params, true);
-
-    if !result.score.is_finite() {
-        return Err(ButteraugliError::NonFiniteResult);
-    }
-
-    Ok(LegacyButteraugliResult {
-        score: result.score,
-        diffmap: result.diffmap,
-    })
-}
-
-/// Legacy function for backward compatibility (linear RGB).
-///
-/// Use [`butteraugli_linear`] instead.
-#[deprecated(
-    since = "0.4.0",
-    note = "Use butteraugli_linear() with ImgRef<RGB<f32>> instead"
-)]
-#[allow(clippy::missing_errors_doc)]
-pub fn compute_butteraugli_linear(
-    rgb1: &[f32],
-    rgb2: &[f32],
-    width: usize,
-    height: usize,
-    params: &ButteraugliParams,
-) -> Result<LegacyButteraugliResult, ButteraugliError> {
-    params.validate()?;
-
-    let expected_size = width
-        .checked_mul(height)
-        .and_then(|wh| wh.checked_mul(3))
-        .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
-
-    if width < 8 || height < 8 {
-        return Err(ButteraugliError::ImageTooSmall { width, height });
-    }
-
-    if rgb1.len() != expected_size || rgb2.len() != expected_size {
-        return Err(ButteraugliError::DimensionMismatch {
-            w1: width,
-            h1: height,
-            w2: if rgb2.len() == expected_size {
-                width
-            } else {
-                0
-            },
-            h2: if rgb2.len() == expected_size {
-                height
-            } else {
-                0
-            },
-        });
-    }
-
-    check_finite_f32(rgb1, "rgb1")?;
-    check_finite_f32(rgb2, "rgb2")?;
-
-    // Convert f32 slices to RGB<f32> and create Img
-    let pixels1: Vec<RGB<f32>> = rgb1
-        .chunks_exact(3)
-        .map(|c| RGB::new(c[0], c[1], c[2]))
-        .collect();
-    let pixels2: Vec<RGB<f32>> = rgb2
-        .chunks_exact(3)
-        .map(|c| RGB::new(c[0], c[1], c[2]))
-        .collect();
-
-    let img1 = Img::new(pixels1, width, height);
-    let img2 = Img::new(pixels2, width, height);
-
-    let result =
-        diff::compute_butteraugli_linear_imgref(img1.as_ref(), img2.as_ref(), params, true);
-
-    if !result.score.is_finite() {
-        return Err(ButteraugliError::NonFiniteResult);
-    }
-
-    Ok(LegacyButteraugliResult {
-        score: result.score,
-        diffmap: result.diffmap,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -925,21 +781,6 @@ mod tests {
         let params = ButteraugliParams::new().with_xmul(0.0);
         let result = butteraugli(img1.as_ref(), img2.as_ref(), &params);
         assert!(result.is_ok(), "xmul=0.0 should be valid, got {result:?}");
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_overflow_dimensions_returns_error() {
-        // width * height * 3 would overflow usize on 64-bit
-        let width = usize::MAX / 2;
-        let height = 3;
-        let rgb: Vec<u8> = vec![0; 8]; // doesn't matter, overflow comes first
-        let result = compute_butteraugli(&rgb, &rgb, width, height, &ButteraugliParams::default());
-        assert!(
-            matches!(result, Err(ButteraugliError::DimensionOverflow { .. })),
-            "expected DimensionOverflow, got {:?}",
-            result.as_ref().err()
-        );
     }
 
     #[test]

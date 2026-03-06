@@ -489,22 +489,30 @@ fn decode_jpeg(data: &[u8]) -> Vec<u8> {
     decoder.decode().unwrap_or_default()
 }
 
+fn ssimulacra2_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(std::env::var("SSIMULACRA2_DIR").unwrap_or_else(|_| {
+        // Default: sibling directory relative to workspace root
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap();
+        workspace.join("ssimulacra2").to_string_lossy().into_owned()
+    }))
+}
+
 /// Test with ssimulacra2 tank images (real image pair).
 #[test]
 fn test_ssimulacra2_tank_parity() {
-    let source_path =
-        std::path::Path::new("/home/lilith/work/ssimulacra2/ssimulacra2/test_data/tank_source.png");
-    let distorted_path = std::path::Path::new(
-        "/home/lilith/work/ssimulacra2/ssimulacra2/test_data/tank_distorted.png",
-    );
+    let ssim2 = ssimulacra2_dir();
+    let source_path = ssim2.join("ssimulacra2/test_data/tank_source.png");
+    let distorted_path = ssim2.join("ssimulacra2/test_data/tank_distorted.png");
 
     if !source_path.exists() || !distorted_path.exists() {
         eprintln!("Skipping: ssimulacra2 tank images not found");
         return;
     }
 
-    let (source, width, height) = load_png(source_path).expect("Failed to load source");
-    let (distorted, w2, h2) = load_png(distorted_path).expect("Failed to load distorted");
+    let (source, width, height) = load_png(&source_path).expect("Failed to load source");
+    let (distorted, w2, h2) = load_png(&distorted_path).expect("Failed to load distorted");
 
     assert_eq!((width, height), (w2, h2), "Image dimensions must match");
 

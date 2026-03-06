@@ -219,17 +219,17 @@ fn run_single(cli: &Cli) -> ExitCode {
     match compare_images(cli, &cli.reference, &cli.distorted) {
         Ok((result, width, height)) => {
             // Save diffmap if requested
-            if let Some(diffmap_path) = &cli.diffmap {
-                if let Some(diffmap) = &result.diffmap {
-                    if let Err(e) = save_diffmap(diffmap, diffmap_path) {
-                        if !cli.quiet {
-                            eprintln!("{}: {}", "error".red().bold(), e);
-                        }
-                        return ExitCode::from(2);
+            if let Some(diffmap_path) = &cli.diffmap
+                && let Some(diffmap) = &result.diffmap
+            {
+                if let Err(e) = save_diffmap(diffmap, diffmap_path) {
+                    if !cli.quiet {
+                        eprintln!("{}: {}", "error".red().bold(), e);
                     }
-                    if !cli.quiet && get_format(cli) != OutputFormat::Json {
-                        eprintln!("Diffmap saved to: {}", diffmap_path.display());
-                    }
+                    return ExitCode::from(2);
+                }
+                if !cli.quiet && get_format(cli) != OutputFormat::Json {
+                    eprintln!("Diffmap saved to: {}", diffmap_path.display());
                 }
             }
 
@@ -242,10 +242,10 @@ fn run_single(cli: &Cli) -> ExitCode {
             }
 
             // Check threshold
-            if let Some(max_score) = cli.max_score {
-                if result.score > max_score {
-                    return ExitCode::from(1);
-                }
+            if let Some(max_score) = cli.max_score
+                && result.score > max_score
+            {
+                return ExitCode::from(1);
             }
 
             ExitCode::SUCCESS
@@ -310,12 +310,11 @@ fn run_batch(cli: &Cli) -> ExitCode {
             }
         }
 
-        if let Ok((ref result, _, _)) = comparison {
-            if let Some(max_score) = cli.max_score {
-                if result.score > max_score {
-                    threshold_exceeded = true;
-                }
-            }
+        if let Ok((ref result, _, _)) = comparison
+            && let Some(max_score) = cli.max_score
+            && result.score > max_score
+        {
+            threshold_exceeded = true;
         }
 
         results.push(ComparisonResult {

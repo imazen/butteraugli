@@ -1,4 +1,4 @@
-/target
+target/
 
 # IDE
 .idea/
@@ -12,3 +12,9 @@ Thumbs.db
 
 # Test outputs
 /comparison_outputs/
+
+# Profiling artifacts
+cachegrind.out.*
+callgrind.out.*
+perf.data
+perf.data.old

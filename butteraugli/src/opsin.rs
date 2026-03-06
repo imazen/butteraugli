@@ -150,8 +150,13 @@ pub fn opsin_absorbance(r: f32, g: f32, b: f32, clamp: bool) -> (f32, f32, f32) 
 ///
 /// # Returns
 /// XYB image (3 planes)
-#[multiversed::multiversed("x86-64-v4", "x86-64-v3", "x86-64-v2", "arm64")]
-pub fn opsin_dynamics_image(rgb: &Image3F, intensity_target: f32, pool: &BufferPool) -> Image3F {
+#[archmage::autoversion]
+pub fn opsin_dynamics_image(
+    _token: archmage::SimdToken,
+    rgb: &Image3F,
+    intensity_target: f32,
+    pool: &BufferPool,
+) -> Image3F {
     let width = rgb.plane(0).width();
     let height = rgb.plane(0).height();
 
@@ -419,6 +424,8 @@ pub fn linear_planar_to_xyb_butteraugli(
 ///
 /// # Returns
 /// XYB image (3 planes)
+// Used by cpp-parity tests (excluded from published crate)
+#[allow(dead_code)]
 pub(crate) fn imgref_srgb_to_xyb(
     img: ImgRef<RGB8>,
     intensity_target: f32,
@@ -457,6 +464,8 @@ pub(crate) fn imgref_srgb_to_xyb(
 ///
 /// # Returns
 /// XYB image (3 planes)
+// Used by cpp-parity tests (excluded from published crate)
+#[allow(dead_code)]
 pub(crate) fn imgref_linear_to_xyb(
     img: ImgRef<RGB<f32>>,
     intensity_target: f32,
