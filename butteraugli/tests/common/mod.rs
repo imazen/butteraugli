@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Common test utilities for butteraugli tests.
 //!
 //! Provides path resolution for testdata files without hardcoded paths.

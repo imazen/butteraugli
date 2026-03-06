@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Shared image generation and distortion functions for butteraugli tests.
 //!
 //! These produce deterministic synthetic images using an LCG PRNG,
