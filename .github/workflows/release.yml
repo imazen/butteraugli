@@ -34,7 +34,7 @@ jobs:
 
           # macOS
           - target: x86_64-apple-darwin
-            os: macos-latest
+            os: macos-26-intel
             artifact: butteraugli
           - target: aarch64-apple-darwin
             os: macos-latest
@@ -44,9 +44,12 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             artifact: butteraugli.exe
+          - target: aarch64-pc-windows-msvc
+            os: windows-11-arm
+            artifact: butteraugli.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -112,7 +115,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -149,7 +152,7 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
