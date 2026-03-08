@@ -208,8 +208,7 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
 
         // Fused: one pass writes LF = blurred, MF = original - blurred
         let blur_plane = |xyb_plane: &ImageF, lf_out: &mut ImageF, mf_out: &mut ImageF| {
-            let p = BufferPool::new();
-            let blurred = gaussian_blur(xyb_plane, sigma, &p);
+            let blurred = gaussian_blur(xyb_plane, sigma, pool);
             let w = xyb_plane.width();
             for y in 0..xyb_plane.height() {
                 let row_orig = xyb_plane.row(y);
@@ -221,6 +220,7 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
                     row_mf[x] = row_orig[x] - row_blurred[x];
                 }
             }
+            blurred.recycle(pool);
         };
 
         maybe_join(
@@ -267,13 +267,13 @@ fn separate_mf_hf_channel(
     sigma: f32,
     range: f32,
     use_amplify: bool,
+    pool: &BufferPool,
 ) {
-    let pool = BufferPool::new();
     let width = mf_plane.width();
     let height = mf_plane.height();
 
     // Blur the original MF plane
-    let blurred = gaussian_blur(mf_plane, sigma, &pool);
+    let blurred = gaussian_blur(mf_plane, sigma, pool);
 
     // Pass 1: HF = original_mf - blurred (mf_plane still holds the original)
     for y in 0..height {
@@ -297,6 +297,7 @@ fn separate_mf_hf_channel(
             }
         }
     }
+    blurred.recycle(pool);
 }
 
 /// Separates MF (medium frequency) and HF (high frequency) components.
@@ -313,14 +314,14 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
         let hf_y = &mut hf_y_slice[0];
 
         maybe_join(
-            || separate_mf_hf_channel(mf0, hf_x, sigma, REMOVE_MF_RANGE as f32, false),
+            || separate_mf_hf_channel(mf0, hf_x, sigma, REMOVE_MF_RANGE as f32, false, pool),
             || {
                 maybe_join(
-                    || separate_mf_hf_channel(mf1, hf_y, sigma, ADD_MF_RANGE as f32, true),
+                    || separate_mf_hf_channel(mf1, hf_y, sigma, ADD_MF_RANGE as f32, true, pool),
                     || {
-                        let p = BufferPool::new();
-                        let blurred_b = gaussian_blur(mf2, sigma, &p);
+                        let blurred_b = gaussian_blur(mf2, sigma, pool);
                         mf2.copy_from(&blurred_b);
+                        blurred_b.recycle(pool);
                     },
                 )
             },
@@ -342,6 +343,7 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
                 sigma,
                 range as f32,
                 use_amplify,
+                pool,
             );
         }
         let blurred_b = gaussian_blur(mf.plane(2), sigma, pool);
@@ -367,8 +369,7 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
             || {
                 let hf_x = &mut hf_x_slice[0];
                 let uhf_x = &mut uhf_x_slice[0];
-                let p = BufferPool::new();
-                let blurred = gaussian_blur(hf_x, sigma, &p);
+                let blurred = gaussian_blur(hf_x, sigma, pool);
 
                 // UHF = original_hf - blurred, with range adjustment
                 for y in 0..height {
@@ -390,12 +391,12 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                             remove_range_around_zero(row_blurred[x], REMOVE_HF_RANGE as f32);
                     }
                 }
+                blurred.recycle(pool);
             },
             || {
                 let hf_y = &mut hf_y_slice[0];
                 let uhf_y = &mut uhf_y_slice[0];
-                let p = BufferPool::new();
-                let blurred = gaussian_blur(hf_y, sigma, &p);
+                let blurred = gaussian_blur(hf_y, sigma, pool);
 
                 // UHF = clamp(original_hf - clamp(blurred)), with scaling
                 for y in 0..height {
@@ -422,6 +423,7 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                         );
                     }
                 }
+                blurred.recycle(pool);
             },
         );
     } else {
