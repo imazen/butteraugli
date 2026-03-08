@@ -21,7 +21,7 @@ use rgb::{RGB, RGB8};
 /// Conditional parallelism: uses rayon::join when the `rayon` feature is enabled,
 /// otherwise runs both closures sequentially on the current thread.
 #[cfg(feature = "rayon")]
-fn maybe_join<A, B, RA, RB>(a: A, b: B) -> (RA, RB)
+pub(crate) fn maybe_join<A, B, RA, RB>(a: A, b: B) -> (RA, RB)
 where
     A: FnOnce() -> RA + Send,
     B: FnOnce() -> RB + Send,
@@ -32,7 +32,7 @@ where
 }
 
 #[cfg(not(feature = "rayon"))]
-fn maybe_join<A, B, RA, RB>(a: A, b: B) -> (RA, RB)
+pub(crate) fn maybe_join<A, B, RA, RB>(a: A, b: B) -> (RA, RB)
 where
     A: FnOnce() -> RA,
     B: FnOnce() -> RB,
@@ -65,16 +65,7 @@ fn linear_rgb_to_xyb_image(
 #[cfg(test)]
 fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
     let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
-    let mut out = Vec::with_capacity(rgb.len());
-    // SAFETY: f32 has no validity invariant; all elements filled below.
-    #[allow(clippy::uninit_vec)]
-    unsafe {
-        out.set_len(rgb.len());
-    }
-    for (o, &v) in out.iter_mut().zip(rgb.iter()) {
-        *o = lut[v as usize];
-    }
-    out
+    rgb.iter().map(|&v| lut[v as usize]).collect()
 }
 
 /// Adds a supersampled (upscaled 2x) diffmap to the destination.
@@ -458,12 +449,7 @@ fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> 
 fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
-    let mut output = Vec::with_capacity(out_width * out_height * 3);
-    // SAFETY: f32 has no validity invariant; all elements filled below.
-    #[allow(clippy::uninit_vec)]
-    unsafe {
-        output.set_len(out_width * out_height * 3);
-    }
+    let mut output = vec![0.0f32; out_width * out_height * 3];
 
     // Interior: full 2x2 blocks (no boundary checks needed)
     let interior_w = width / 2;
@@ -723,22 +709,13 @@ pub(crate) fn imgref_srgb_to_linear_f32(img: ImgRef<RGB8>) -> Vec<f32> {
     let height = img.height();
     let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
     let mut out = Vec::with_capacity(width * height * 3);
-    // SAFETY: f32 has no validity invariant; we fill every element below.
-    #[allow(clippy::uninit_vec)]
-    unsafe {
-        out.set_len(width * height * 3);
-    }
-
-    let mut idx = 0;
     for row in img.rows() {
         for px in row {
-            out[idx] = lut[px.r as usize];
-            out[idx + 1] = lut[px.g as usize];
-            out[idx + 2] = lut[px.b as usize];
-            idx += 3;
+            out.push(lut[px.r as usize]);
+            out.push(lut[px.g as usize]);
+            out.push(lut[px.b as usize]);
         }
     }
-
     out
 }
 

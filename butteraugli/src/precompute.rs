@@ -25,6 +25,7 @@
 //! }
 //! ```
 
+use crate::diff::maybe_join;
 use crate::image::{BufferPool, Image3F, ImageF};
 use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli};
 use crate::psycho::{PsychoImage, separate_frequencies};
@@ -67,24 +68,12 @@ pub struct ButteraugliReference {
     height: usize,
     /// Parameters used for precomputation
     params: ButteraugliParams,
-    /// Reusable buffer pool for temporary ImageF allocations.
-    /// Owned by this instance so buffers are freed on drop.
-    pool: BufferPool,
 }
 
 /// Converts sRGB u8 buffer to linear f32.
 fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
     let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
-    let mut out = Vec::with_capacity(rgb.len());
-    // SAFETY: f32 has no validity invariant; all elements filled below.
-    #[allow(clippy::uninit_vec)]
-    unsafe {
-        out.set_len(rgb.len());
-    }
-    for (o, &v) in out.iter_mut().zip(rgb.iter()) {
-        *o = lut[v as usize];
-    }
-    out
+    rgb.iter().map(|&v| lut[v as usize]).collect()
 }
 
 impl ButteraugliReference {
@@ -185,27 +174,33 @@ impl ButteraugliReference {
 
         check_finite_f32(rgb, "linear rgb")?;
 
-        let pool = BufferPool::new();
-
-        // Compute full-resolution XYB and frequency decomposition
-        let xyb =
-            linear_rgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target(), &pool);
-        let psycho = separate_frequencies(&xyb, &pool);
-        let full = ScaleData { psycho };
-
-        // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
-        let half = if !params.single_resolution()
+        let need_half = !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
-            && height >= MIN_SIZE_FOR_SUBSAMPLE
-        {
-            let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
-            let sub_xyb =
-                linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
-            let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-            Some(ScaleData { psycho: sub_psycho })
-        } else {
-            None
-        };
+            && height >= MIN_SIZE_FOR_SUBSAMPLE;
+        let intensity_target = params.intensity_target();
+
+        // Run full-res and half-res in parallel (each with its own BufferPool)
+        let (full, half) = maybe_join(
+            || {
+                let pool = BufferPool::new();
+                let xyb =
+                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
+                let psycho = separate_frequencies(&xyb, &pool);
+                ScaleData { psycho }
+            },
+            || {
+                if need_half {
+                    let pool = BufferPool::new();
+                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
+                    let sub_xyb =
+                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
+                    let sub_psycho = separate_frequencies(&sub_xyb, &pool);
+                    Some(ScaleData { psycho: sub_psycho })
+                } else {
+                    None
+                }
+            },
+        );
 
         Ok(Self {
             full,
@@ -213,7 +208,6 @@ impl ButteraugliReference {
             width,
             height,
             params,
-            pool,
         })
     }
 
@@ -263,44 +257,50 @@ impl ButteraugliReference {
         check_finite_f32(&g[..min_size], "planar g")?;
         check_finite_f32(&b[..min_size], "planar b")?;
 
-        let pool = BufferPool::new();
-
-        // Compute XYB directly from planar data (avoids interleave overhead)
-        let xyb = linear_planar_to_xyb_butteraugli(
-            r,
-            g,
-            b,
-            width,
-            height,
-            stride,
-            params.intensity_target(),
-            &pool,
-        );
-        let psycho = separate_frequencies(&xyb, &pool);
-        let full = ScaleData { psycho };
-
-        // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
-        let half = if !params.single_resolution()
+        let need_half = !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
-            && height >= MIN_SIZE_FOR_SUBSAMPLE
-        {
-            let (sub_r, sub_g, sub_b, sw, sh) =
-                subsample_planar_rgb_2x(r, g, b, width, height, stride);
-            let sub_xyb = linear_planar_to_xyb_butteraugli(
-                &sub_r,
-                &sub_g,
-                &sub_b,
-                sw,
-                sh,
-                sw,
-                params.intensity_target(),
-                &pool,
-            );
-            let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-            Some(ScaleData { psycho: sub_psycho })
-        } else {
-            None
-        };
+            && height >= MIN_SIZE_FOR_SUBSAMPLE;
+        let intensity_target = params.intensity_target();
+
+        // Run full-res and half-res in parallel (each with its own BufferPool)
+        let (full, half) = maybe_join(
+            || {
+                let pool = BufferPool::new();
+                let xyb = linear_planar_to_xyb_butteraugli(
+                    r,
+                    g,
+                    b,
+                    width,
+                    height,
+                    stride,
+                    intensity_target,
+                    &pool,
+                );
+                let psycho = separate_frequencies(&xyb, &pool);
+                ScaleData { psycho }
+            },
+            || {
+                if need_half {
+                    let pool = BufferPool::new();
+                    let (sub_r, sub_g, sub_b, sw, sh) =
+                        subsample_planar_rgb_2x(r, g, b, width, height, stride);
+                    let sub_xyb = linear_planar_to_xyb_butteraugli(
+                        &sub_r,
+                        &sub_g,
+                        &sub_b,
+                        sw,
+                        sh,
+                        sw,
+                        intensity_target,
+                        &pool,
+                    );
+                    let sub_psycho = separate_frequencies(&sub_xyb, &pool);
+                    Some(ScaleData { psycho: sub_psycho })
+                } else {
+                    None
+                }
+            },
+        );
 
         Ok(Self {
             full,
@@ -308,7 +308,6 @@ impl ButteraugliReference {
             width,
             height,
             params,
-            pool,
         })
     }
 
@@ -505,47 +504,36 @@ impl ButteraugliReference {
     /// a single half-resolution sub-level via AddSupersampled2x. This matches
     /// C++ `ButteraugliComparator::Diffmap` which only uses one sub-level.
     fn compare_linear_impl(&self, rgb: &[f32]) -> ButteraugliResult {
-        // Convert distorted image to XYB and compute frequency decomposition
-        let xyb2 = linear_rgb_to_xyb_butteraugli(
-            rgb,
-            self.width,
-            self.height,
-            self.params.intensity_target(),
-            &self.pool,
+        let intensity_target = self.params.intensity_target();
+        let width = self.width;
+        let height = self.height;
+        let params = &self.params;
+        let full_psycho = &self.full.psycho;
+        let half_ref = self.half.as_ref();
+
+        // Run full-res and half-res in parallel
+        let (mut diffmap, sub_diffmap) = maybe_join(
+            || {
+                let pool = BufferPool::new();
+                let xyb2 =
+                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
+                let ps2 = separate_frequencies(&xyb2, &pool);
+                compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, &pool)
+            },
+            || {
+                half_ref.map(|half| {
+                    let pool = BufferPool::new();
+                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
+                    let sub_xyb =
+                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
+                    let sub_ps = separate_frequencies(&sub_xyb, &pool);
+                    compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, &pool)
+                })
+            },
         );
-        let ps2 = separate_frequencies(&xyb2, &self.pool);
 
-        // Compute diffmap at full resolution using precomputed reference
-        let mut diffmap = compute_diffmap_with_precomputed(
-            &self.full.psycho,
-            &ps2,
-            self.width,
-            self.height,
-            &self.params,
-            &self.pool,
-        );
-
-        // Add single half-resolution sub-level
-        if let Some(ref half) = self.half {
-            let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, self.width, self.height);
-            let sub_xyb = linear_rgb_to_xyb_butteraugli(
-                &sub_rgb,
-                sw,
-                sh,
-                self.params.intensity_target(),
-                &self.pool,
-            );
-            let sub_ps = separate_frequencies(&sub_xyb, &self.pool);
-
-            let sub_diffmap = compute_diffmap_with_precomputed(
-                &half.psycho,
-                &sub_ps,
-                sw,
-                sh,
-                &self.params,
-                &self.pool,
-            );
-            add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
+        if let Some(sub) = sub_diffmap {
+            add_supersampled_2x(&sub, 0.5, &mut diffmap);
         }
 
         let score = compute_score_from_diffmap(&diffmap);
@@ -564,54 +552,53 @@ impl ButteraugliReference {
         b: &[f32],
         stride: usize,
     ) -> ButteraugliResult {
-        // Convert distorted planar data directly to XYB (no interleave round-trip)
-        let xyb2 = linear_planar_to_xyb_butteraugli(
-            r,
-            g,
-            b,
-            self.width,
-            self.height,
-            stride,
-            self.params.intensity_target(),
-            &self.pool,
+        let intensity_target = self.params.intensity_target();
+        let width = self.width;
+        let height = self.height;
+        let params = &self.params;
+        let full_psycho = &self.full.psycho;
+        let half_ref = self.half.as_ref();
+
+        // Run full-res and half-res in parallel
+        let (mut diffmap, sub_diffmap) = maybe_join(
+            || {
+                let pool = BufferPool::new();
+                let xyb2 = linear_planar_to_xyb_butteraugli(
+                    r,
+                    g,
+                    b,
+                    width,
+                    height,
+                    stride,
+                    intensity_target,
+                    &pool,
+                );
+                let ps2 = separate_frequencies(&xyb2, &pool);
+                compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, &pool)
+            },
+            || {
+                half_ref.map(|half| {
+                    let pool = BufferPool::new();
+                    let (sub_r, sub_g, sub_b, sw, sh) =
+                        subsample_planar_rgb_2x(r, g, b, width, height, stride);
+                    let sub_xyb = linear_planar_to_xyb_butteraugli(
+                        &sub_r,
+                        &sub_g,
+                        &sub_b,
+                        sw,
+                        sh,
+                        sw,
+                        intensity_target,
+                        &pool,
+                    );
+                    let sub_ps = separate_frequencies(&sub_xyb, &pool);
+                    compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, &pool)
+                })
+            },
         );
-        let ps2 = separate_frequencies(&xyb2, &self.pool);
 
-        // Compute diffmap at full resolution using precomputed reference
-        let mut diffmap = compute_diffmap_with_precomputed(
-            &self.full.psycho,
-            &ps2,
-            self.width,
-            self.height,
-            &self.params,
-            &self.pool,
-        );
-
-        // Add single half-resolution sub-level
-        if let Some(ref half) = self.half {
-            let (sub_r, sub_g, sub_b, sw, sh) =
-                subsample_planar_rgb_2x(r, g, b, self.width, self.height, stride);
-            let sub_xyb = linear_planar_to_xyb_butteraugli(
-                &sub_r,
-                &sub_g,
-                &sub_b,
-                sw,
-                sh,
-                sw,
-                self.params.intensity_target(),
-                &self.pool,
-            );
-            let sub_ps = separate_frequencies(&sub_xyb, &self.pool);
-
-            let sub_diffmap = compute_diffmap_with_precomputed(
-                &half.psycho,
-                &sub_ps,
-                sw,
-                sh,
-                &self.params,
-                &self.pool,
-            );
-            add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
+        if let Some(sub) = sub_diffmap {
+            add_supersampled_2x(&sub, 0.5, &mut diffmap);
         }
 
         let score = compute_score_from_diffmap(&diffmap);
@@ -652,8 +639,8 @@ fn compute_diffmap_with_precomputed(
     // Compute mask from both PsychoImages
     let mask = mask_psycho_image(ps1, ps2, Some(block_diff_ac.plane_mut(1)), pool);
 
-    // Compute DC (LF) differences
-    let mut block_diff_dc = Image3F::new(width, height);
+    // Compute DC (LF) differences (fully overwritten by compute_lf_diff)
+    let mut block_diff_dc = Image3F::new_uninit(width, height);
     for c in 0..3 {
         compute_lf_diff(
             ps1.lf.plane(c),
@@ -691,6 +678,19 @@ fn compute_lf_diff(
     }
 }
 
+/// Adds src into dst element-wise.
+fn add_to(src: &ImageF, dst: &mut ImageF) {
+    let width = src.width();
+    let height = src.height();
+    for y in 0..height {
+        let s = src.row(y);
+        let d = dst.row_mut(y);
+        for x in 0..width {
+            d[x] += s[x];
+        }
+    }
+}
+
 /// Computes difference between two PsychoImages using Malta filter.
 fn compute_psycho_diff_malta(
     ps0: &PsychoImage,
@@ -700,166 +700,134 @@ fn compute_psycho_diff_malta(
 ) -> Image3F {
     let width = ps0.width();
     let height = ps0.height();
-
-    let mut block_diff_ac = Image3F::new(width, height);
-
-    // UHF Y channel
-    let uhf_y_diff = malta_diff_map(
-        &ps0.uhf[1],
-        &ps1.uhf[1],
-        W_UHF_MALTA * hf_asymmetry as f64,
-        W_UHF_MALTA / hf_asymmetry as f64,
-        NORM1_UHF,
-        false,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(1);
-        for y in 0..height {
-            let src = uhf_y_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
-
-    // UHF X channel
-    let uhf_x_diff = malta_diff_map(
-        &ps0.uhf[0],
-        &ps1.uhf[0],
-        W_UHF_MALTA_X * hf_asymmetry as f64,
-        W_UHF_MALTA_X / hf_asymmetry as f64,
-        NORM1_UHF_X,
-        false,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(0);
-        for y in 0..height {
-            let src = uhf_x_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
-
-    // HF channels (LF Malta)
     let sqrt_hf_asym = hf_asymmetry.sqrt();
 
-    let hf_y_diff = malta_diff_map(
-        &ps0.hf[1],
-        &ps1.hf[1],
-        W_HF_MALTA * sqrt_hf_asym as f64,
-        W_HF_MALTA / sqrt_hf_asym as f64,
-        NORM1_HF,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(1);
-        for y in 0..height {
-            let src = hf_y_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
+    // Run Y-channel and X-channel Malta computations in parallel
+    let (plane_y, plane_x) = maybe_join(
+        || {
+            // Y channel: UHF_Y + HF_Y + MF_Y Malta + L2 diffs
+            let mut ac_y = ImageF::new(width, height);
 
-    let hf_x_diff = malta_diff_map(
-        &ps0.hf[0],
-        &ps1.hf[0],
-        W_HF_MALTA_X * sqrt_hf_asym as f64,
-        W_HF_MALTA_X / sqrt_hf_asym as f64,
-        NORM1_HF_X,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(0);
-        for y in 0..height {
-            let src = hf_x_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
+            let (uhf_y, (hf_y, mf_y)) = maybe_join(
+                || {
+                    malta_diff_map(
+                        &ps0.uhf[1],
+                        &ps1.uhf[1],
+                        W_UHF_MALTA * hf_asymmetry as f64,
+                        W_UHF_MALTA / hf_asymmetry as f64,
+                        NORM1_UHF,
+                        false,
+                    )
+                },
+                || {
+                    maybe_join(
+                        || {
+                            malta_diff_map(
+                                &ps0.hf[1],
+                                &ps1.hf[1],
+                                W_HF_MALTA * sqrt_hf_asym as f64,
+                                W_HF_MALTA / sqrt_hf_asym as f64,
+                                NORM1_HF,
+                                true,
+                            )
+                        },
+                        || {
+                            malta_diff_map(
+                                ps0.mf.plane(1),
+                                ps1.mf.plane(1),
+                                W_MF_MALTA,
+                                W_MF_MALTA,
+                                NORM1_MF,
+                                true,
+                            )
+                        },
+                    )
+                },
+            );
 
-    // MF channels (LF Malta)
-    let mf_y_diff = malta_diff_map(
-        ps0.mf.plane(1),
-        ps1.mf.plane(1),
-        W_MF_MALTA,
-        W_MF_MALTA,
-        NORM1_MF,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(1);
-        for y in 0..height {
-            let src = mf_y_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
+            add_to(&uhf_y, &mut ac_y);
+            add_to(&hf_y, &mut ac_y);
+            add_to(&mf_y, &mut ac_y);
 
-    let mf_x_diff = malta_diff_map(
-        ps0.mf.plane(0),
-        ps1.mf.plane(0),
-        W_MF_MALTA_X,
-        W_MF_MALTA_X,
-        NORM1_MF_X,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(0);
-        for y in 0..height {
-            let src = mf_x_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
+            l2_diff_asymmetric(
+                &ps0.hf[1],
+                &ps1.hf[1],
+                WMUL[1] as f32 * hf_asymmetry,
+                WMUL[1] as f32 / hf_asymmetry,
+                &mut ac_y,
+            );
+            l2_diff(ps0.mf.plane(1), ps1.mf.plane(1), WMUL[4] as f32, &mut ac_y);
 
-    // L2DiffAsymmetric for HF channels
-    l2_diff_asymmetric(
-        &ps0.hf[0],
-        &ps1.hf[0],
-        WMUL[0] as f32 * hf_asymmetry,
-        WMUL[0] as f32 / hf_asymmetry,
-        block_diff_ac.plane_mut(0),
-    );
-    l2_diff_asymmetric(
-        &ps0.hf[1],
-        &ps1.hf[1],
-        WMUL[1] as f32 * hf_asymmetry,
-        WMUL[1] as f32 / hf_asymmetry,
-        block_diff_ac.plane_mut(1),
+            ac_y
+        },
+        || {
+            // X channel: UHF_X + HF_X + MF_X Malta + L2 diffs
+            let mut ac_x = ImageF::new(width, height);
+
+            let (uhf_x, (hf_x, mf_x)) = maybe_join(
+                || {
+                    malta_diff_map(
+                        &ps0.uhf[0],
+                        &ps1.uhf[0],
+                        W_UHF_MALTA_X * hf_asymmetry as f64,
+                        W_UHF_MALTA_X / hf_asymmetry as f64,
+                        NORM1_UHF_X,
+                        false,
+                    )
+                },
+                || {
+                    maybe_join(
+                        || {
+                            malta_diff_map(
+                                &ps0.hf[0],
+                                &ps1.hf[0],
+                                W_HF_MALTA_X * sqrt_hf_asym as f64,
+                                W_HF_MALTA_X / sqrt_hf_asym as f64,
+                                NORM1_HF_X,
+                                true,
+                            )
+                        },
+                        || {
+                            malta_diff_map(
+                                ps0.mf.plane(0),
+                                ps1.mf.plane(0),
+                                W_MF_MALTA_X,
+                                W_MF_MALTA_X,
+                                NORM1_MF_X,
+                                true,
+                            )
+                        },
+                    )
+                },
+            );
+
+            add_to(&uhf_x, &mut ac_x);
+            add_to(&hf_x, &mut ac_x);
+            add_to(&mf_x, &mut ac_x);
+
+            l2_diff_asymmetric(
+                &ps0.hf[0],
+                &ps1.hf[0],
+                WMUL[0] as f32 * hf_asymmetry,
+                WMUL[0] as f32 / hf_asymmetry,
+                &mut ac_x,
+            );
+            l2_diff(ps0.mf.plane(0), ps1.mf.plane(0), WMUL[3] as f32, &mut ac_x);
+
+            ac_x
+        },
     );
 
-    // L2Diff for MF channels
-    l2_diff(
-        ps0.mf.plane(0),
-        ps1.mf.plane(0),
-        WMUL[3] as f32,
-        block_diff_ac.plane_mut(0),
-    );
-    l2_diff(
-        ps0.mf.plane(1),
-        ps1.mf.plane(1),
-        WMUL[4] as f32,
-        block_diff_ac.plane_mut(1),
-    );
+    // B channel L2Diff (small, run inline)
+    let mut plane_b = ImageF::new(width, height);
     l2_diff(
         ps0.mf.plane(2),
         ps1.mf.plane(2),
         WMUL[5] as f32,
-        block_diff_ac.plane_mut(2),
+        &mut plane_b,
     );
 
-    block_diff_ac
+    Image3F::from_planes(plane_x, plane_y, plane_b)
 }
 
 /// Computes mask from two PsychoImages.
@@ -872,8 +840,8 @@ fn mask_psycho_image(
     let width = ps0.width();
     let height = ps0.height();
 
-    let mut mask0 = ImageF::new(width, height);
-    let mut mask1 = ImageF::new(width, height);
+    let mut mask0 = ImageF::new_uninit(width, height);
+    let mut mask1 = ImageF::new_uninit(width, height);
     combine_channels_for_masking(&ps0.hf, &ps0.uhf, &mut mask0);
     combine_channels_for_masking(&ps1.hf, &ps1.uhf, &mut mask1);
 
@@ -1042,35 +1010,68 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
 fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
-    let mut output = vec![0.0f32; out_width * out_height * 3];
+    let out_size = out_width * out_height * 3;
+    let mut output = vec![0.0f32; out_size];
 
-    for oy in 0..out_height {
-        for ox in 0..out_width {
-            let mut r_sum = 0.0f32;
-            let mut g_sum = 0.0f32;
-            let mut b_sum = 0.0f32;
-            let mut count = 0.0f32;
+    // Fast interior: all 2x2 blocks fully within bounds
+    let interior_w = width / 2;
+    let interior_h = height / 2;
+    let inv4 = 0.25f32;
 
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let ix = ox * 2 + dx;
-                    let iy = oy * 2 + dy;
-                    if ix < width && iy < height {
-                        let idx = (iy * width + ix) * 3;
-                        r_sum += rgb[idx];
-                        g_sum += rgb[idx + 1];
-                        b_sum += rgb[idx + 2];
-                        count += 1.0;
-                    }
-                }
-            }
+    for oy in 0..interior_h {
+        let row0 = oy * 2 * width * 3;
+        let row1 = (oy * 2 + 1) * width * 3;
+        for ox in 0..interior_w {
+            let ix = ox * 2;
+            let i00 = row0 + ix * 3;
+            let i10 = row0 + (ix + 1) * 3;
+            let i01 = row1 + ix * 3;
+            let i11 = row1 + (ix + 1) * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = (rgb[i00] + rgb[i10] + rgb[i01] + rgb[i11]) * inv4;
+            output[out_idx + 1] =
+                (rgb[i00 + 1] + rgb[i10 + 1] + rgb[i01 + 1] + rgb[i11 + 1]) * inv4;
+            output[out_idx + 2] =
+                (rgb[i00 + 2] + rgb[i10 + 2] + rgb[i01 + 2] + rgb[i11 + 2]) * inv4;
+        }
+    }
 
-            if count > 0.0 {
-                let out_idx = (oy * out_width + ox) * 3;
-                output[out_idx] = r_sum / count;
-                output[out_idx + 1] = g_sum / count;
-                output[out_idx + 2] = b_sum / count;
-            }
+    // Right edge column (if width is odd)
+    if out_width > interior_w {
+        let ox = interior_w;
+        let ix = ox * 2;
+        for oy in 0..interior_h {
+            let row0 = oy * 2 * width * 3 + ix * 3;
+            let row1 = (oy * 2 + 1) * width * 3 + ix * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = (rgb[row0] + rgb[row1]) * 0.5;
+            output[out_idx + 1] = (rgb[row0 + 1] + rgb[row1 + 1]) * 0.5;
+            output[out_idx + 2] = (rgb[row0 + 2] + rgb[row1 + 2]) * 0.5;
+        }
+    }
+
+    // Bottom edge row (if height is odd)
+    if out_height > interior_h {
+        let oy = interior_h;
+        let row0 = oy * 2 * width * 3;
+        for ox in 0..interior_w {
+            let ix = ox * 2;
+            let i00 = row0 + ix * 3;
+            let i10 = row0 + (ix + 1) * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = (rgb[i00] + rgb[i10]) * 0.5;
+            output[out_idx + 1] = (rgb[i00 + 1] + rgb[i10 + 1]) * 0.5;
+            output[out_idx + 2] = (rgb[i00 + 2] + rgb[i10 + 2]) * 0.5;
+        }
+        // Bottom-right corner (if both odd)
+        if out_width > interior_w {
+            let ox = interior_w;
+            let ix = ox * 2;
+            let i00 = row0 + ix * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = rgb[i00];
+            output[out_idx + 1] = rgb[i00 + 1];
+            output[out_idx + 2] = rgb[i00 + 2];
         }
     }
 
@@ -1088,37 +1089,65 @@ fn subsample_planar_rgb_2x(
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
-    let mut out_r = vec![0.0f32; out_width * out_height];
-    let mut out_g = vec![0.0f32; out_width * out_height];
-    let mut out_b = vec![0.0f32; out_width * out_height];
+    let out_size = out_width * out_height;
+    let mut out_r = vec![0.0f32; out_size];
+    let mut out_g = vec![0.0f32; out_size];
+    let mut out_b = vec![0.0f32; out_size];
 
-    for oy in 0..out_height {
-        for ox in 0..out_width {
-            let mut rs = 0.0f32;
-            let mut gs = 0.0f32;
-            let mut bs = 0.0f32;
-            let mut count = 0.0f32;
+    // Fast interior: all 2x2 blocks are fully within bounds
+    let interior_w = width / 2;
+    let interior_h = height / 2;
+    let inv4 = 0.25f32;
 
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let ix = ox * 2 + dx;
-                    let iy = oy * 2 + dy;
-                    if ix < width && iy < height {
-                        let idx = iy * stride + ix;
-                        rs += r[idx];
-                        gs += g[idx];
-                        bs += b[idx];
-                        count += 1.0;
-                    }
-                }
-            }
+    for oy in 0..interior_h {
+        let row0 = oy * 2 * stride;
+        let row1 = (oy * 2 + 1) * stride;
+        for ox in 0..interior_w {
+            let ix = ox * 2;
+            let i00 = row0 + ix;
+            let i10 = row0 + ix + 1;
+            let i01 = row1 + ix;
+            let i11 = row1 + ix + 1;
+            let out_idx = oy * out_width + ox;
+            out_r[out_idx] = (r[i00] + r[i10] + r[i01] + r[i11]) * inv4;
+            out_g[out_idx] = (g[i00] + g[i10] + g[i01] + g[i11]) * inv4;
+            out_b[out_idx] = (b[i00] + b[i10] + b[i01] + b[i11]) * inv4;
+        }
+    }
 
-            if count > 0.0 {
-                let out_idx = oy * out_width + ox;
-                out_r[out_idx] = rs / count;
-                out_g[out_idx] = gs / count;
-                out_b[out_idx] = bs / count;
-            }
+    // Right edge column (if width is odd)
+    if out_width > interior_w {
+        let ox = interior_w;
+        let ix = ox * 2;
+        for oy in 0..interior_h {
+            let row0 = oy * 2 * stride;
+            let row1 = (oy * 2 + 1) * stride;
+            let out_idx = oy * out_width + ox;
+            out_r[out_idx] = (r[row0 + ix] + r[row1 + ix]) * 0.5;
+            out_g[out_idx] = (g[row0 + ix] + g[row1 + ix]) * 0.5;
+            out_b[out_idx] = (b[row0 + ix] + b[row1 + ix]) * 0.5;
+        }
+    }
+
+    // Bottom edge row (if height is odd)
+    if out_height > interior_h {
+        let oy = interior_h;
+        let row0 = oy * 2 * stride;
+        for ox in 0..interior_w {
+            let ix = ox * 2;
+            let out_idx = oy * out_width + ox;
+            out_r[out_idx] = (r[row0 + ix] + r[row0 + ix + 1]) * 0.5;
+            out_g[out_idx] = (g[row0 + ix] + g[row0 + ix + 1]) * 0.5;
+            out_b[out_idx] = (b[row0 + ix] + b[row0 + ix + 1]) * 0.5;
+        }
+        // Bottom-right corner (if both odd)
+        if out_width > interior_w {
+            let ox = interior_w;
+            let ix = ox * 2;
+            let out_idx = oy * out_width + ox;
+            out_r[out_idx] = r[row0 + ix];
+            out_g[out_idx] = g[row0 + ix];
+            out_b[out_idx] = b[row0 + ix];
         }
     }
 

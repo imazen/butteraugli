@@ -115,23 +115,29 @@ impl ImageF {
         }
     }
 
-    /// Creates a new image WITHOUT zero-filling.
+    /// Creates a new image WITHOUT zero-filling (when `unsafe-performance` is enabled).
     ///
-    /// The buffer contains uninitialized data. Callers MUST overwrite every
-    /// pixel before reading. Use this only when the allocation will be fully
-    /// populated (e.g., blur output, copy targets, format conversion outputs).
+    /// Without the feature, this falls back to zero-filled allocation (same as `new`).
+    /// Use this only when the allocation will be fully populated before reading
+    /// (e.g., blur output, copy targets, format conversion outputs).
     #[must_use]
     pub(crate) fn new_uninit(width: usize, height: usize) -> Self {
         let stride = (width + 15) & !15;
         let needed = stride * height;
-        let mut data = Vec::with_capacity(needed);
-        // SAFETY: f32 has no validity invariant beyond being initialized memory.
-        // Any bit pattern is a valid f32 (including NaN/Inf). Callers must
-        // overwrite all data before reading.
-        #[allow(clippy::uninit_vec)]
-        unsafe {
-            data.set_len(needed);
-        }
+        #[cfg(feature = "unsafe-performance")]
+        let data = {
+            let mut buf = Vec::with_capacity(needed);
+            // SAFETY: f32 has no validity invariant beyond being initialized memory.
+            // Any bit pattern is a valid f32 (including NaN/Inf). Callers must
+            // overwrite all data before reading.
+            #[allow(clippy::uninit_vec)]
+            unsafe {
+                buf.set_len(needed);
+            }
+            buf
+        };
+        #[cfg(not(feature = "unsafe-performance"))]
+        let data = vec![0.0; needed];
         Self {
             data,
             width,
