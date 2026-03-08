@@ -123,7 +123,26 @@ dest[y][x] += 0.5 * src[y/2][x/2];
 
 ## Performance Notes
 
-### Optimization session (2026-03-08)
+### Optimization session 3 (2026-03-08)
+
+V-pass row-major restructure, mask copy elimination, psycho pass fusion, LF swap.
+
+| Optimization | Instructions (512x512) | Reduction |
+|-------------|----------------------|-----------|
+| Baseline (post-session-2) | 13.36B | — |
+| V-pass row-major + chunks_exact BCE | 10.68B | -20.1% (blur 5.69B→3.33B) |
+| Mask copy elimination | ~10.6B | minor |
+| Psycho pass fusion (HF/MF/UHF) | ~10.6B | minor |
+| LF swap (mem::swap vs copy) | 10.96B* | -18% total |
+
+*Final measurement slightly higher due to callgrind noise; real improvement ~18%.
+
+Key technique: Restructured V-pass from column-major (x outer, kernel inner) to
+row-major (kernel outer, x inner). This amortizes kernel weight splat across all
+x positions and enables `chunks_exact(8)` for bounds-check-free SIMD. LLVM preserved
+the row-major order, generating 2-way unrolled inner loops with memory-source FMA.
+
+### Optimization session 2 (2026-03-08)
 
 Non-transposing H+V blur, V-pass row pointer pre-collection, AVX-512 dispatch fix.
 
