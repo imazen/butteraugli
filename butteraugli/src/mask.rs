@@ -108,56 +108,137 @@ fn store_min3(v: f32, min0: &mut f32, min1: &mut f32, min2: &mut f32) {
 pub fn fuzzy_erosion(from: &ImageF, to: &mut ImageF) {
     let width = from.width();
     let height = from.height();
-    const K_STEP: usize = 3;
+    const K: usize = 3;
 
-    for y in 0..height {
+    // Border rows: y < K or y >= height - K (need Option checks for up/down)
+    for y in 0..K.min(height) {
+        fuzzy_erosion_border_row(from, to, y, width, height);
+    }
+
+    // Interior rows: all 3 neighbor rows exist
+    for y in K..height.saturating_sub(K) {
         let row_c = from.row(y);
-        let row_up = if y >= K_STEP {
-            Some(from.row(y - K_STEP))
-        } else {
-            None
-        };
-        let row_dn = if y + K_STEP < height {
-            Some(from.row(y + K_STEP))
-        } else {
-            None
-        };
+        let row_up = from.row(y - K);
+        let row_dn = from.row(y + K);
         let out_row = to.row_mut(y);
 
-        for x in 0..width {
+        // Left border: x < K
+        for x in 0..K.min(width) {
+            fuzzy_erosion_pixel_interior_y(row_c, row_up, row_dn, out_row, x, width);
+        }
+
+        // Interior: all 9 neighbors exist, no branch checks needed
+        for x in K..width.saturating_sub(K) {
             let mut min0 = row_c[x];
             let mut min1 = 2.0 * min0;
             let mut min2 = min1;
 
-            // Check neighbors at distance K_STEP (C++ exact order)
-            if x >= K_STEP {
-                store_min3(row_c[x - K_STEP], &mut min0, &mut min1, &mut min2);
-                if let Some(r) = row_up {
-                    store_min3(r[x - K_STEP], &mut min0, &mut min1, &mut min2);
-                }
-                if let Some(r) = row_dn {
-                    store_min3(r[x - K_STEP], &mut min0, &mut min1, &mut min2);
-                }
-            }
-            if x + K_STEP < width {
-                store_min3(row_c[x + K_STEP], &mut min0, &mut min1, &mut min2);
-                if let Some(r) = row_up {
-                    store_min3(r[x + K_STEP], &mut min0, &mut min1, &mut min2);
-                }
-                if let Some(r) = row_dn {
-                    store_min3(r[x + K_STEP], &mut min0, &mut min1, &mut min2);
-                }
-            }
-            if let Some(r) = row_up {
-                store_min3(r[x], &mut min0, &mut min1, &mut min2);
-            }
-            if let Some(r) = row_dn {
-                store_min3(r[x], &mut min0, &mut min1, &mut min2);
-            }
+            store_min3(row_c[x - K], &mut min0, &mut min1, &mut min2);
+            store_min3(row_up[x - K], &mut min0, &mut min1, &mut min2);
+            store_min3(row_dn[x - K], &mut min0, &mut min1, &mut min2);
+            store_min3(row_c[x + K], &mut min0, &mut min1, &mut min2);
+            store_min3(row_up[x + K], &mut min0, &mut min1, &mut min2);
+            store_min3(row_dn[x + K], &mut min0, &mut min1, &mut min2);
+            store_min3(row_up[x], &mut min0, &mut min1, &mut min2);
+            store_min3(row_dn[x], &mut min0, &mut min1, &mut min2);
 
-            // C++: 0.45f * min0 + 0.3f * min1 + 0.25f * min2
             out_row[x] = 0.45 * min0 + 0.3 * min1 + 0.25 * min2;
         }
+
+        // Right border: x >= width - K
+        for x in width.saturating_sub(K)..width {
+            if x >= K {
+                // Skip already processed by left border
+                fuzzy_erosion_pixel_interior_y(row_c, row_up, row_dn, out_row, x, width);
+            }
+        }
+    }
+
+    // Bottom border rows
+    for y in height.saturating_sub(K)..height {
+        if y >= K {
+            // Skip already processed by top border
+            fuzzy_erosion_border_row(from, to, y, width, height);
+        }
+    }
+}
+
+/// Process a single pixel with all 3 vertical neighbor rows available.
+/// Still needs x-boundary checks.
+#[inline]
+fn fuzzy_erosion_pixel_interior_y(
+    row_c: &[f32],
+    row_up: &[f32],
+    row_dn: &[f32],
+    out_row: &mut [f32],
+    x: usize,
+    width: usize,
+) {
+    const K: usize = 3;
+    let mut min0 = row_c[x];
+    let mut min1 = 2.0 * min0;
+    let mut min2 = min1;
+
+    if x >= K {
+        store_min3(row_c[x - K], &mut min0, &mut min1, &mut min2);
+        store_min3(row_up[x - K], &mut min0, &mut min1, &mut min2);
+        store_min3(row_dn[x - K], &mut min0, &mut min1, &mut min2);
+    }
+    if x + K < width {
+        store_min3(row_c[x + K], &mut min0, &mut min1, &mut min2);
+        store_min3(row_up[x + K], &mut min0, &mut min1, &mut min2);
+        store_min3(row_dn[x + K], &mut min0, &mut min1, &mut min2);
+    }
+    store_min3(row_up[x], &mut min0, &mut min1, &mut min2);
+    store_min3(row_dn[x], &mut min0, &mut min1, &mut min2);
+
+    out_row[x] = 0.45 * min0 + 0.3 * min1 + 0.25 * min2;
+}
+
+/// Process a border row where up/down neighbors may not exist.
+#[inline(never)]
+fn fuzzy_erosion_border_row(from: &ImageF, to: &mut ImageF, y: usize, width: usize, height: usize) {
+    const K: usize = 3;
+    let row_c = from.row(y);
+    let row_up = if y >= K { Some(from.row(y - K)) } else { None };
+    let row_dn = if y + K < height {
+        Some(from.row(y + K))
+    } else {
+        None
+    };
+    let out_row = to.row_mut(y);
+
+    for x in 0..width {
+        let mut min0 = row_c[x];
+        let mut min1 = 2.0 * min0;
+        let mut min2 = min1;
+
+        if x >= K {
+            store_min3(row_c[x - K], &mut min0, &mut min1, &mut min2);
+            if let Some(r) = row_up {
+                store_min3(r[x - K], &mut min0, &mut min1, &mut min2);
+            }
+            if let Some(r) = row_dn {
+                store_min3(r[x - K], &mut min0, &mut min1, &mut min2);
+            }
+        }
+        if x + K < width {
+            store_min3(row_c[x + K], &mut min0, &mut min1, &mut min2);
+            if let Some(r) = row_up {
+                store_min3(r[x + K], &mut min0, &mut min1, &mut min2);
+            }
+            if let Some(r) = row_dn {
+                store_min3(r[x + K], &mut min0, &mut min1, &mut min2);
+            }
+        }
+        if let Some(r) = row_up {
+            store_min3(r[x], &mut min0, &mut min1, &mut min2);
+        }
+        if let Some(r) = row_dn {
+            store_min3(r[x], &mut min0, &mut min1, &mut min2);
+        }
+
+        out_row[x] = 0.45 * min0 + 0.3 * min1 + 0.25 * min2;
     }
 }
 
