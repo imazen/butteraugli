@@ -1343,7 +1343,7 @@ where
     }
 
     // Second pass: apply Malta filter
-    let mut block_diff_ac = ImageF::new(width, height);
+    let mut block_diff_ac = ImageF::new_uninit(width, height);
 
     let stride = diffs.stride();
     let data = diffs.data();

@@ -859,7 +859,7 @@ fn combine_channels_to_diffmap(
 ) -> ImageF {
     let width = mask.width();
     let height = mask.height();
-    let mut diffmap = ImageF::new(width, height);
+    let mut diffmap = ImageF::new_uninit(width, height);
 
     for y in 0..height {
         let mask_row = mask.row(y);
