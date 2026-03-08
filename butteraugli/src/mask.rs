@@ -127,28 +127,12 @@ pub fn fuzzy_erosion(from: &ImageF, to: &mut ImageF) {
             fuzzy_erosion_pixel_interior_y(row_c, row_up, row_dn, out_row, x, width);
         }
 
-        // Interior: all 9 neighbors exist, no branch checks needed
-        for x in K..width.saturating_sub(K) {
-            let mut min0 = row_c[x];
-            let mut min1 = 2.0 * min0;
-            let mut min2 = min1;
-
-            store_min3(row_c[x - K], &mut min0, &mut min1, &mut min2);
-            store_min3(row_up[x - K], &mut min0, &mut min1, &mut min2);
-            store_min3(row_dn[x - K], &mut min0, &mut min1, &mut min2);
-            store_min3(row_c[x + K], &mut min0, &mut min1, &mut min2);
-            store_min3(row_up[x + K], &mut min0, &mut min1, &mut min2);
-            store_min3(row_dn[x + K], &mut min0, &mut min1, &mut min2);
-            store_min3(row_up[x], &mut min0, &mut min1, &mut min2);
-            store_min3(row_dn[x], &mut min0, &mut min1, &mut min2);
-
-            out_row[x] = 0.45 * min0 + 0.3 * min1 + 0.25 * min2;
-        }
+        // Interior: branch-free min/max, auto-vectorizable
+        fuzzy_erosion_interior_row(row_c, row_up, row_dn, out_row, width);
 
         // Right border: x >= width - K
         for x in width.saturating_sub(K)..width {
             if x >= K {
-                // Skip already processed by left border
                 fuzzy_erosion_pixel_interior_y(row_c, row_up, row_dn, out_row, x, width);
             }
         }
@@ -157,9 +141,66 @@ pub fn fuzzy_erosion(from: &ImageF, to: &mut ImageF) {
     // Bottom border rows
     for y in height.saturating_sub(K)..height {
         if y >= K {
-            // Skip already processed by top border
             fuzzy_erosion_border_row(from, to, y, width, height);
         }
+    }
+}
+
+/// Branch-free min3 update: inserts v into the sorted triple (min0, min1, min2).
+///
+/// Uses min/max instead of branches for SIMD-friendly compilation.
+#[inline]
+fn update_min3(v: f32, min0: f32, min1: f32, min2: f32) -> (f32, f32, f32) {
+    let new0 = min0.min(v);
+    let pushed = min0.max(v);
+    let new1 = min1.min(pushed);
+    let pushed2 = min1.max(pushed);
+    let new2 = min2.min(pushed2);
+    (new0, new1, new2)
+}
+
+/// Auto-vectorized interior row processing for fuzzy erosion.
+///
+/// Processes x in [K, width-K) where all 9 neighbors are guaranteed to exist.
+/// Uses branch-free min/max operations that compile to SIMD vminps/vmaxps.
+#[archmage::autoversion]
+fn fuzzy_erosion_interior_row(
+    _token: archmage::SimdToken,
+    row_c: &[f32],
+    row_up: &[f32],
+    row_dn: &[f32],
+    out: &mut [f32],
+    width: usize,
+) {
+    const K: usize = 3;
+    let end = width.saturating_sub(K);
+    // Pre-slice to eliminate bounds checks in the hot loop
+    let c_left = &row_c[..end.saturating_sub(K)];
+    let c_mid = &row_c[K..end];
+    let c_right = &row_c[K + K..];
+    let u_left = &row_up[..end.saturating_sub(K)];
+    let u_mid = &row_up[K..end];
+    let u_right = &row_up[K + K..];
+    let d_left = &row_dn[..end.saturating_sub(K)];
+    let d_mid = &row_dn[K..end];
+    let d_right = &row_dn[K + K..];
+    let out_slice = &mut out[K..end];
+
+    for i in 0..out_slice.len() {
+        let c = c_mid[i];
+        let init = 2.0 * c;
+        let (m0, m1, m2) = (c, init, init);
+
+        let (m0, m1, m2) = update_min3(c_left[i], m0, m1, m2);
+        let (m0, m1, m2) = update_min3(u_left[i], m0, m1, m2);
+        let (m0, m1, m2) = update_min3(d_left[i], m0, m1, m2);
+        let (m0, m1, m2) = update_min3(c_right[i], m0, m1, m2);
+        let (m0, m1, m2) = update_min3(u_right[i], m0, m1, m2);
+        let (m0, m1, m2) = update_min3(d_right[i], m0, m1, m2);
+        let (m0, m1, m2) = update_min3(u_mid[i], m0, m1, m2);
+        let (m0, m1, _m2) = update_min3(d_mid[i], m0, m1, m2);
+
+        out_slice[i] = 0.45 * m0 + 0.3 * m1 + 0.25 * _m2;
     }
 }
 
