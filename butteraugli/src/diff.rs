@@ -18,6 +18,28 @@ use crate::psycho::{PsychoImage, separate_frequencies};
 use imgref::ImgRef;
 use rgb::{RGB, RGB8};
 
+/// Conditional parallelism: uses rayon::join when the `rayon` feature is enabled,
+/// otherwise runs both closures sequentially on the current thread.
+#[cfg(feature = "rayon")]
+fn maybe_join<A, B, RA, RB>(a: A, b: B) -> (RA, RB)
+where
+    A: FnOnce() -> RA + Send,
+    B: FnOnce() -> RB + Send,
+    RA: Send,
+    RB: Send,
+{
+    rayon::join(a, b)
+}
+
+#[cfg(not(feature = "rayon"))]
+fn maybe_join<A, B, RA, RB>(a: A, b: B) -> (RA, RB)
+where
+    A: FnOnce() -> RA,
+    B: FnOnce() -> RB,
+{
+    (a(), b())
+}
+
 /// Internal result type for diff module (uses ImageF, not ImgVec).
 pub(crate) struct InternalResult {
     pub score: f64,
@@ -165,6 +187,19 @@ fn l2_diff_asymmetric(
 // [HF_X, HF_Y, HF_B, MF_X, MF_Y, MF_B, LF_X, LF_Y, LF_B]
 // Note: WMUL is f64 array, but we need f32 for pixel operations
 
+/// Adds source image to destination (dst[x] += src[x]).
+fn add_to(src: &ImageF, dst: &mut ImageF) {
+    let height = src.height();
+    let width = src.width();
+    for y in 0..height {
+        let s = src.row(y);
+        let d = dst.row_mut(y);
+        for x in 0..width {
+            d[x] += s[x];
+        }
+    }
+}
+
 /// Computes difference between two PsychoImages using Malta filter.
 ///
 /// This is the core butteraugli algorithm that applies:
@@ -180,133 +215,96 @@ fn compute_psycho_diff_malta(
     let width = ps0.width();
     let height = ps0.height();
 
-    // Block diff AC accumulates Malta and L2 differences
-    let mut block_diff_ac = Image3F::new(width, height);
-
-    // Apply Malta filter for UHF (uses full Malta, not LF variant)
-    // UHF Y channel
-    let uhf_y_diff = malta_diff_map(
-        &ps0.uhf[1],
-        &ps1.uhf[1],
-        W_UHF_MALTA * hf_asymmetry as f64,
-        W_UHF_MALTA / hf_asymmetry as f64,
-        NORM1_UHF,
-        false, // use full Malta
-    );
-    {
-        let ac = block_diff_ac.plane_mut(1);
-        for y in 0..height {
-            let src = uhf_y_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
-
-    // UHF X channel
-    let uhf_x_diff = malta_diff_map(
-        &ps0.uhf[0],
-        &ps1.uhf[0],
-        W_UHF_MALTA_X * hf_asymmetry as f64,
-        W_UHF_MALTA_X / hf_asymmetry as f64,
-        NORM1_UHF_X,
-        false,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(0);
-        for y in 0..height {
-            let src = uhf_x_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
-
-    // Apply Malta LF filter for HF
     let sqrt_hf_asym = hf_asymmetry.sqrt();
 
-    // HF Y channel (LF Malta)
-    let hf_y_diff = malta_diff_map(
-        &ps0.hf[1],
-        &ps1.hf[1],
-        W_HF_MALTA * sqrt_hf_asym as f64,
-        W_HF_MALTA / sqrt_hf_asym as f64,
-        NORM1_HF,
-        true, // use LF Malta
+    // Parallel: compute all 6 independent Malta diff maps
+    let ((uhf_y_diff, uhf_x_diff), ((hf_y_diff, hf_x_diff), (mf_y_diff, mf_x_diff))) = maybe_join(
+        || {
+            maybe_join(
+                || {
+                    malta_diff_map(
+                        &ps0.uhf[1],
+                        &ps1.uhf[1],
+                        W_UHF_MALTA * hf_asymmetry as f64,
+                        W_UHF_MALTA / hf_asymmetry as f64,
+                        NORM1_UHF,
+                        false,
+                    )
+                },
+                || {
+                    malta_diff_map(
+                        &ps0.uhf[0],
+                        &ps1.uhf[0],
+                        W_UHF_MALTA_X * hf_asymmetry as f64,
+                        W_UHF_MALTA_X / hf_asymmetry as f64,
+                        NORM1_UHF_X,
+                        false,
+                    )
+                },
+            )
+        },
+        || {
+            maybe_join(
+                || {
+                    maybe_join(
+                        || {
+                            malta_diff_map(
+                                &ps0.hf[1],
+                                &ps1.hf[1],
+                                W_HF_MALTA * sqrt_hf_asym as f64,
+                                W_HF_MALTA / sqrt_hf_asym as f64,
+                                NORM1_HF,
+                                true,
+                            )
+                        },
+                        || {
+                            malta_diff_map(
+                                &ps0.hf[0],
+                                &ps1.hf[0],
+                                W_HF_MALTA_X * sqrt_hf_asym as f64,
+                                W_HF_MALTA_X / sqrt_hf_asym as f64,
+                                NORM1_HF_X,
+                                true,
+                            )
+                        },
+                    )
+                },
+                || {
+                    maybe_join(
+                        || {
+                            malta_diff_map(
+                                ps0.mf.plane(1),
+                                ps1.mf.plane(1),
+                                W_MF_MALTA,
+                                W_MF_MALTA,
+                                NORM1_MF,
+                                true,
+                            )
+                        },
+                        || {
+                            malta_diff_map(
+                                ps0.mf.plane(0),
+                                ps1.mf.plane(0),
+                                W_MF_MALTA_X,
+                                W_MF_MALTA_X,
+                                NORM1_MF_X,
+                                true,
+                            )
+                        },
+                    )
+                },
+            )
+        },
     );
-    {
-        let ac = block_diff_ac.plane_mut(1);
-        for y in 0..height {
-            let src = hf_y_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
 
-    // HF X channel (LF Malta)
-    let hf_x_diff = malta_diff_map(
-        &ps0.hf[0],
-        &ps1.hf[0],
-        W_HF_MALTA_X * sqrt_hf_asym as f64,
-        W_HF_MALTA_X / sqrt_hf_asym as f64,
-        NORM1_HF_X,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(0);
-        for y in 0..height {
-            let src = hf_x_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
-
-    // Apply Malta LF filter for MF
-    // MF Y channel
-    let mf_y_diff = malta_diff_map(
-        ps0.mf.plane(1),
-        ps1.mf.plane(1),
-        W_MF_MALTA,
-        W_MF_MALTA,
-        NORM1_MF,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(1);
-        for y in 0..height {
-            let src = mf_y_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
-
-    // MF X channel
-    let mf_x_diff = malta_diff_map(
-        ps0.mf.plane(0),
-        ps1.mf.plane(0),
-        W_MF_MALTA_X,
-        W_MF_MALTA_X,
-        NORM1_MF_X,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(0);
-        for y in 0..height {
-            let src = mf_x_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
+    // Accumulate Malta results into block_diff_ac
+    let mut block_diff_ac = Image3F::new(width, height);
+    add_to(&uhf_y_diff, block_diff_ac.plane_mut(1));
+    add_to(&uhf_x_diff, block_diff_ac.plane_mut(0));
+    add_to(&hf_y_diff, block_diff_ac.plane_mut(1));
+    add_to(&hf_x_diff, block_diff_ac.plane_mut(0));
+    add_to(&mf_y_diff, block_diff_ac.plane_mut(1));
+    add_to(&mf_x_diff, block_diff_ac.plane_mut(0));
 
     // Add L2DiffAsymmetric for HF channels (X and Y, no blue)
     l2_diff_asymmetric(
@@ -494,22 +492,30 @@ fn compute_diffmap_single_resolution_linear(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
-    pool: &BufferPool,
 ) -> ImageF {
-    // Convert to XYB using butteraugli's OpsinDynamicsImage
-    let xyb1 = linear_rgb_to_xyb_image(rgb1, width, height, params.intensity_target(), pool);
-    let xyb2 = linear_rgb_to_xyb_image(rgb2, width, height, params.intensity_target(), pool);
+    let intensity_target = params.intensity_target();
 
-    // Perform frequency decomposition
-    let ps1 = separate_frequencies(&xyb1, pool);
-    let ps2 = separate_frequencies(&xyb2, pool);
+    // Parallel: XYB conversion + frequency decomposition for both images
+    let (ps1, ps2) = maybe_join(
+        || {
+            let pool = BufferPool::new();
+            let xyb = linear_rgb_to_xyb_image(rgb1, width, height, intensity_target, &pool);
+            separate_frequencies(&xyb, &pool)
+        },
+        || {
+            let pool = BufferPool::new();
+            let xyb = linear_rgb_to_xyb_image(rgb2, width, height, intensity_target, &pool);
+            separate_frequencies(&xyb, &pool)
+        },
+    );
 
-    // Compute AC differences using Malta filter
+    // Compute AC differences using Malta filter (internally parallelized)
     let mut block_diff_ac =
         compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
 
     // Compute mask from both PsychoImages (also accumulates some AC differences)
-    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), pool);
+    let pool = BufferPool::new();
+    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), &pool);
 
     // Compute DC (LF) differences
     let mut block_diff_dc = Image3F::new(width, height);
@@ -543,35 +549,29 @@ fn compute_diffmap_multiresolution_linear(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
-    pool: &BufferPool,
 ) -> ImageF {
     const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 
-    // Compute sub-level diffmap at half resolution (single level, not recursive)
-    let mut sub_diffmap = None;
-    if !params.single_resolution()
+    let need_sub = !params.single_resolution()
         && width >= MIN_SIZE_FOR_SUBSAMPLE
-        && height >= MIN_SIZE_FOR_SUBSAMPLE
-    {
-        let (sub_rgb1, sw, sh) = subsample_linear_rgb_2x(rgb1, width, height);
-        let (sub_rgb2, _, _) = subsample_linear_rgb_2x(rgb2, width, height);
+        && height >= MIN_SIZE_FOR_SUBSAMPLE;
 
-        // Single level only — matches C++ Diffmap behavior
-        sub_diffmap = Some(compute_diffmap_single_resolution_linear(
-            &sub_rgb1, &sub_rgb2, sw, sh, params, pool,
-        ));
+    if need_sub {
+        // Parallel: compute full-res and half-res diffmaps simultaneously
+        let (sub_diffmap, mut diffmap) = maybe_join(
+            || {
+                let (sub_rgb1, sw, sh) = subsample_linear_rgb_2x(rgb1, width, height);
+                let (sub_rgb2, _, _) = subsample_linear_rgb_2x(rgb2, width, height);
+                compute_diffmap_single_resolution_linear(&sub_rgb1, &sub_rgb2, sw, sh, params)
+            },
+            || compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params),
+        );
+
+        add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
+        diffmap
+    } else {
+        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params)
     }
-
-    // Compute diffmap at full resolution
-    let mut diffmap =
-        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params, pool);
-
-    // Add supersampled sub-level contribution
-    if let Some(ref sub) = sub_diffmap {
-        add_supersampled_2x(sub, 0.5, &mut diffmap);
-    }
-
-    diffmap
 }
 
 /// Main implementation of butteraugli comparison (sRGB u8 input).
@@ -625,13 +625,11 @@ pub fn compute_butteraugli_linear_impl(
         };
     }
 
-    let pool = BufferPool::new();
-
     // Handle very small images without multi-resolution
     let diffmap = if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
-        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params, &pool)
+        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params)
     } else {
-        compute_diffmap_multiresolution_linear(rgb1, rgb2, width, height, params, &pool)
+        compute_diffmap_multiresolution_linear(rgb1, rgb2, width, height, params)
     };
 
     // Compute global score
