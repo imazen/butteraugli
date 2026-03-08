@@ -1012,32 +1012,18 @@ fn l2_diff_asymmetric(
             let val1 = row1[x];
 
             let diff = val0 - val1;
-            let mut total = row_diff[x] + diff * diff * vw_0gt1;
+            let total = row_diff[x] + diff * diff * vw_0gt1;
 
+            // Branch-free asymmetric penalty:
+            // Flip val1 to match val0's sign direction, then clamp.
             let fabs0 = val0.abs();
             let too_small = 0.4 * fabs0;
-            let too_big = fabs0;
+            let sign = 1.0f32.copysign(val0);
+            let sv1 = val1 * sign;
+            // v = max(too_small - sv1, 0) + max(sv1 - fabs0, 0)
+            let v = (too_small - sv1).max(0.0) + (sv1 - fabs0).max(0.0);
 
-            let v = if val0 < 0.0 {
-                if val1 > -too_small {
-                    val1 + too_small
-                } else if val1 < -too_big {
-                    -val1 - too_big
-                } else {
-                    0.0
-                }
-            } else {
-                if val1 < too_small {
-                    too_small - val1
-                } else if val1 > too_big {
-                    val1 - too_big
-                } else {
-                    0.0
-                }
-            };
-
-            total += vw_0lt1 * v * v;
-            row_diff[x] = total;
+            row_diff[x] = total + vw_0lt1 * v * v;
         }
     }
 }
