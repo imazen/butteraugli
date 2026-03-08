@@ -687,7 +687,6 @@ use crate::consts::{
     W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X, WMUL,
 };
 use crate::malta::malta_diff_map;
-use crate::mask::{mask_dc_y, mask_y};
 
 /// Computes diffmap using precomputed reference PsychoImage and precomputed mask.
 fn compute_diffmap_with_precomputed(
@@ -882,12 +881,25 @@ fn combine_channels_to_diffmap_fused(
     block_diff_ac: &Image3F,
     xmul: f32,
 ) -> ImageF {
+    use crate::consts::{
+        MASK_DC_Y_MUL, MASK_DC_Y_OFFSET, MASK_DC_Y_SCALER, MASK_Y_MUL, MASK_Y_OFFSET, MASK_Y_SCALER,
+    };
+
     let width = mask.width();
     let height = mask.height();
     let mut diffmap = ImageF::new_uninit(width, height);
     let dc_w0 = WMUL[6] as f32;
     let dc_w1 = WMUL[7] as f32;
     let dc_w2 = WMUL[8] as f32;
+
+    // Precompute f32 mask constants for SIMD-friendly inner loop
+    let global_scale = crate::consts::GLOBAL_SCALE;
+    let my_mul = MASK_Y_MUL as f32;
+    let my_scaler = MASK_Y_SCALER as f32;
+    let my_offset = MASK_Y_OFFSET as f32;
+    let mdc_mul = MASK_DC_Y_MUL as f32;
+    let mdc_scaler = MASK_DC_Y_SCALER as f32;
+    let mdc_offset = MASK_DC_Y_OFFSET as f32;
 
     for y in 0..height {
         let mask_row = mask.row(y);
@@ -903,9 +915,17 @@ fn combine_channels_to_diffmap_fused(
         let out = diffmap.row_mut(y);
 
         for x in 0..width {
-            let val = mask_row[x] as f64;
-            let maskval = mask_y(val) as f32;
-            let dc_maskval = mask_dc_y(val) as f32;
+            let val = mask_row[x];
+
+            // mask_y in f32: (global_scale * (1 + mul / (scaler * val + offset)))²
+            let c_y = my_mul / (my_scaler * val + my_offset);
+            let r_y = global_scale * (1.0 + c_y);
+            let maskval = r_y * r_y;
+
+            // mask_dc_y in f32
+            let c_dc = mdc_mul / (mdc_scaler * val + mdc_offset);
+            let r_dc = global_scale * (1.0 + c_dc);
+            let dc_maskval = r_dc * r_dc;
 
             // DC diff computed inline: d*d*w for each channel
             let d0 = lf1_0[x] - lf2_0[x];

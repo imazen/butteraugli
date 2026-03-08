@@ -10,7 +10,7 @@ use crate::consts::{
 };
 use crate::image::{BufferPool, Image3F, ImageF};
 use crate::malta::malta_diff_map;
-use crate::mask::{compute_mask_from_hf_uhf, mask_dc_y, mask_y};
+use crate::mask::compute_mask_from_hf_uhf;
 use crate::opsin::linear_rgb_to_xyb_butteraugli;
 use crate::psycho::{PsychoImage, separate_frequencies};
 use imgref::ImgRef;
@@ -396,6 +396,15 @@ fn combine_channels_to_diffmap_fused(
     let dc_w1 = WMUL[7] as f32;
     let dc_w2 = WMUL[8] as f32;
 
+    // Precompute f32 mask constants for SIMD-friendly inner loop
+    let global_scale = crate::consts::GLOBAL_SCALE;
+    let my_mul = crate::consts::MASK_Y_MUL as f32;
+    let my_scaler = crate::consts::MASK_Y_SCALER as f32;
+    let my_offset = crate::consts::MASK_Y_OFFSET as f32;
+    let mdc_mul = crate::consts::MASK_DC_Y_MUL as f32;
+    let mdc_scaler = crate::consts::MASK_DC_Y_SCALER as f32;
+    let mdc_offset = crate::consts::MASK_DC_Y_OFFSET as f32;
+
     for y in 0..height {
         let mask_row = mask.row(y);
         let lf1_0 = lf1.plane(0).row(y);
@@ -410,9 +419,17 @@ fn combine_channels_to_diffmap_fused(
         let out = diffmap.row_mut(y);
 
         for x in 0..width {
-            let val = mask_row[x] as f64;
-            let maskval = mask_y(val) as f32;
-            let dc_maskval = mask_dc_y(val) as f32;
+            let val = mask_row[x];
+
+            // mask_y in f32: (global_scale * (1 + mul / (scaler * val + offset)))²
+            let c_y = my_mul / (my_scaler * val + my_offset);
+            let r_y = global_scale * (1.0 + c_y);
+            let maskval = r_y * r_y;
+
+            // mask_dc_y in f32
+            let c_dc = mdc_mul / (mdc_scaler * val + mdc_offset);
+            let r_dc = global_scale * (1.0 + c_dc);
+            let dc_maskval = r_dc * r_dc;
 
             // DC diff computed inline: d*d*w for each channel
             let d0 = lf1_0[x] - lf2_0[x];

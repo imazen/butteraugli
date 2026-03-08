@@ -1380,14 +1380,29 @@ where
     const PAD: usize = 4;
     let pad_w = width + 2 * PAD;
     let pad_h = height + 2 * PAD;
-    let mut padded = ImageF::from_pool_zeroed(pad_w, pad_h, pool);
+    let mut padded = ImageF::from_pool_dirty(pad_w, pad_h, pool);
     let pad_stride = padded.stride();
 
-    // Copy diffs rows into the center of the padded image
+    // Zero only the border strips (top/bottom rows + left/right columns).
+    // Interior will be overwritten by the copy below.
+    // Top border: first PAD full rows
+    for y in 0..PAD {
+        padded.row_full_mut(y)[..pad_stride].fill(0.0);
+    }
+    // Bottom border: last PAD full rows
+    for y in PAD + height..pad_h {
+        padded.row_full_mut(y)[..pad_stride].fill(0.0);
+    }
+    // Copy diffs rows into the center, zero left/right padding columns
     for y in 0..height {
         let src = diffs.row(y);
-        let dst = padded.row_mut(y + PAD);
+        let dst = padded.row_full_mut(y + PAD);
+        // Zero left padding
+        dst[..PAD].fill(0.0);
+        // Copy interior
         dst[PAD..PAD + width].copy_from_slice(src);
+        // Zero right padding (from PAD+width to end of stride)
+        dst[PAD + width..pad_stride].fill(0.0);
     }
     diffs.recycle(pool);
 
