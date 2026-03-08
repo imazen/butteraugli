@@ -70,22 +70,39 @@ fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
 ///
 /// This blends the lower-resolution analysis with the higher-resolution one
 /// using a heuristic mixing value to reduce noise from lower resolutions.
-fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
-    let width = dest.width();
-    let height = dest.height();
-
-    // Heuristic from C++: lower resolution images have less error
+/// Adds supersampled diffmap contribution (2× upsampling with blending).
+///
+/// Processes pairs of destination pixels that share the same source pixel,
+/// enabling sequential access on both src and dst for better vectorization.
+#[archmage::autoversion]
+fn add_supersampled_2x(_token: archmage::SimdToken, src: &ImageF, weight: f32, dest: &mut ImageF) {
+    let dest_width = dest.width();
+    let dest_height = dest.height();
     const K_HEURISTIC_MIXING_VALUE: f32 = 0.3;
-
     let blend = 1.0 - K_HEURISTIC_MIXING_VALUE * weight;
-    for y in 0..height {
-        let src_y = (y / 2).min(src.height() - 1);
+    let src_w = src.width();
+    let src_h = src.height();
+
+    for y in 0..dest_height {
+        let src_y = (y / 2).min(src_h - 1);
         let src_row = src.row(src_y);
         let dst_row = dest.row_mut(y);
-        let src_w = src.width();
-        for x in 0..width {
-            let src_val = src_row[(x / 2).min(src_w - 1)];
-            dst_row[x] = dst_row[x] * blend + weight * src_val;
+
+        // Process pairs of dest pixels that share the same source pixel.
+        let n_pairs = (dest_width / 2).min(src_w);
+        for (pair, &sv) in dst_row[..n_pairs * 2]
+            .chunks_exact_mut(2)
+            .zip(src_row[..n_pairs].iter())
+        {
+            let ws = weight * sv;
+            pair[0] = pair[0].mul_add(blend, ws);
+            pair[1] = pair[1].mul_add(blend, ws);
+        }
+
+        // Handle odd trailing pixel (when dest_width is odd)
+        if dest_width > n_pairs * 2 {
+            let sv = src_row[(dest_width / 2).min(src_w - 1)];
+            dst_row[dest_width - 1] = dst_row[dest_width - 1].mul_add(blend, weight * sv);
         }
     }
 }
@@ -457,23 +474,36 @@ fn combine_channels_to_diffmap_fused(
 fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> f64 {
     let width = diffmap.width();
     let height = diffmap.height();
-    let num_pixels = width * height;
 
-    if num_pixels == 0 {
+    if width * height == 0 {
         return 0.0;
     }
 
-    // Find maximum difference value (C++ butteraugli approach)
-    let mut max_val = 0.0f32;
-
+    // Use 8 independent max accumulators to break the loop-carried dependency,
+    // enabling LLVM to vectorize with vmaxps (packed max).
+    let mut lanes = [0.0f32; 8];
     for y in 0..height {
         let row = diffmap.row(y);
-        for &v in row {
-            max_val = max_val.max(v);
+        for chunk in row.chunks_exact(8) {
+            for (m, &v) in lanes.iter_mut().zip(chunk.iter()) {
+                if v > *m {
+                    *m = v;
+                }
+            }
+        }
+        for &v in row.chunks_exact(8).remainder() {
+            if v > lanes[0] {
+                lanes[0] = v;
+            }
         }
     }
 
-    // No additional scaling needed - MaskY/MaskDcY already include GLOBAL_SCALE
+    let mut max_val = lanes[0];
+    for &m in &lanes[1..] {
+        if m > max_val {
+            max_val = m;
+        }
+    }
     max_val as f64
 }
 
