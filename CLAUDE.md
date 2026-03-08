@@ -123,6 +123,26 @@ dest[y][x] += 0.5 * src[y/2][x/2];
 
 ## Performance Notes
 
+### Optimization session (2026-03-08)
+
+Non-transposing H+V blur, V-pass row pointer pre-collection, AVX-512 dispatch fix.
+
+| Optimization | Instructions (flower_big 512x341) | Wall clock (512x512) |
+|-------------|----------------------------------|---------------------|
+| Baseline (post-session-1) | 758M | ~44ms |
+| Non-transposing H+V blur | ~703M (-7.3%) | ~41ms |
+| V-pass row pointer pre-collection | 522M (-25.8%) | ~39ms |
+| AVX-512 dispatch fix | 522M (same, v4 at runtime) | 32ms (-17%) |
+
+Key fix: butteraugli's Cargo.toml didn't forward `avx512` feature to archmage,
+so `#[cfg(feature = "avx512")]` in the incant macro was always false. The v4
+dispatch functions existed but were never compiled. Adding `avx512 = ["archmage/avx512",
+"magetypes/avx512"]` as a default feature activated AVX-512 runtime dispatch.
+
+Zen 4 note: AVX-512 uses 256-bit execution units (zmm split to 2×ymm μops),
+so f32x16 doesn't improve throughput over 2×f32x8. But it helps through reduced
+loop overhead (fewer iterations) and wider stores.
+
 ### Optimization session (2026-02-14)
 
 Total instruction reduction: 14.16B → 8.60B (39.3%) on 512x512.
@@ -148,3 +168,5 @@ All optimizations are correctness-preserving: max 7e-6 difference vs unoptimized
 - `iter().zip()` eliminates per-element bounds checks vs indexed access.
 - Malta HF patterns 13-16 have identical offsets to 8,7,6,5. Cache `sum*sum` and
   reuse at the original accumulation positions (not `2*sum*sum` — different FP result).
+- **archmage feature gates**: `incant!` wraps v4 code in `#[cfg(feature = "avx512")]`
+  which checks the CONSUMING crate's features, not archmage's. Must forward feature.
