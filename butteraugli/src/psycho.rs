@@ -148,25 +148,26 @@ fn maximum_clamp(v: f32, max_val: f32) -> f32 {
 /// Converts low-frequency XYB to "vals" space for comparison.
 ///
 /// Vals space can be converted to L2-norm space through visual masking.
-fn xyb_low_freq_to_vals(lf: &mut Image3F) {
-    let width = lf.width();
+#[archmage::autoversion]
+fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
     let height = lf.height();
     let (p0, p1, p2) = lf.planes_mut();
+    let y_to_b = Y_TO_B_MUL_LF_TO_VALS as f32;
+    let bmul = BMUL_LF_TO_VALS as f32;
+    let xmul = XMUL_LF_TO_VALS as f32;
+    let ymul = YMUL_LF_TO_VALS as f32;
 
     for y in 0..height {
         let row_x = p0.row_mut(y);
         let row_y = p1.row_mut(y);
         let row_b = p2.row_mut(y);
 
-        for x in 0..width {
-            let vx = row_x[x];
-            let vy = row_y[x];
-            let vb = row_b[x];
-
-            let b = (Y_TO_B_MUL_LF_TO_VALS as f32) * vy + vb;
-            row_b[x] = b * BMUL_LF_TO_VALS as f32;
-            row_x[x] = vx * XMUL_LF_TO_VALS as f32;
-            row_y[x] = vy * YMUL_LF_TO_VALS as f32;
+        for i in 0..row_x.len() {
+            let vy = row_y[i];
+            let vb = row_b[i];
+            row_b[i] = (y_to_b * vy + vb) * bmul;
+            row_x[i] *= xmul;
+            row_y[i] = vy * ymul;
         }
     }
 }
