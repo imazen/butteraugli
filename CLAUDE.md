@@ -123,6 +123,26 @@ dest[y][x] += 0.5 * src[y/2][x/2];
 
 ## Performance Notes
 
+### Optimization session 7 (2026-03-08)
+
+Autoversioned remaining non-SIMD functions: add_supersampled_2x, subsample_channel_2x,
+compute_score_from_diffmap.
+
+| Optimization | Instructions (single call V3) | Reduction |
+|-------------|------------------------------|-----------|
+| Baseline (post-session-6) | 648.1M | — |
+| Autoversioned add_supersampled_2x (pair loop) | 643.9M | -0.65% (3.9M → 0.3M) |
+| Multi-lane max reduction (compute_score) | 643.8M | score: 1.26M → 256K (-80%) |
+| Autoversioned subsample_channel_2x_interior | 642.2M | subsample: 1.87M → 0.84M (-55%) |
+
+Key techniques:
+- add_supersampled_2x: Process dest pixels in pairs sharing same src pixel. LLVM generates
+  vshufps/vpermpd for 2:1 deinterleave + vfmadd213ps for blend+weight FMA.
+- compute_score: 8 independent max accumulators break loop-carried dependency.
+  LLVM uses vmaxps (4-wide packed max) instead of scalar vmaxss + NaN handling.
+- subsample_channel: zip+chunks_exact(2) for per-channel SIMD. LLVM uses vhaddps
+  for horizontal pair sums + vshufps for row deinterleave.
+
 ### Optimization session 6 (2026-03-08)
 
 Stack-allocated kernels, register-accumulate vertical blur, mask copy elimination,
@@ -140,10 +160,10 @@ zip patterns for bounds check elimination, pool reuse from construction.
 Profiling methodology: Single-threaded callgrind_single example (1 reference + 1 compare).
 
 Confirmed algorithmic optimization ceiling reached:
-- blur v3: 297M (45.8%) — unrolled 4×, zero bounds checks in hot loop
-- malta v3: 118M (18.2%) — 8-wide SIMD, zero-padded borders
+- blur v3: 297M (46.2%) — unrolled 4×, zero bounds checks in hot loop
+- malta v3: 118M (18.3%) — 8-wide SIMD, zero-padded borders
 - blur_5x5 v3: 18M (2.8%)
-- opsin v3: 16M (2.4%) — fully vectorized (vdivps, vfmadd, vmaxps)
+- opsin v3: 16M (2.5%) — fully vectorized (vdivps, vfmadd, vmaxps)
 - All remaining functions < 1.3% each, all autoversioned
 
 Assembly verification confirms optimal codegen:
