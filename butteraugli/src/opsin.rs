@@ -352,13 +352,18 @@ pub fn linear_rgb_to_xyb_butteraugli(
 
     // Convert interleaved linear RGB to planar Image3F
     let mut linear = Image3F::new_uninit(width, height);
+    let (out_r, out_g, out_b) = linear.planes_mut();
 
     for y in 0..height {
+        let row_offset = y * width * 3;
+        let row_r = out_r.row_mut(y);
+        let row_g = out_g.row_mut(y);
+        let row_b = out_b.row_mut(y);
         for x in 0..width {
-            let idx = (y * width + x) * 3;
-            linear.plane_mut(0).set(x, y, rgb[idx]);
-            linear.plane_mut(1).set(x, y, rgb[idx + 1]);
-            linear.plane_mut(2).set(x, y, rgb[idx + 2]);
+            let idx = row_offset + x * 3;
+            row_r[x] = rgb[idx];
+            row_g[x] = rgb[idx + 1];
+            row_b[x] = rgb[idx + 2];
         }
     }
 
