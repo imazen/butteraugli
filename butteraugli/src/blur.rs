@@ -53,10 +53,10 @@ pub fn compute_kernel(sigma: f32) -> Vec<f32> {
 ///
 /// Returns the used portion of the buffer. Avoids heap allocation.
 #[inline]
-fn compute_kernel_stack<'a>(
+fn compute_kernel_stack(
     sigma: f32,
-    buf: &'a mut [f32; MAX_KERNEL_SIZE],
-) -> &'a [f32] {
+    buf: &mut [f32; MAX_KERNEL_SIZE],
+) -> &[f32] {
     const M: f32 = 2.25;
     let scaler = -1.0 / (2.0 * sigma * sigma);
     let diff = (M * sigma.abs()).max(1.0) as i32;
@@ -403,45 +403,41 @@ fn convolve_vertical_v3(
         }
     }
 
-    // Interior rows: row-major loop, first kernel row mul-stores (no zero-init needed).
+    // Interior rows: register-accumulate approach.
+    // Instead of load-from-output + FMA + store-to-output for each kernel row,
+    // accumulate all kernel rows in a SIMD register, then store once.
+    // This eliminates (K-1) loads and (K-1) stores per 8-pixel chunk.
+    let in_data = input.data();
+    let in_stride = input.stride();
     for y in border_top..border_bottom {
         let start_y = y - half;
+        let row_out = output.row_mut(y);
 
-        // First kernel row: multiply-store (replaces fill(0.0) + first FMA)
-        {
-            let row_in = input.row(start_y);
-            let kv = f32x8::splat(token, scaled_kernel[0]);
-            let row_out = output.row_mut(y);
-            for (in_c, out_c) in row_in[..simd_width]
-                .chunks_exact(8)
-                .zip(row_out[..simd_width].chunks_exact_mut(8))
-            {
-                let result = f32x8::load(token, in_c.try_into().unwrap()) * kv;
-                result.store(out_c.try_into().unwrap());
-            }
-        }
+        let mut x = 0;
+        while x + 8 <= simd_width {
+            // First kernel row: multiply (result stays in register)
+            let base0 = start_y * in_stride + x;
+            let mut sum = f32x8::load(token, (&in_data[base0..base0 + 8]).try_into().unwrap())
+                * f32x8::splat(token, scaled_kernel[0]);
 
-        // Remaining kernel rows: FMA into output
-        for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
-            let row_in = input.row(start_y + ki);
-            let kv = f32x8::splat(token, kw);
-            let row_out = output.row_mut(y);
-            for (in_c, out_c) in row_in[..simd_width]
-                .chunks_exact(8)
-                .zip(row_out[..simd_width].chunks_exact_mut(8))
-            {
-                let loaded = f32x8::load(token, in_c.try_into().unwrap());
-                let current = f32x8::load(token, (&*out_c).try_into().unwrap());
-                loaded.mul_add(kv, current).store(out_c.try_into().unwrap());
+            // Remaining kernel rows: FMA into register (no output load/store)
+            for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
+                let base = base0 + ki * in_stride;
+                let loaded =
+                    f32x8::load(token, (&in_data[base..base + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, kw), sum);
             }
+
+            // Single store to output
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
+            x += 8;
         }
 
         // Scalar tail
-        let row_out = output.row_mut(y);
         for x in simd_width..width {
-            let mut sum = input.row(start_y)[x] * scaled_kernel[0];
+            let mut sum = in_data[start_y * in_stride + x] * scaled_kernel[0];
             for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
-                sum += input.row(start_y + ki)[x] * kw;
+                sum = in_data[(start_y + ki) * in_stride + x].mul_add(kw, sum);
             }
             row_out[x] = sum;
         }
@@ -542,46 +538,35 @@ fn convolve_vertical_v4(
         process_border_row(y, miny, ks, scale, row_out);
     }
 
+    // Interior: register-accumulate (same optimization as v3)
     let simd16_width = (width / 16) * 16;
+    let in_data = input.data();
+    let in_stride = input.stride();
     for y in border_top..border_bottom {
         let start_y = y - half;
+        let row_out = output.row_mut(y);
 
-        // First kernel row: multiply-store (no zero-init needed)
-        {
-            let row_in = input.row(start_y);
-            let kv = f32x16::splat(token, scaled_kernel[0]);
-            let row_out = output.row_mut(y);
-            for (in_c, out_c) in row_in[..simd16_width]
-                .chunks_exact(16)
-                .zip(row_out[..simd16_width].chunks_exact_mut(16))
-            {
-                let result = f32x16::from_slice(token, in_c) * kv;
-                out_c.copy_from_slice(&result.to_array());
-            }
-        }
+        let mut x = 0;
+        while x + 16 <= simd16_width {
+            let base0 = start_y * in_stride + x;
+            let mut sum = f32x16::from_slice(token, &in_data[base0..])
+                * f32x16::splat(token, scaled_kernel[0]);
 
-        // Remaining kernel rows: FMA into output
-        for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
-            let row_in = input.row(start_y + ki);
-            let kv = f32x16::splat(token, kw);
-            let row_out = output.row_mut(y);
-            for (in_c, out_c) in row_in[..simd16_width]
-                .chunks_exact(16)
-                .zip(row_out[..simd16_width].chunks_exact_mut(16))
-            {
-                let loaded = f32x16::from_slice(token, in_c);
-                let current = f32x16::from_slice(token, out_c);
-                let result = loaded.mul_add(kv, current);
-                out_c.copy_from_slice(&result.to_array());
+            for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
+                let base = base0 + ki * in_stride;
+                let loaded = f32x16::from_slice(token, &in_data[base..]);
+                sum = loaded.mul_add(f32x16::splat(token, kw), sum);
             }
+
+            row_out[x..x + 16].copy_from_slice(&sum.to_array());
+            x += 16;
         }
 
         // Scalar tail
-        let row_out = output.row_mut(y);
         for x in simd16_width..width {
-            let mut sum = input.row(start_y)[x] * scaled_kernel[0];
+            let mut sum = in_data[start_y * in_stride + x] * scaled_kernel[0];
             for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
-                sum += input.row(start_y + ki)[x] * kw;
+                sum = in_data[(start_y + ki) * in_stride + x].mul_add(kw, sum);
             }
             row_out[x] = sum;
         }
@@ -657,44 +642,34 @@ fn convolve_vertical_neon(
         process_border_row(miny, ks, scale, output.row_mut(y));
     }
 
+    // Interior: register-accumulate
+    let in_data = input.data();
+    let in_stride = input.stride();
     for y in border_top..border_bottom {
         let start_y = y - half;
-
-        // First kernel row: multiply-store (no zero-init needed)
-        {
-            let row_in = input.row(start_y);
-            let kv = f32x8::splat(token, scaled_kernel[0]);
-            let row_out = output.row_mut(y);
-            for (in_c, out_c) in row_in[..simd_width]
-                .chunks_exact(8)
-                .zip(row_out[..simd_width].chunks_exact_mut(8))
-            {
-                let result = f32x8::load(token, in_c.try_into().unwrap()) * kv;
-                result.store(out_c.try_into().unwrap());
-            }
-        }
-
-        // Remaining kernel rows: FMA into output
-        for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
-            let row_in = input.row(start_y + ki);
-            let kv = f32x8::splat(token, kw);
-            let row_out = output.row_mut(y);
-            for (in_c, out_c) in row_in[..simd_width]
-                .chunks_exact(8)
-                .zip(row_out[..simd_width].chunks_exact_mut(8))
-            {
-                let loaded = f32x8::load(token, in_c.try_into().unwrap());
-                let current = f32x8::load(token, (&*out_c).try_into().unwrap());
-                loaded.mul_add(kv, current).store(out_c.try_into().unwrap());
-            }
-        }
-
-        // Scalar tail
         let row_out = output.row_mut(y);
-        for x in simd_width..width {
-            let mut sum = input.row(start_y)[x] * scaled_kernel[0];
+
+        let mut x = 0;
+        while x + 8 <= simd_width {
+            let base0 = start_y * in_stride + x;
+            let mut sum = f32x8::load(token, (&in_data[base0..base0 + 8]).try_into().unwrap())
+                * f32x8::splat(token, scaled_kernel[0]);
+
             for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
-                sum += input.row(start_y + ki)[x] * kw;
+                let base = base0 + ki * in_stride;
+                let loaded =
+                    f32x8::load(token, (&in_data[base..base + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, kw), sum);
+            }
+
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+
+        for x in simd_width..width {
+            let mut sum = in_data[start_y * in_stride + x] * scaled_kernel[0];
+            for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
+                sum = in_data[(start_y + ki) * in_stride + x].mul_add(kw, sum);
             }
             row_out[x] = sum;
         }
@@ -768,44 +743,34 @@ fn convolve_vertical_wasm128(
         process_border_row(miny, ks, scale, output.row_mut(y));
     }
 
+    // Interior: register-accumulate
+    let in_data = input.data();
+    let in_stride = input.stride();
     for y in border_top..border_bottom {
         let start_y = y - half;
-
-        // First kernel row: multiply-store (no zero-init needed)
-        {
-            let row_in = input.row(start_y);
-            let kv = f32x8::splat(token, scaled_kernel[0]);
-            let row_out = output.row_mut(y);
-            for (in_c, out_c) in row_in[..simd_width]
-                .chunks_exact(8)
-                .zip(row_out[..simd_width].chunks_exact_mut(8))
-            {
-                let result = f32x8::load(token, in_c.try_into().unwrap()) * kv;
-                result.store(out_c.try_into().unwrap());
-            }
-        }
-
-        // Remaining kernel rows: FMA into output
-        for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
-            let row_in = input.row(start_y + ki);
-            let kv = f32x8::splat(token, kw);
-            let row_out = output.row_mut(y);
-            for (in_c, out_c) in row_in[..simd_width]
-                .chunks_exact(8)
-                .zip(row_out[..simd_width].chunks_exact_mut(8))
-            {
-                let loaded = f32x8::load(token, in_c.try_into().unwrap());
-                let current = f32x8::load(token, (&*out_c).try_into().unwrap());
-                loaded.mul_add(kv, current).store(out_c.try_into().unwrap());
-            }
-        }
-
-        // Scalar tail
         let row_out = output.row_mut(y);
-        for x in simd_width..width {
-            let mut sum = input.row(start_y)[x] * scaled_kernel[0];
+
+        let mut x = 0;
+        while x + 8 <= simd_width {
+            let base0 = start_y * in_stride + x;
+            let mut sum = f32x8::load(token, (&in_data[base0..base0 + 8]).try_into().unwrap())
+                * f32x8::splat(token, scaled_kernel[0]);
+
             for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
-                sum += input.row(start_y + ki)[x] * kw;
+                let base = base0 + ki * in_stride;
+                let loaded =
+                    f32x8::load(token, (&in_data[base..base + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, kw), sum);
+            }
+
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+
+        for x in simd_width..width {
+            let mut sum = in_data[start_y * in_stride + x] * scaled_kernel[0];
+            for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
+                sum = in_data[(start_y + ki) * in_stride + x].mul_add(kw, sum);
             }
             row_out[x] = sum;
         }
@@ -863,26 +828,19 @@ fn convolve_vertical_scalar(
         process_border_row(miny, ks, scale, output.row_mut(y));
     }
 
+    // Interior: register-accumulate (scalar)
+    let in_data = input.data();
+    let in_stride = input.stride();
     for y in border_top..border_bottom {
         let start_y = y - half;
+        let row_out = output.row_mut(y);
 
-        // First kernel row: multiply-store (no zero-init needed)
-        {
-            let row_in = input.row(start_y);
-            let kw = scaled_kernel[0];
-            let row_out = output.row_mut(y);
-            for (out_v, &in_v) in row_out[..width].iter_mut().zip(row_in[..width].iter()) {
-                *out_v = in_v * kw;
+        for x in 0..width {
+            let mut sum = in_data[start_y * in_stride + x] * scaled_kernel[0];
+            for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
+                sum = in_data[(start_y + ki) * in_stride + x].mul_add(kw, sum);
             }
-        }
-
-        // Remaining kernel rows: FMA into output
-        for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
-            let row_in = input.row(start_y + ki);
-            let row_out = output.row_mut(y);
-            for (out_v, &in_v) in row_out[..width].iter_mut().zip(row_in[..width].iter()) {
-                *out_v = in_v.mul_add(kw, *out_v);
-            }
+            row_out[x] = sum;
         }
     }
 
