@@ -206,21 +206,21 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
         let (lf0, lf1, lf2) = lf.planes_mut();
         let (mf0, mf1, mf2) = mf.planes_mut();
 
-        // Fused: one pass writes LF = blurred, MF = original - blurred
+        // Swap blurred result directly into LF (no copy), compute MF = orig - LF
         let blur_plane = |xyb_plane: &ImageF, lf_out: &mut ImageF, mf_out: &mut ImageF| {
-            let blurred = gaussian_blur(xyb_plane, sigma, pool);
+            let mut blurred = gaussian_blur(xyb_plane, sigma, pool);
+            // Swap blurred into lf_out — both have same dimensions, avoids copy
+            core::mem::swap(lf_out, &mut blurred);
+            blurred.recycle(pool); // recycle the old dirty lf_out buffer
             let w = xyb_plane.width();
             for y in 0..xyb_plane.height() {
                 let row_orig = xyb_plane.row(y);
-                let row_blurred = blurred.row(y);
-                let row_lf = lf_out.row_mut(y);
+                let row_lf = lf_out.row(y);
                 let row_mf = mf_out.row_mut(y);
                 for x in 0..w {
-                    row_lf[x] = row_blurred[x];
-                    row_mf[x] = row_orig[x] - row_blurred[x];
+                    row_mf[x] = row_orig[x] - row_lf[x];
                 }
             }
-            blurred.recycle(pool);
         };
 
         maybe_join(
@@ -234,22 +234,23 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
         );
     } else {
         for i in 0..3 {
-            let blurred = gaussian_blur(xyb.plane(i), sigma, pool);
-            // Fused: one pass writes LF and MF from blurred + original
-            let xyb_plane = xyb.plane(i);
+            let mut blurred = gaussian_blur(xyb.plane(i), sigma, pool);
+            // Swap blurred into LF plane — avoids full-image copy
             let lf_plane = lf.plane_mut(i);
+            core::mem::swap(lf_plane, &mut blurred);
+            blurred.recycle(pool);
+            // MF = original - LF
+            let xyb_plane = xyb.plane(i);
+            let lf_plane = lf.plane(i);
             let mf_plane = mf.plane_mut(i);
             for y in 0..height {
                 let row_orig = xyb_plane.row(y);
-                let row_blurred = blurred.row(y);
-                let row_lf = lf_plane.row_mut(y);
+                let row_lf = lf_plane.row(y);
                 let row_mf = mf_plane.row_mut(y);
                 for x in 0..width {
-                    row_lf[x] = row_blurred[x];
-                    row_mf[x] = row_orig[x] - row_blurred[x];
+                    row_mf[x] = row_orig[x] - row_lf[x];
                 }
             }
-            blurred.recycle(pool);
         }
     }
 
@@ -316,8 +317,8 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
                 maybe_join(
                     || separate_mf_hf_channel(mf1, hf_y, sigma, ADD_MF_RANGE as f32, true, pool),
                     || {
-                        let blurred_b = gaussian_blur(mf2, sigma, pool);
-                        mf2.copy_from(&blurred_b);
+                        let mut blurred_b = gaussian_blur(mf2, sigma, pool);
+                        core::mem::swap(mf2, &mut blurred_b);
                         blurred_b.recycle(pool);
                     },
                 )
@@ -343,8 +344,8 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
                 pool,
             );
         }
-        let blurred_b = gaussian_blur(mf.plane(2), sigma, pool);
-        mf.plane_mut(2).copy_from(&blurred_b);
+        let mut blurred_b = gaussian_blur(mf.plane(2), sigma, pool);
+        core::mem::swap(mf.plane_mut(2), &mut blurred_b);
         blurred_b.recycle(pool);
         let (hf_x, hf_y) = hf.split_at_mut(1);
         suppress_x_by_y(&hf_y[0], &mut hf_x[0]);
