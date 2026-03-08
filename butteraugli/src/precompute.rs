@@ -53,11 +53,15 @@ struct ScaleData {
 /// Uses single-level multiresolution matching C++ `ButteraugliComparator::Diffmap`:
 /// the full-resolution diffmap plus one half-resolution sub-level.
 ///
+/// A persistent `BufferPool` is maintained across compare calls. After the first
+/// comparison, all subsequent comparisons reuse previously allocated temporary
+/// buffers, eliminating mmap/munmap overhead and reducing memset to only the
+/// buffers that need zeroing (accumulators).
+///
 /// Ideal for:
 /// - Simulated annealing optimization
 /// - Batch quality assessment
 /// - Encoder tuning loops
-#[derive(Clone)]
 pub struct ButteraugliReference {
     /// Full resolution precomputed data
     full: ScaleData,
@@ -68,6 +72,21 @@ pub struct ButteraugliReference {
     height: usize,
     /// Parameters used for precomputation
     params: ButteraugliParams,
+    /// Persistent buffer pool — reused across compare calls to avoid re-allocation
+    pool: BufferPool,
+}
+
+impl Clone for ButteraugliReference {
+    fn clone(&self) -> Self {
+        Self {
+            full: self.full.clone(),
+            half: self.half.clone(),
+            width: self.width,
+            height: self.height,
+            params: self.params.clone(),
+            pool: BufferPool::new(), // fresh empty pool for the clone
+        }
+    }
 }
 
 /// Converts sRGB u8 buffer to linear f32.
@@ -208,6 +227,7 @@ impl ButteraugliReference {
             width,
             height,
             params,
+            pool: BufferPool::new(),
         })
     }
 
@@ -308,6 +328,7 @@ impl ButteraugliReference {
             width,
             height,
             params,
+            pool: BufferPool::new(),
         })
     }
 
@@ -510,24 +531,23 @@ impl ButteraugliReference {
         let params = &self.params;
         let full_psycho = &self.full.psycho;
         let half_ref = self.half.as_ref();
+        let pool = &self.pool;
 
-        // Run full-res and half-res in parallel
+        // Run full-res and half-res in parallel (shared pool via Mutex)
         let (mut diffmap, sub_diffmap) = maybe_join(
             || {
-                let pool = BufferPool::new();
                 let xyb2 =
-                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
-                let ps2 = separate_frequencies(&xyb2, &pool);
-                compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, &pool)
+                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool);
+                let ps2 = separate_frequencies(&xyb2, pool);
+                compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, pool)
             },
             || {
                 half_ref.map(|half| {
-                    let pool = BufferPool::new();
                     let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
                     let sub_xyb =
-                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
-                    let sub_ps = separate_frequencies(&sub_xyb, &pool);
-                    compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, &pool)
+                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, pool);
+                    let sub_ps = separate_frequencies(&sub_xyb, pool);
+                    compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, pool)
                 })
             },
         );
@@ -558,11 +578,11 @@ impl ButteraugliReference {
         let params = &self.params;
         let full_psycho = &self.full.psycho;
         let half_ref = self.half.as_ref();
+        let pool = &self.pool;
 
-        // Run full-res and half-res in parallel
+        // Run full-res and half-res in parallel (shared pool via Mutex)
         let (mut diffmap, sub_diffmap) = maybe_join(
             || {
-                let pool = BufferPool::new();
                 let xyb2 = linear_planar_to_xyb_butteraugli(
                     r,
                     g,
@@ -571,14 +591,13 @@ impl ButteraugliReference {
                     height,
                     stride,
                     intensity_target,
-                    &pool,
+                    pool,
                 );
-                let ps2 = separate_frequencies(&xyb2, &pool);
-                compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, &pool)
+                let ps2 = separate_frequencies(&xyb2, pool);
+                compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, pool)
             },
             || {
                 half_ref.map(|half| {
-                    let pool = BufferPool::new();
                     let (sub_r, sub_g, sub_b, sw, sh) =
                         subsample_planar_rgb_2x(r, g, b, width, height, stride);
                     let sub_xyb = linear_planar_to_xyb_butteraugli(
@@ -589,10 +608,10 @@ impl ButteraugliReference {
                         sh,
                         sw,
                         intensity_target,
-                        &pool,
+                        pool,
                     );
-                    let sub_ps = separate_frequencies(&sub_xyb, &pool);
-                    compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, &pool)
+                    let sub_ps = separate_frequencies(&sub_xyb, pool);
+                    compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, pool)
                 })
             },
         );
@@ -634,7 +653,7 @@ fn compute_diffmap_with_precomputed(
 ) -> ImageF {
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
-        compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul());
+        compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul(), pool);
 
     // Compute mask from both PsychoImages
     let mask = mask_psycho_image(ps1, ps2, Some(block_diff_ac.plane_mut(1)), pool);
@@ -697,6 +716,7 @@ fn compute_psycho_diff_malta(
     ps1: &PsychoImage,
     hf_asymmetry: f32,
     _xmul: f32,
+    pool: &BufferPool,
 ) -> Image3F {
     let width = ps0.width();
     let height = ps0.height();
@@ -706,7 +726,7 @@ fn compute_psycho_diff_malta(
     let (plane_y, plane_x) = maybe_join(
         || {
             // Y channel: UHF_Y + HF_Y + MF_Y Malta + L2 diffs
-            let mut ac_y = ImageF::new(width, height);
+            let mut ac_y = ImageF::from_pool_zeroed(width, height, pool);
 
             let (uhf_y, (hf_y, mf_y)) = maybe_join(
                 || {
@@ -717,6 +737,7 @@ fn compute_psycho_diff_malta(
                         W_UHF_MALTA / hf_asymmetry as f64,
                         NORM1_UHF,
                         false,
+                        pool,
                     )
                 },
                 || {
@@ -729,6 +750,7 @@ fn compute_psycho_diff_malta(
                                 W_HF_MALTA / sqrt_hf_asym as f64,
                                 NORM1_HF,
                                 true,
+                                pool,
                             )
                         },
                         || {
@@ -739,6 +761,7 @@ fn compute_psycho_diff_malta(
                                 W_MF_MALTA,
                                 NORM1_MF,
                                 true,
+                                pool,
                             )
                         },
                     )
@@ -762,7 +785,7 @@ fn compute_psycho_diff_malta(
         },
         || {
             // X channel: UHF_X + HF_X + MF_X Malta + L2 diffs
-            let mut ac_x = ImageF::new(width, height);
+            let mut ac_x = ImageF::from_pool_zeroed(width, height, pool);
 
             let (uhf_x, (hf_x, mf_x)) = maybe_join(
                 || {
@@ -773,6 +796,7 @@ fn compute_psycho_diff_malta(
                         W_UHF_MALTA_X / hf_asymmetry as f64,
                         NORM1_UHF_X,
                         false,
+                        pool,
                     )
                 },
                 || {
@@ -785,6 +809,7 @@ fn compute_psycho_diff_malta(
                                 W_HF_MALTA_X / sqrt_hf_asym as f64,
                                 NORM1_HF_X,
                                 true,
+                                pool,
                             )
                         },
                         || {
@@ -795,6 +820,7 @@ fn compute_psycho_diff_malta(
                                 W_MF_MALTA_X,
                                 NORM1_MF_X,
                                 true,
+                                pool,
                             )
                         },
                     )
@@ -819,7 +845,7 @@ fn compute_psycho_diff_malta(
     );
 
     // B channel L2Diff (small, run inline)
-    let mut plane_b = ImageF::new(width, height);
+    let mut plane_b = ImageF::from_pool_zeroed(width, height, pool);
     l2_diff(
         ps0.mf.plane(2),
         ps1.mf.plane(2),

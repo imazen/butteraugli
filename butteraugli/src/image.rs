@@ -4,17 +4,34 @@
 //! with row-stride support for cache-friendly access patterns.
 
 use imgref::ImgVec;
-use std::cell::RefCell;
 use std::ops::{Index, IndexMut};
+use std::sync::Mutex;
 
 /// Reusable buffer pool for `ImageF` allocations.
 ///
-/// Avoids repeated mmap/munmap for large temporary buffers. Owned by the
-/// caller (typically `ButteraugliReference` or a local in standalone API
-/// functions). When the pool is dropped, all cached buffers are freed.
-#[derive(Debug, Default)]
+/// Avoids repeated mmap/munmap for large temporary buffers. Thread-safe via
+/// `Mutex`, so it can be shared across rayon tasks. Owned by the caller
+/// (typically `ButteraugliReference` or a local in standalone API functions).
+/// When the pool is dropped, all cached buffers are freed.
 pub struct BufferPool {
-    buffers: RefCell<Vec<Vec<f32>>>,
+    buffers: Mutex<Vec<Vec<f32>>>,
+}
+
+impl core::fmt::Debug for BufferPool {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let count = self.buffers.lock().unwrap().len();
+        f.debug_struct("BufferPool")
+            .field("cached_buffers", &count)
+            .finish()
+    }
+}
+
+impl Default for BufferPool {
+    fn default() -> Self {
+        Self {
+            buffers: Mutex::new(Vec::new()),
+        }
+    }
 }
 
 impl BufferPool {
@@ -29,7 +46,7 @@ impl BufferPool {
     ///
     /// With `unsafe-performance`, new allocations skip zero-fill entirely.
     pub(crate) fn take(&self, needed: usize) -> Vec<f32> {
-        let mut pool = self.buffers.borrow_mut();
+        let mut pool = self.buffers.lock().unwrap();
         let mut best_idx = None;
         let mut best_excess = usize::MAX;
         for (i, buf) in pool.iter().enumerate() {
@@ -41,6 +58,7 @@ impl BufferPool {
         }
         if let Some(idx) = best_idx {
             let mut buf = pool.swap_remove(idx);
+            drop(pool); // release lock before potential realloc
             buf.truncate(needed);
             if buf.len() < needed {
                 #[cfg(feature = "unsafe-performance")]
@@ -56,6 +74,7 @@ impl BufferPool {
             }
             buf
         } else {
+            drop(pool); // release lock before allocation
             #[cfg(feature = "unsafe-performance")]
             #[allow(clippy::uninit_vec)]
             {
@@ -72,10 +91,10 @@ impl BufferPool {
         }
     }
 
-    /// Returns a buffer to the pool. Dropped silently if pool is full (32 buffers).
+    /// Returns a buffer to the pool. Dropped silently if pool is full (48 buffers).
     pub(crate) fn put(&self, buf: Vec<f32>) {
-        let mut pool = self.buffers.borrow_mut();
-        if pool.len() < 32 {
+        let mut pool = self.buffers.lock().unwrap();
+        if pool.len() < 48 {
             pool.push(buf);
         }
     }
@@ -346,6 +365,17 @@ impl ImageF {
             height,
             stride,
         }
+    }
+
+    /// Creates a new zero-filled image using a pooled buffer if available.
+    ///
+    /// Use for accumulator images that need zeroing before `+=` operations.
+    /// Saves mmap/munmap syscalls on repeated calls when the pool is warm.
+    #[must_use]
+    pub fn from_pool_zeroed(width: usize, height: usize, pool: &BufferPool) -> Self {
+        let mut img = Self::from_pool_dirty(width, height, pool);
+        img.data.fill(0.0);
+        img
     }
 
     /// Returns the internal buffer to the pool for reuse.

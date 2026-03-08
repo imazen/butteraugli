@@ -15,7 +15,7 @@
 //! indexing after a single bounds assertion, eliminating per-access bounds
 //! checks for ~6% fewer instructions.
 
-use crate::image::ImageF;
+use crate::image::{BufferPool, ImageF};
 
 /// Read a single f32 from a data slice.
 ///
@@ -1252,9 +1252,10 @@ pub fn malta_diff_map(
     w_0lt1: f64,
     norm1: f64,
     use_lf: bool,
+    pool: &BufferPool,
 ) -> ImageF {
     archmage::incant!(
-        malta_diff_map_dispatch(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf),
+        malta_diff_map_dispatch(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool),
         [v3, neon, wasm128]
     )
 }
@@ -1272,6 +1273,7 @@ fn malta_diff_map_impl<F>(
     w_0lt1: f64,
     norm1: f64,
     use_lf: bool,
+    pool: &BufferPool,
     interior_row: F,
 ) -> ImageF
 where
@@ -1297,7 +1299,7 @@ where
     let norm1_f32 = norm1 as f32;
 
     // First pass: compute scaled differences into contiguous buffer (fully overwritten)
-    let mut diffs = ImageF::new_uninit(width, height);
+    let mut diffs = ImageF::from_pool_dirty(width, height, pool);
 
     for y in 0..height {
         let row0 = lum0.row(y);
@@ -1343,45 +1345,59 @@ where
     }
 
     // Second pass: apply Malta filter
-    let mut block_diff_ac = ImageF::new_uninit(width, height);
+    let mut block_diff_ac = ImageF::from_pool_dirty(width, height, pool);
 
-    let stride = diffs.stride();
-    let data = diffs.data();
+    {
+        let stride = diffs.stride();
+        let data = diffs.data();
 
-    // Top border (rows 0..4)
-    for y in 0..4.min(height) {
-        let out = block_diff_ac.row_mut(y);
-        for x in 0..width {
-            out[x] = if use_lf {
-                malta_unit_lf(&diffs, x, y)
-            } else {
-                malta_unit(&diffs, x, y)
-            };
-        }
-    }
-
-    // Middle rows (4..height-4)
-    if height > 8 {
-        for y in 4..height - 4 {
+        // Top border (rows 0..4)
+        for y in 0..4.min(height) {
             let out = block_diff_ac.row_mut(y);
-            let center_base = y * stride;
-
-            // Left border (x = 0..4)
-            for x in 0..4.min(width) {
+            for x in 0..width {
                 out[x] = if use_lf {
                     malta_unit_lf(&diffs, x, y)
                 } else {
                     malta_unit(&diffs, x, y)
                 };
             }
+        }
 
-            // Interior - delegate to dispatch closure
-            if width > 8 {
-                interior_row(data, center_base, stride, width, use_lf, out);
+        // Middle rows (4..height-4)
+        if height > 8 {
+            for y in 4..height - 4 {
+                let out = block_diff_ac.row_mut(y);
+                let center_base = y * stride;
+
+                // Left border (x = 0..4)
+                for x in 0..4.min(width) {
+                    out[x] = if use_lf {
+                        malta_unit_lf(&diffs, x, y)
+                    } else {
+                        malta_unit(&diffs, x, y)
+                    };
+                }
+
+                // Interior - delegate to dispatch closure
+                if width > 8 {
+                    interior_row(data, center_base, stride, width, use_lf, out);
+                }
+
+                // Right border (x = width-4..width)
+                for x in (width - 4).max(4)..width {
+                    out[x] = if use_lf {
+                        malta_unit_lf(&diffs, x, y)
+                    } else {
+                        malta_unit(&diffs, x, y)
+                    };
+                }
             }
+        }
 
-            // Right border (x = width-4..width)
-            for x in (width - 4).max(4)..width {
+        // Bottom border (rows height-4..height)
+        for y in (height - 4).max(4.min(height))..height {
+            let out = block_diff_ac.row_mut(y);
+            for x in 0..width {
                 out[x] = if use_lf {
                     malta_unit_lf(&diffs, x, y)
                 } else {
@@ -1391,17 +1407,8 @@ where
         }
     }
 
-    // Bottom border (rows height-4..height)
-    for y in (height - 4).max(4.min(height))..height {
-        let out = block_diff_ac.row_mut(y);
-        for x in 0..width {
-            out[x] = if use_lf {
-                malta_unit_lf(&diffs, x, y)
-            } else {
-                malta_unit(&diffs, x, y)
-            };
-        }
-    }
+    // Recycle the temporary diff buffer back to pool
+    diffs.recycle(pool);
 
     block_diff_ac
 }
@@ -1418,6 +1425,7 @@ fn malta_diff_map_dispatch_v3(
     w_0lt1: f64,
     norm1: f64,
     use_lf: bool,
+    pool: &BufferPool,
 ) -> ImageF {
     let interior = |data: &[f32],
                     center_base: usize,
@@ -1449,7 +1457,7 @@ fn malta_diff_map_dispatch_v3(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, interior)
+    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
 }
 
 /// NEON HF Malta filter for 8 consecutive interior pixels (polyfilled 2×f32x4).
@@ -1798,6 +1806,7 @@ fn malta_diff_map_dispatch_neon(
     w_0lt1: f64,
     norm1: f64,
     use_lf: bool,
+    pool: &BufferPool,
 ) -> ImageF {
     let interior = |data: &[f32],
                     center_base: usize,
@@ -1829,7 +1838,7 @@ fn malta_diff_map_dispatch_neon(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, interior)
+    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
 }
 
 /// WASM SIMD128 HF Malta filter for 8 consecutive interior pixels (polyfilled 2×v128).
@@ -2178,6 +2187,7 @@ fn malta_diff_map_dispatch_wasm128(
     w_0lt1: f64,
     norm1: f64,
     use_lf: bool,
+    pool: &BufferPool,
 ) -> ImageF {
     let interior = |data: &[f32],
                     center_base: usize,
@@ -2207,7 +2217,7 @@ fn malta_diff_map_dispatch_wasm128(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, interior)
+    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
 }
 
 /// Scalar fallback for Malta diff map.
@@ -2220,6 +2230,7 @@ fn malta_diff_map_dispatch_scalar(
     w_0lt1: f64,
     norm1: f64,
     use_lf: bool,
+    pool: &BufferPool,
 ) -> ImageF {
     let interior = |data: &[f32],
                     center_base: usize,
@@ -2237,7 +2248,7 @@ fn malta_diff_map_dispatch_scalar(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, interior)
+    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
 }
 
 #[cfg(test)]
@@ -2279,7 +2290,8 @@ mod tests {
     #[test]
     fn test_malta_diff_map_identical() {
         let img = ImageF::filled(32, 32, 0.5);
-        let result = malta_diff_map(&img, &img, 1.0, 1.0, 1.0, false);
+        let pool = BufferPool::new();
+        let result = malta_diff_map(&img, &img, 1.0, 1.0, 1.0, false, &pool);
 
         // Identical images should have zero Malta diff
         let mut sum = 0.0;

@@ -211,6 +211,7 @@ fn compute_psycho_diff_malta(
     ps1: &PsychoImage,
     hf_asymmetry: f32,
     _xmul: f32,
+    pool: &BufferPool,
 ) -> Image3F {
     let width = ps0.width();
     let height = ps0.height();
@@ -229,6 +230,7 @@ fn compute_psycho_diff_malta(
                         W_UHF_MALTA / hf_asymmetry as f64,
                         NORM1_UHF,
                         false,
+                        pool,
                     )
                 },
                 || {
@@ -239,6 +241,7 @@ fn compute_psycho_diff_malta(
                         W_UHF_MALTA_X / hf_asymmetry as f64,
                         NORM1_UHF_X,
                         false,
+                        pool,
                     )
                 },
             )
@@ -255,6 +258,7 @@ fn compute_psycho_diff_malta(
                                 W_HF_MALTA / sqrt_hf_asym as f64,
                                 NORM1_HF,
                                 true,
+                                pool,
                             )
                         },
                         || {
@@ -265,6 +269,7 @@ fn compute_psycho_diff_malta(
                                 W_HF_MALTA_X / sqrt_hf_asym as f64,
                                 NORM1_HF_X,
                                 true,
+                                pool,
                             )
                         },
                     )
@@ -279,6 +284,7 @@ fn compute_psycho_diff_malta(
                                 W_MF_MALTA,
                                 NORM1_MF,
                                 true,
+                                pool,
                             )
                         },
                         || {
@@ -289,6 +295,7 @@ fn compute_psycho_diff_malta(
                                 W_MF_MALTA_X,
                                 NORM1_MF_X,
                                 true,
+                                pool,
                             )
                         },
                     )
@@ -546,11 +553,9 @@ fn compute_diffmap_single_resolution_linear(
     );
 
     // Compute AC differences using Malta filter (internally parallelized)
-    let mut block_diff_ac =
-        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul());
-
-    // Compute mask from both PsychoImages (also accumulates some AC differences)
     let pool = BufferPool::new();
+    let mut block_diff_ac =
+        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul(), &pool);
     let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), &pool);
 
     // Compute DC (LF) differences (fully overwritten)
