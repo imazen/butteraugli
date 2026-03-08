@@ -437,17 +437,19 @@ pub fn precompute_reference_mask(
     PrecomputedMask { mask, blurred }
 }
 
-/// Computes the comparison mask using precomputed reference data.
+/// Applies the distorted-side mask correction using precomputed reference data.
 ///
-/// Only runs combine_and_precompute + blur on the distorted image's HF/UHF bands.
-/// Uses the precomputed blurred reference mask for the mask-to-error accumulation.
-pub fn compute_mask_with_precomputed(
+/// Runs combine_and_precompute + blur on the distorted image's HF/UHF bands,
+/// then accumulates the mask-to-error difference into `diff_ac` if provided.
+/// Does NOT copy the precomputed mask — callers should use `precomputed.mask`
+/// directly as a read-only reference.
+pub fn apply_mask_correction_precomputed(
     precomputed: &PrecomputedMask,
     hf1: &[ImageF; 2],
     uhf1: &[ImageF; 2],
     diff_ac: Option<&mut ImageF>,
     pool: &BufferPool,
-) -> ImageF {
+) {
     let width = hf1[0].width();
     let height = hf1[0].height();
 
@@ -464,11 +466,6 @@ pub fn compute_mask_with_precomputed(
     }
 
     blurred1.recycle(pool);
-
-    // Clone the precomputed mask (it's reused across comparisons)
-    let mut mask = ImageF::from_pool_dirty(width, height, pool);
-    mask.copy_from(&precomputed.mask);
-    mask
 }
 
 /// Computes mask from both images' psychovisual representations.

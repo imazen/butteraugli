@@ -700,8 +700,8 @@ fn compute_diffmap_with_precomputed(
     let mut block_diff_ac =
         compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul(), pool);
 
-    // Use precomputed reference mask, only compute distorted side
-    let mask = crate::mask::compute_mask_with_precomputed(
+    // Apply distorted-side mask correction (blur + mask-to-error accumulation)
+    crate::mask::apply_mask_correction_precomputed(
         precomputed_mask,
         &ps2.hf,
         &ps2.uhf,
@@ -709,12 +709,16 @@ fn compute_diffmap_with_precomputed(
         pool,
     );
 
-    // Combine channels to final diffmap (DC diff computed inline from LF planes)
-    let diffmap =
-        combine_channels_to_diffmap_fused(&mask, &ps1.lf, &ps2.lf, &block_diff_ac, params.xmul());
+    // Use precomputed mask directly (no copy needed — read-only reference)
+    let diffmap = combine_channels_to_diffmap_fused(
+        &precomputed_mask.mask,
+        &ps1.lf,
+        &ps2.lf,
+        &block_diff_ac,
+        params.xmul(),
+    );
 
     // Recycle temporaries back to pool
-    mask.recycle(pool);
     block_diff_ac.recycle(pool);
 
     diffmap
