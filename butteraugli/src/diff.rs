@@ -62,10 +62,19 @@ fn linear_rgb_to_xyb_image(
 }
 
 /// Converts sRGB u8 buffer to linear f32.
+#[cfg(test)]
 fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
-    rgb.iter()
-        .map(|&v| crate::opsin::srgb_to_linear(v))
-        .collect()
+    let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
+    let mut out = Vec::with_capacity(rgb.len());
+    // SAFETY: f32 has no validity invariant; all elements filled below.
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        out.set_len(rgb.len());
+    }
+    for (o, &v) in out.iter_mut().zip(rgb.iter()) {
+        *o = lut[v as usize];
+    }
+    out
 }
 
 /// Adds a supersampled (upscaled 2x) diffmap to the destination.
@@ -449,36 +458,77 @@ fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> 
 fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
-    let mut output = vec![0.0f32; out_width * out_height * 3];
+    let mut output = Vec::with_capacity(out_width * out_height * 3);
+    // SAFETY: f32 has no validity invariant; all elements filled below.
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        output.set_len(out_width * out_height * 3);
+    }
 
-    // Simple averaging of 2x2 blocks
-    for oy in 0..out_height {
-        for ox in 0..out_width {
-            let mut r_sum = 0.0f32;
-            let mut g_sum = 0.0f32;
-            let mut b_sum = 0.0f32;
-            let mut count = 0.0f32;
+    // Interior: full 2x2 blocks (no boundary checks needed)
+    let interior_w = width / 2;
+    let interior_h = height / 2;
+    let inv4 = 0.25f32;
 
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let ix = ox * 2 + dx;
-                    let iy = oy * 2 + dy;
-                    if ix < width && iy < height {
-                        let idx = (iy * width + ix) * 3;
-                        r_sum += rgb[idx];
-                        g_sum += rgb[idx + 1];
-                        b_sum += rgb[idx + 2];
-                        count += 1.0;
-                    }
-                }
-            }
+    for oy in 0..interior_h {
+        let iy = oy * 2;
+        let row0 = iy * width * 3;
+        let row1 = (iy + 1) * width * 3;
+        for ox in 0..interior_w {
+            let ix = ox * 2;
+            let i00 = row0 + ix * 3;
+            let i10 = row0 + (ix + 1) * 3;
+            let i01 = row1 + ix * 3;
+            let i11 = row1 + (ix + 1) * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = (rgb[i00] + rgb[i10] + rgb[i01] + rgb[i11]) * inv4;
+            output[out_idx + 1] =
+                (rgb[i00 + 1] + rgb[i10 + 1] + rgb[i01 + 1] + rgb[i11 + 1]) * inv4;
+            output[out_idx + 2] =
+                (rgb[i00 + 2] + rgb[i10 + 2] + rgb[i01 + 2] + rgb[i11 + 2]) * inv4;
+        }
+    }
 
-            if count > 0.0 {
-                let out_idx = (oy * out_width + ox) * 3;
-                output[out_idx] = r_sum / count;
-                output[out_idx + 1] = g_sum / count;
-                output[out_idx + 2] = b_sum / count;
-            }
+    // Right edge column (if width is odd)
+    if out_width > interior_w {
+        let ox = interior_w;
+        let ix = ox * 2;
+        for oy in 0..interior_h {
+            let iy = oy * 2;
+            let i00 = (iy * width + ix) * 3;
+            let i01 = ((iy + 1) * width + ix) * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            let inv2 = 0.5f32;
+            output[out_idx] = (rgb[i00] + rgb[i01]) * inv2;
+            output[out_idx + 1] = (rgb[i00 + 1] + rgb[i01 + 1]) * inv2;
+            output[out_idx + 2] = (rgb[i00 + 2] + rgb[i01 + 2]) * inv2;
+        }
+    }
+
+    // Bottom edge row (if height is odd)
+    if out_height > interior_h {
+        let oy = interior_h;
+        let iy = oy * 2;
+        let row0 = iy * width * 3;
+        for ox in 0..interior_w {
+            let ix = ox * 2;
+            let i00 = row0 + ix * 3;
+            let i10 = row0 + (ix + 1) * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            let inv2 = 0.5f32;
+            output[out_idx] = (rgb[i00] + rgb[i10]) * inv2;
+            output[out_idx + 1] = (rgb[i00 + 1] + rgb[i10 + 1]) * inv2;
+            output[out_idx + 2] = (rgb[i00 + 2] + rgb[i10 + 2]) * inv2;
+        }
+        // Bottom-right corner (if both odd)
+        if out_width > interior_w {
+            let ox = interior_w;
+            let ix = ox * 2;
+            let i00 = row0 + ix * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = rgb[i00];
+            output[out_idx + 1] = rgb[i00 + 1];
+            output[out_idx + 2] = rgb[i00 + 2];
         }
     }
 
@@ -578,6 +628,7 @@ fn compute_diffmap_multiresolution_linear(
 ///
 /// Converts sRGB to linear f32 and delegates to the linear path.
 /// This ensures all subsampling happens in linear space.
+#[cfg(test)]
 pub fn compute_butteraugli_impl(
     rgb1: &[u8],
     rgb2: &[u8],
@@ -651,19 +702,44 @@ pub(crate) fn compute_butteraugli_imgref(
     let width = img1.width();
     let height = img1.height();
 
-    // Convert ImgRef to contiguous u8 slice (handles stride)
-    let rgb1 = imgref_rgb8_to_u8_vec(img1);
-    let rgb2 = imgref_rgb8_to_u8_vec(img2);
+    // Fused conversion: ImgRef<RGB8> → linear f32 in one pass (avoids
+    // intermediate Vec<u8> and Vec<f32> allocations)
+    let linear1 = imgref_srgb_to_linear_f32(img1);
+    let linear2 = imgref_srgb_to_linear_f32(img2);
 
-    // Use the existing proven implementation with multiresolution support
-    let mut result = compute_butteraugli_impl(&rgb1, &rgb2, width, height, params);
+    let mut result = compute_butteraugli_linear_impl(&linear1, &linear2, width, height, params);
 
-    // Drop diffmap if not requested
     if !compute_diffmap {
         result.diffmap = None;
     }
 
     result
+}
+
+/// Converts ImgRef<RGB8> directly to interleaved linear f32, skipping
+/// intermediate Vec<u8> allocation.
+pub(crate) fn imgref_srgb_to_linear_f32(img: ImgRef<RGB8>) -> Vec<f32> {
+    let width = img.width();
+    let height = img.height();
+    let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
+    let mut out = Vec::with_capacity(width * height * 3);
+    // SAFETY: f32 has no validity invariant; we fill every element below.
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        out.set_len(width * height * 3);
+    }
+
+    let mut idx = 0;
+    for row in img.rows() {
+        for px in row {
+            out[idx] = lut[px.r as usize];
+            out[idx + 1] = lut[px.g as usize];
+            out[idx + 2] = lut[px.b as usize];
+            idx += 3;
+        }
+    }
+
+    out
 }
 
 /// Implementation of butteraugli comparison for ImgRef<RGB<f32>>.
@@ -689,23 +765,6 @@ pub(crate) fn compute_butteraugli_linear_imgref(
     }
 
     result
-}
-
-/// Converts ImgRef<RGB8> to a contiguous Vec<u8> in RGB order.
-pub(crate) fn imgref_rgb8_to_u8_vec(img: ImgRef<RGB8>) -> Vec<u8> {
-    let width = img.width();
-    let height = img.height();
-    let mut out = Vec::with_capacity(width * height * 3);
-
-    for row in img.rows() {
-        for px in row {
-            out.push(px.r);
-            out.push(px.g);
-            out.push(px.b);
-        }
-    }
-
-    out
 }
 
 /// Converts ImgRef<RGB<f32>> to a contiguous Vec<f32> in RGB order.

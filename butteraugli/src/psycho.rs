@@ -99,13 +99,15 @@ fn amplify_range_around_zero(x: f32, range: f32) -> f32 {
 /// Maximum clamp function from C++ butteraugli.
 ///
 /// Compresses extreme values to prevent outliers from dominating.
+/// Note: uses manual multiply+add instead of mul_add to avoid fmaf
+/// library call overhead (this runs outside #[rite] context).
 #[inline]
 fn maximum_clamp(v: f32, max_val: f32) -> f32 {
     const MUL: f32 = 0.724_216_146;
     if v >= max_val {
-        (v - max_val).mul_add(MUL, max_val)
+        (v - max_val) * MUL + max_val
     } else if v <= -max_val {
-        (v + max_val).mul_add(MUL, -max_val)
+        (v + max_val) * MUL + (-max_val)
     } else {
         v
     }
@@ -141,7 +143,7 @@ fn xyb_low_freq_to_vals(lf: &mut Image3F) {
             let vy = row_y[x];
             let vb = row_b[x];
 
-            let b = (Y_TO_B_MUL_LF_TO_VALS as f32).mul_add(vy, vb);
+            let b = (Y_TO_B_MUL_LF_TO_VALS as f32) * vy + vb;
             row_b[x] = b * BMUL_LF_TO_VALS as f32;
             row_x[x] = vx * XMUL_LF_TO_VALS as f32;
             row_y[x] = vy * YMUL_LF_TO_VALS as f32;

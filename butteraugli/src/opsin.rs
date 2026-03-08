@@ -314,13 +314,14 @@ fn srgb_to_linear_slow(v: u8) -> f32 {
 }
 
 /// Pre-computed sRGB to linear lookup table (256 entries)
-static SRGB_TO_LINEAR_LUT: std::sync::LazyLock<[f32; 256]> = std::sync::LazyLock::new(|| {
-    let mut lut = [0.0f32; 256];
-    for i in 0..256 {
-        lut[i] = srgb_to_linear_slow(i as u8);
-    }
-    lut
-});
+pub(crate) static SRGB_TO_LINEAR_LUT: std::sync::LazyLock<[f32; 256]> =
+    std::sync::LazyLock::new(|| {
+        let mut lut = [0.0f32; 256];
+        for i in 0..256 {
+            lut[i] = srgb_to_linear_slow(i as u8);
+        }
+        lut
+    });
 
 /// sRGB transfer function (gamma decoding) using lookup table
 #[inline]

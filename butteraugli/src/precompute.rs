@@ -74,9 +74,17 @@ pub struct ButteraugliReference {
 
 /// Converts sRGB u8 buffer to linear f32.
 fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
-    rgb.iter()
-        .map(|&v| crate::opsin::srgb_to_linear(v))
-        .collect()
+    let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
+    let mut out = Vec::with_capacity(rgb.len());
+    // SAFETY: f32 has no validity invariant; all elements filled below.
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        out.set_len(rgb.len());
+    }
+    for (o, &v) in out.iter_mut().zip(rgb.iter()) {
+        *o = lut[v as usize];
+    }
+    out
 }
 
 impl ButteraugliReference {
@@ -425,8 +433,8 @@ impl ButteraugliReference {
         img: imgref::ImgRef<rgb::RGB8>,
         params: ButteraugliParams,
     ) -> Result<Self, ButteraugliError> {
-        let rgb = crate::diff::imgref_rgb8_to_u8_vec(img);
-        Self::new(&rgb, img.width(), img.height(), params)
+        let linear = crate::diff::imgref_srgb_to_linear_f32(img);
+        Self::new_linear(&linear, img.width(), img.height(), params)
     }
 
     /// Precompute reference data from an `ImgRef<RGB<f32>>` (linear RGB).
@@ -459,8 +467,8 @@ impl ButteraugliReference {
                 h2: img.height(),
             });
         }
-        let rgb = crate::diff::imgref_rgb8_to_u8_vec(img);
-        self.compare(&rgb)
+        let linear = crate::diff::imgref_srgb_to_linear_f32(img);
+        self.compare_linear(&linear)
     }
 
     /// Compare a distorted linear RGB image (as `ImgRef<RGB<f32>>`) against the reference.
