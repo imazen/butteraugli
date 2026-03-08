@@ -185,19 +185,6 @@ fn l2_diff_asymmetric(
 // [HF_X, HF_Y, HF_B, MF_X, MF_Y, MF_B, LF_X, LF_Y, LF_B]
 // Note: WMUL is f64 array, but we need f32 for pixel operations
 
-/// Adds source image to destination (dst[x] += src[x]).
-fn add_to(src: &ImageF, dst: &mut ImageF) {
-    let height = src.height();
-    let width = src.width();
-    for y in 0..height {
-        let s = src.row(y);
-        let d = dst.row_mut(y);
-        for x in 0..width {
-            d[x] += s[x];
-        }
-    }
-}
-
 /// Computes difference between two PsychoImages using Malta filter.
 ///
 /// This is the core butteraugli algorithm that applies:
@@ -302,14 +289,27 @@ fn compute_psycho_diff_malta(
         },
     );
 
-    // Accumulate Malta results into block_diff_ac
-    let mut block_diff_ac = Image3F::new(width, height);
-    add_to(&uhf_y_diff, block_diff_ac.plane_mut(1));
-    add_to(&uhf_x_diff, block_diff_ac.plane_mut(0));
-    add_to(&hf_y_diff, block_diff_ac.plane_mut(1));
-    add_to(&hf_x_diff, block_diff_ac.plane_mut(0));
-    add_to(&mf_y_diff, block_diff_ac.plane_mut(1));
-    add_to(&mf_x_diff, block_diff_ac.plane_mut(0));
+    // Use UHF Malta results directly as accumulators (no zero-init + add_to needed)
+    let mut plane_x = uhf_x_diff;
+    let mut plane_y = uhf_y_diff;
+
+    // Fuse HF + MF Malta into single accumulation pass per channel
+    for y in 0..height {
+        let hy = hf_y_diff.row(y);
+        let my = mf_y_diff.row(y);
+        let ay = plane_y.row_mut(y);
+        for x in 0..width {
+            ay[x] += hy[x] + my[x];
+        }
+    }
+    for y in 0..height {
+        let hx = hf_x_diff.row(y);
+        let mx = mf_x_diff.row(y);
+        let ax = plane_x.row_mut(y);
+        for x in 0..width {
+            ax[x] += hx[x] + mx[x];
+        }
+    }
 
     // Add L2DiffAsymmetric for HF channels (X and Y, no blue)
     l2_diff_asymmetric(
@@ -317,14 +317,14 @@ fn compute_psycho_diff_malta(
         &ps1.hf[0],
         WMUL[0] as f32 * hf_asymmetry,
         WMUL[0] as f32 / hf_asymmetry,
-        block_diff_ac.plane_mut(0),
+        &mut plane_x,
     );
     l2_diff_asymmetric(
         &ps0.hf[1],
         &ps1.hf[1],
         WMUL[1] as f32 * hf_asymmetry,
         WMUL[1] as f32 / hf_asymmetry,
-        block_diff_ac.plane_mut(1),
+        &mut plane_y,
     );
 
     // Add L2Diff for MF channels (all three)
@@ -332,22 +332,25 @@ fn compute_psycho_diff_malta(
         ps0.mf.plane(0),
         ps1.mf.plane(0),
         WMUL[3] as f32,
-        block_diff_ac.plane_mut(0),
+        &mut plane_x,
     );
     l2_diff(
         ps0.mf.plane(1),
         ps1.mf.plane(1),
         WMUL[4] as f32,
-        block_diff_ac.plane_mut(1),
+        &mut plane_y,
     );
+
+    // B channel: only L2Diff, must start zeroed
+    let mut plane_b = ImageF::new(width, height);
     l2_diff(
         ps0.mf.plane(2),
         ps1.mf.plane(2),
         WMUL[5] as f32,
-        block_diff_ac.plane_mut(2),
+        &mut plane_b,
     );
 
-    block_diff_ac
+    Image3F::from_planes(plane_x, plane_y, plane_b)
 }
 
 /// Computes the mask from two PsychoImages.

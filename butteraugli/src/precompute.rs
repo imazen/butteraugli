@@ -742,19 +742,6 @@ fn compute_lf_diff(
     }
 }
 
-/// Adds src into dst element-wise.
-fn add_to(src: &ImageF, dst: &mut ImageF) {
-    let width = src.width();
-    let height = src.height();
-    for y in 0..height {
-        let s = src.row(y);
-        let d = dst.row_mut(y);
-        for x in 0..width {
-            d[x] += s[x];
-        }
-    }
-}
-
 /// Computes difference between two PsychoImages using Malta filter.
 fn compute_psycho_diff_malta(
     ps0: &PsychoImage,
@@ -771,8 +758,6 @@ fn compute_psycho_diff_malta(
     let (plane_y, plane_x) = maybe_join(
         || {
             // Y channel: UHF_Y + HF_Y + MF_Y Malta + L2 diffs
-            let mut ac_y = ImageF::from_pool_zeroed(width, height, pool);
-
             let (uhf_y, (hf_y, mf_y)) = maybe_join(
                 || {
                     malta_diff_map(
@@ -813,11 +798,18 @@ fn compute_psycho_diff_malta(
                 },
             );
 
-            add_to(&uhf_y, &mut ac_y);
-            uhf_y.recycle(pool);
-            add_to(&hf_y, &mut ac_y);
+            // Use uhf_y directly as accumulator (no zero-init + add_to needed)
+            let mut ac_y = uhf_y;
+            // Fuse hf_y + mf_y into a single accumulation pass
+            for y in 0..height {
+                let h = hf_y.row(y);
+                let m = mf_y.row(y);
+                let a = ac_y.row_mut(y);
+                for x in 0..width {
+                    a[x] += h[x] + m[x];
+                }
+            }
             hf_y.recycle(pool);
-            add_to(&mf_y, &mut ac_y);
             mf_y.recycle(pool);
 
             l2_diff_asymmetric(
@@ -833,8 +825,6 @@ fn compute_psycho_diff_malta(
         },
         || {
             // X channel: UHF_X + HF_X + MF_X Malta + L2 diffs
-            let mut ac_x = ImageF::from_pool_zeroed(width, height, pool);
-
             let (uhf_x, (hf_x, mf_x)) = maybe_join(
                 || {
                     malta_diff_map(
@@ -875,11 +865,18 @@ fn compute_psycho_diff_malta(
                 },
             );
 
-            add_to(&uhf_x, &mut ac_x);
-            uhf_x.recycle(pool);
-            add_to(&hf_x, &mut ac_x);
+            // Use uhf_x directly as accumulator
+            let mut ac_x = uhf_x;
+            // Fuse hf_x + mf_x into a single accumulation pass
+            for y in 0..height {
+                let h = hf_x.row(y);
+                let m = mf_x.row(y);
+                let a = ac_x.row_mut(y);
+                for x in 0..width {
+                    a[x] += h[x] + m[x];
+                }
+            }
             hf_x.recycle(pool);
-            add_to(&mf_x, &mut ac_x);
             mf_x.recycle(pool);
 
             l2_diff_asymmetric(
