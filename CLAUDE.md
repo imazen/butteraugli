@@ -123,6 +123,38 @@ dest[y][x] += 0.5 * src[y/2][x/2];
 
 ## Performance Notes
 
+### Optimization session 6 (2026-03-08)
+
+Stack-allocated kernels, register-accumulate vertical blur, mask copy elimination,
+zip patterns for bounds check elimination, pool reuse from construction.
+
+| Optimization | Instructions (single call V3) | Reduction |
+|-------------|------------------------------|-----------|
+| Baseline (post-session-5) | ~649.5M | — |
+| Stack-allocated kernel + scaled kernel | ~648.5M | minor (allocation elimination) |
+| Register-accumulate vertical blur | 648.5M | 0% (LLVM already optimized) |
+| Mask copy elimination (1MB) | 648.5M | minor (memory traffic only) |
+| Zip patterns in l2_diff_asymmetric | 648.1M | l2_diff_asymmetric -21.4% |
+| Pool reuse from construction | — | wall-clock first-call improvement |
+
+Profiling methodology: Single-threaded callgrind_single example (1 reference + 1 compare).
+
+Confirmed algorithmic optimization ceiling reached:
+- blur v3: 297M (45.8%) — unrolled 4×, zero bounds checks in hot loop
+- malta v3: 118M (18.2%) — 8-wide SIMD, zero-padded borders
+- blur_5x5 v3: 18M (2.8%)
+- opsin v3: 16M (2.4%) — fully vectorized (vdivps, vfmadd, vmaxps)
+- All remaining functions < 1.3% each, all autoversioned
+
+Assembly verification confirms optimal codegen:
+- Blur vertical interior: LLVM unrolls kernel loop 4×, no bounds checks inside loop
+- Opsin inner loop: 6× vdivps (3 log2f + 3 sensitivity) + FMA chains
+- combine_channels_to_diffmap_fused: vdivps + vsqrtps (mask + DC diff fused)
+- All process_uhf_hf_x/y: vmaxps/vminps/vandps vectorized
+
+Further gains require: `unsafe-performance` (~6% memset elimination), IIR blur (breaks parity),
+or major architectural changes (streaming/tiling).
+
 ### Optimization session 5 (2026-03-08)
 
 Malta zero-padding to eliminate border handling, f32 mask computation.
