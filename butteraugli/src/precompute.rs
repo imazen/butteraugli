@@ -965,7 +965,6 @@ fn accumulate_two(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut
 /// L2 difference (symmetric) - autoversioned for autovectorization.
 #[archmage::autoversion]
 fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    let width = i0.width();
     let height = i0.height();
 
     for y in 0..height {
@@ -973,9 +972,9 @@ fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffma
         let row1 = i1.row(y);
         let row_diff = diffmap.row_mut(y);
 
-        for x in 0..width {
-            let diff = row0[x] - row1[x];
-            row_diff[x] += diff * diff * w;
+        for ((d, &v0), &v1) in row_diff.iter_mut().zip(row0.iter()).zip(row1.iter()) {
+            let diff = v0 - v1;
+            *d += diff * diff * w;
         }
     }
 }
@@ -992,7 +991,6 @@ fn l2_diff_write(
     w: f32,
     diffmap: &mut ImageF,
 ) {
-    let width = i0.width();
     let height = i0.height();
 
     for y in 0..height {
@@ -1000,9 +998,9 @@ fn l2_diff_write(
         let row1 = i1.row(y);
         let row_diff = diffmap.row_mut(y);
 
-        for x in 0..width {
-            let diff = row0[x] - row1[x];
-            row_diff[x] = diff * diff * w;
+        for ((d, &v0), &v1) in row_diff.iter_mut().zip(row0.iter()).zip(row1.iter()) {
+            let diff = v0 - v1;
+            *d = diff * diff * w;
         }
     }
 }
@@ -1021,7 +1019,6 @@ fn l2_diff_asymmetric(
         return;
     }
 
-    let width = i0.width();
     let height = i0.height();
     let vw_0gt1 = w_0gt1 * 0.8;
     let vw_0lt1 = w_0lt1 * 0.8;
@@ -1031,12 +1028,9 @@ fn l2_diff_asymmetric(
         let row1 = i1.row(y);
         let row_diff = diffmap.row_mut(y);
 
-        for x in 0..width {
-            let val0 = row0[x];
-            let val1 = row1[x];
-
+        for ((d, &val0), &val1) in row_diff.iter_mut().zip(row0.iter()).zip(row1.iter()) {
             let diff = val0 - val1;
-            let total = row_diff[x] + diff * diff * vw_0gt1;
+            let total = *d + diff * diff * vw_0gt1;
 
             // Branch-free asymmetric penalty:
             // Flip val1 to match val0's sign direction, then clamp.
@@ -1047,7 +1041,7 @@ fn l2_diff_asymmetric(
             // v = max(too_small - sv1, 0) + max(sv1 - fabs0, 0)
             let v = (too_small - sv1).max(0.0) + (sv1 - fabs0).max(0.0);
 
-            row_diff[x] = total + vw_0lt1 * v * v;
+            *d = total + vw_0lt1 * v * v;
         }
     }
 }

@@ -53,10 +53,7 @@ pub fn compute_kernel(sigma: f32) -> Vec<f32> {
 ///
 /// Returns the used portion of the buffer. Avoids heap allocation.
 #[inline]
-fn compute_kernel_stack(
-    sigma: f32,
-    buf: &mut [f32; MAX_KERNEL_SIZE],
-) -> &[f32] {
+fn compute_kernel_stack(sigma: f32, buf: &mut [f32; MAX_KERNEL_SIZE]) -> &[f32] {
     const M: f32 = 2.25;
     let scaler = -1.0 / (2.0 * sigma * sigma);
     let diff = (M * sigma.abs()).max(1.0) as i32;
@@ -423,8 +420,7 @@ fn convolve_vertical_v3(
             // Remaining kernel rows: FMA into register (no output load/store)
             for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
                 let base = base0 + ki * in_stride;
-                let loaded =
-                    f32x8::load(token, (&in_data[base..base + 8]).try_into().unwrap());
+                let loaded = f32x8::load(token, (&in_data[base..base + 8]).try_into().unwrap());
                 sum = loaded.mul_add(f32x8::splat(token, kw), sum);
             }
 
@@ -657,8 +653,7 @@ fn convolve_vertical_neon(
 
             for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
                 let base = base0 + ki * in_stride;
-                let loaded =
-                    f32x8::load(token, (&in_data[base..base + 8]).try_into().unwrap());
+                let loaded = f32x8::load(token, (&in_data[base..base + 8]).try_into().unwrap());
                 sum = loaded.mul_add(f32x8::splat(token, kw), sum);
             }
 
@@ -758,8 +753,7 @@ fn convolve_vertical_wasm128(
 
             for (ki, &kw) in scaled_kernel.iter().enumerate().skip(1) {
                 let base = base0 + ki * in_stride;
-                let loaded =
-                    f32x8::load(token, (&in_data[base..base + 8]).try_into().unwrap());
+                let loaded = f32x8::load(token, (&in_data[base..base + 8]).try_into().unwrap());
                 sum = loaded.mul_add(f32x8::splat(token, kw), sum);
             }
 
@@ -886,10 +880,7 @@ const MAX_KERNEL_SIZE: usize = 64;
 /// Computes normalized scaled kernel on the stack, avoiding Vec allocation.
 /// Returns the used portion of the buffer.
 #[inline]
-fn compute_scaled_kernel<'a>(
-    kernel: &[f32],
-    buf: &'a mut [f32; MAX_KERNEL_SIZE],
-) -> &'a [f32] {
+fn compute_scaled_kernel<'a>(kernel: &[f32], buf: &'a mut [f32; MAX_KERNEL_SIZE]) -> &'a [f32] {
     debug_assert!(kernel.len() <= MAX_KERNEL_SIZE);
     let weight: f32 = kernel.iter().sum();
     let inv_weight = 1.0 / weight;
