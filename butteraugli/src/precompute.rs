@@ -561,15 +561,8 @@ impl ButteraugliReference {
                 let xyb2 =
                     linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool);
                 let ps2 = separate_frequencies(&xyb2, pool);
-                let dm = compute_diffmap_with_precomputed(
-                    full_psycho,
-                    &ps2,
-                    full_mask,
-                    width,
-                    height,
-                    params,
-                    pool,
-                );
+                let dm =
+                    compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
                 ps2.recycle(pool);
                 xyb2.recycle(pool);
                 dm
@@ -584,8 +577,6 @@ impl ButteraugliReference {
                         &half.psycho,
                         &sub_ps,
                         &half.mask,
-                        sw,
-                        sh,
                         params,
                         pool,
                     );
@@ -639,15 +630,8 @@ impl ButteraugliReference {
                     pool,
                 );
                 let ps2 = separate_frequencies(&xyb2, pool);
-                let dm = compute_diffmap_with_precomputed(
-                    full_psycho,
-                    &ps2,
-                    full_mask,
-                    width,
-                    height,
-                    params,
-                    pool,
-                );
+                let dm =
+                    compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
                 ps2.recycle(pool);
                 xyb2.recycle(pool);
                 dm
@@ -671,8 +655,6 @@ impl ButteraugliReference {
                         &half.psycho,
                         &sub_ps,
                         &half.mask,
-                        sw,
-                        sh,
                         params,
                         pool,
                     );
@@ -712,8 +694,6 @@ fn compute_diffmap_with_precomputed(
     ps1: &PsychoImage,
     ps2: &PsychoImage,
     precomputed_mask: &PrecomputedMask,
-    width: usize,
-    height: usize,
     params: &ButteraugliParams,
     pool: &BufferPool,
 ) -> ImageF {
@@ -730,50 +710,15 @@ fn compute_diffmap_with_precomputed(
         pool,
     );
 
-    // Compute DC (LF) differences (fully overwritten by compute_lf_diff)
-    let mut block_diff_dc = Image3F::from_pool_dirty(width, height, pool);
-    for c in 0..3 {
-        compute_lf_diff(
-            ps1.lf.plane(c),
-            ps2.lf.plane(c),
-            WMUL[6 + c] as f32,
-            block_diff_dc.plane_mut(c),
-        );
-    }
-
-    // Combine channels to final diffmap
-    let diffmap = combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul());
+    // Combine channels to final diffmap (DC diff computed inline from LF planes)
+    let diffmap =
+        combine_channels_to_diffmap_fused(&mask, &ps1.lf, &ps2.lf, &block_diff_ac, params.xmul());
 
     // Recycle temporaries back to pool
     mask.recycle(pool);
-    block_diff_dc.recycle(pool);
     block_diff_ac.recycle(pool);
 
     diffmap
-}
-
-/// Computes LF (DC) squared difference - autoversioned for autovectorization.
-#[archmage::autoversion]
-fn compute_lf_diff(
-    _token: archmage::SimdToken,
-    p1: &ImageF,
-    p2: &ImageF,
-    w: f32,
-    out: &mut ImageF,
-) {
-    let width = p1.width();
-    let height = p1.height();
-
-    for y in 0..height {
-        let row1 = p1.row(y);
-        let row2 = p2.row(y);
-        let row_out = out.row_mut(y);
-
-        for x in 0..width {
-            let d = row1[x] - row2[x];
-            row_out[x] = d * d * w;
-        }
-    }
 }
 
 /// Computes difference between two PsychoImages using Malta filter.
@@ -924,24 +869,34 @@ fn compute_psycho_diff_malta(
     Image3F::from_planes(plane_x, plane_y, plane_b)
 }
 
-/// Combines channels to produce final diffmap - autoversioned for autovectorization.
+/// Combines AC channels with inline DC diff computation from LF planes.
+///
+/// Fuses compute_lf_diff + combine_channels_to_diffmap into a single pass,
+/// eliminating 3 intermediate DC diff plane allocations and 6MB memory traffic.
 #[archmage::autoversion]
-fn combine_channels_to_diffmap(
+fn combine_channels_to_diffmap_fused(
     _token: archmage::SimdToken,
     mask: &ImageF,
-    block_diff_dc: &Image3F,
+    lf1: &Image3F,
+    lf2: &Image3F,
     block_diff_ac: &Image3F,
     xmul: f32,
 ) -> ImageF {
     let width = mask.width();
     let height = mask.height();
     let mut diffmap = ImageF::new_uninit(width, height);
+    let dc_w0 = WMUL[6] as f32;
+    let dc_w1 = WMUL[7] as f32;
+    let dc_w2 = WMUL[8] as f32;
 
     for y in 0..height {
         let mask_row = mask.row(y);
-        let dc0 = block_diff_dc.plane(0).row(y);
-        let dc1 = block_diff_dc.plane(1).row(y);
-        let dc2 = block_diff_dc.plane(2).row(y);
+        let lf1_0 = lf1.plane(0).row(y);
+        let lf1_1 = lf1.plane(1).row(y);
+        let lf1_2 = lf1.plane(2).row(y);
+        let lf2_0 = lf2.plane(0).row(y);
+        let lf2_1 = lf2.plane(1).row(y);
+        let lf2_2 = lf2.plane(2).row(y);
         let ac0 = block_diff_ac.plane(0).row(y);
         let ac1 = block_diff_ac.plane(1).row(y);
         let ac2 = block_diff_ac.plane(2).row(y);
@@ -952,7 +907,14 @@ fn combine_channels_to_diffmap(
             let maskval = mask_y(val) as f32;
             let dc_maskval = mask_dc_y(val) as f32;
 
-            let dc_masked = dc0[x] * xmul * dc_maskval + dc1[x] * dc_maskval + dc2[x] * dc_maskval;
+            // DC diff computed inline: d*d*w for each channel
+            let d0 = lf1_0[x] - lf2_0[x];
+            let d1 = lf1_1[x] - lf2_1[x];
+            let d2 = lf1_2[x] - lf2_2[x];
+            let dc_masked = d0 * d0 * dc_w0 * xmul * dc_maskval
+                + d1 * d1 * dc_w1 * dc_maskval
+                + d2 * d2 * dc_w2 * dc_maskval;
+
             let ac_masked = ac0[x] * xmul * maskval + ac1[x] * maskval + ac2[x] * maskval;
 
             out[x] = (dc_masked + ac_masked).sqrt();
