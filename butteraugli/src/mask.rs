@@ -250,20 +250,32 @@ pub fn compute_mask_from_hf_uhf(
 
     // Accumulate mask-to-error difference into diff_ac if requested
     if let Some(ac) = diff_ac {
-        for y in 0..height {
-            let b0 = blurred0.row(y);
-            let b1 = blurred1.row(y);
-            let ac_row = ac.row_mut(y);
-            for x in 0..width {
-                let diff = b0[x] - b1[x];
-                ac_row[x] += MASK_TO_ERROR_MUL * diff * diff;
-            }
-        }
+        accumulate_mask_to_error(&blurred0, &blurred1, ac);
     }
 
     blurred0.recycle(pool);
     blurred1.recycle(pool);
     mask
+}
+
+/// Autoversioned mask-to-error accumulation: ac[x] += MUL * (b0[x] - b1[x])^2.
+#[archmage::autoversion]
+fn accumulate_mask_to_error(
+    _token: archmage::SimdToken,
+    b0: &ImageF,
+    b1: &ImageF,
+    ac: &mut ImageF,
+) {
+    let height = b0.height();
+    for y in 0..height {
+        let row0 = b0.row(y);
+        let row1 = b1.row(y);
+        let ac_row = ac.row_mut(y);
+        for ((a, &v0), &v1) in ac_row.iter_mut().zip(row0.iter()).zip(row1.iter()) {
+            let diff = v0 - v1;
+            *a += MASK_TO_ERROR_MUL * diff * diff;
+        }
+    }
 }
 
 /// Computes mask from both images' psychovisual representations.
@@ -298,15 +310,7 @@ pub fn compute_mask(
 
     // Accumulate mask-to-error difference into diff_ac if requested
     if let Some(ac) = diff_ac {
-        for y in 0..height {
-            let b0 = blurred0.row(y);
-            let b1 = blurred1.row(y);
-            let ac_row = ac.row_mut(y);
-            for x in 0..width {
-                let diff = b0[x] - b1[x];
-                ac_row[x] += MASK_TO_ERROR_MUL * diff * diff;
-            }
-        }
+        accumulate_mask_to_error(&blurred0, &blurred1, ac);
     }
 
     blurred0.recycle(pool);

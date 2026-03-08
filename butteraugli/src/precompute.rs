@@ -801,14 +801,7 @@ fn compute_psycho_diff_malta(
             // Use uhf_y directly as accumulator (no zero-init + add_to needed)
             let mut ac_y = uhf_y;
             // Fuse hf_y + mf_y into a single accumulation pass
-            for y in 0..height {
-                let h = hf_y.row(y);
-                let m = mf_y.row(y);
-                let a = ac_y.row_mut(y);
-                for x in 0..width {
-                    a[x] += h[x] + m[x];
-                }
-            }
+            accumulate_two(&hf_y, &mf_y, &mut ac_y);
             hf_y.recycle(pool);
             mf_y.recycle(pool);
 
@@ -868,14 +861,7 @@ fn compute_psycho_diff_malta(
             // Use uhf_x directly as accumulator
             let mut ac_x = uhf_x;
             // Fuse hf_x + mf_x into a single accumulation pass
-            for y in 0..height {
-                let h = hf_x.row(y);
-                let m = mf_x.row(y);
-                let a = ac_x.row_mut(y);
-                for x in 0..width {
-                    a[x] += h[x] + m[x];
-                }
-            }
+            accumulate_two(&hf_x, &mf_x, &mut ac_x);
             hf_x.recycle(pool);
             mf_x.recycle(pool);
 
@@ -951,6 +937,20 @@ fn combine_channels_to_diffmap(
     }
 
     diffmap
+}
+
+/// Accumulates two source images into a destination: dst[x] += a[x] + b[x].
+#[archmage::autoversion]
+fn accumulate_two(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
+    let height = a.height();
+    for y in 0..height {
+        let ra = a.row(y);
+        let rb = b.row(y);
+        let rd = dst.row_mut(y);
+        for ((d, &va), &vb) in rd.iter_mut().zip(ra.iter()).zip(rb.iter()) {
+            *d += va + vb;
+        }
+    }
 }
 
 /// L2 difference (symmetric) - autoversioned for autovectorization.

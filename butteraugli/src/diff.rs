@@ -90,6 +90,20 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
     }
 }
 
+/// Accumulates two source images into a destination: dst[x] += a[x] + b[x].
+#[archmage::autoversion]
+fn accumulate_two(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
+    let height = a.height();
+    for y in 0..height {
+        let ra = a.row(y);
+        let rb = b.row(y);
+        let rd = dst.row_mut(y);
+        for ((d, &va), &vb) in rd.iter_mut().zip(ra.iter()).zip(rb.iter()) {
+            *d += va + vb;
+        }
+    }
+}
+
 /// L2 difference (symmetric).
 ///
 /// Computes squared difference weighted by w and adds to diffmap.
@@ -320,22 +334,8 @@ fn compute_psycho_diff_malta(
     let mut plane_y = uhf_y_diff;
 
     // Fuse HF + MF Malta into single accumulation pass per channel
-    for y in 0..height {
-        let hy = hf_y_diff.row(y);
-        let my = mf_y_diff.row(y);
-        let ay = plane_y.row_mut(y);
-        for x in 0..width {
-            ay[x] += hy[x] + my[x];
-        }
-    }
-    for y in 0..height {
-        let hx = hf_x_diff.row(y);
-        let mx = mf_x_diff.row(y);
-        let ax = plane_x.row_mut(y);
-        for x in 0..width {
-            ax[x] += hx[x] + mx[x];
-        }
-    }
+    accumulate_two(&hf_y_diff, &mf_y_diff, &mut plane_y);
+    accumulate_two(&hf_x_diff, &mf_x_diff, &mut plane_x);
 
     // Add L2DiffAsymmetric for HF channels (X and Y, no blue)
     l2_diff_asymmetric(
