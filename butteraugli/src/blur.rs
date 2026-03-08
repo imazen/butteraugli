@@ -7,7 +7,7 @@
 //! re-normalization for border pixels. This module matches that behavior.
 //!
 //! Optimizations:
-//! - Transpose during horizontal convolution for cache-friendly vertical pass
+//! - Non-transposing H+V convolution for sequential writes (zero D1 write misses)
 //! - Pre-normalized kernel weights for interior pixels (no division in inner loop)
 //! - Separate fast path for interior pixels (no bounds checking)
 //! - Explicit f32x8 SIMD for ~1.4x speedup
@@ -419,11 +419,754 @@ fn convolve_border_columns(
     }
 }
 
+/// Non-transposing horizontal convolution for border pixels only.
+///
+/// Handles left (0..border1) and right (border2..width) border columns.
+/// Interior pixels are handled by SIMD-specific functions.
+/// When no SIMD is available (scalar path), also handles interior.
+#[allow(clippy::inline_always)]
+#[inline(always)]
+fn convolve_horizontal_borders(
+    input: &ImageF,
+    kernel: &[f32],
+    scaled_kernel: &[f32],
+    border_ratio: f32,
+    output: &mut ImageF,
+    include_interior: bool,
+) {
+    let width = input.width();
+    let height = input.height();
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+    let border1 = half.min(width);
+    let border2 = if width > half { width - half } else { 0 };
+
+    for y in 0..height {
+        let row_in = input.row(y);
+        let row_out = output.row_mut(y);
+
+        // Left border
+        for x in 0..border1 {
+            let minx = x.saturating_sub(half);
+            let maxx = (x + half).min(width - 1);
+            let k_start = minx + half - x;
+            let k_end = maxx + half - x + 1;
+            let ks = &kernel[k_start..k_end];
+            let weight: f32 = ks.iter().sum();
+            let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+            let scale = 1.0 / effective;
+            let sum: f32 = row_in[minx..minx + ks.len()]
+                .iter()
+                .zip(ks)
+                .map(|(&r, &k)| r * k)
+                .sum::<f32>()
+                * scale;
+            row_out[x] = sum;
+        }
+
+        // Interior (only for scalar fallback)
+        if include_interior {
+            for x in border1..border2 {
+                let d = x - half;
+                let base = &row_in[d..d + scaled_kernel.len()];
+                let sum: f32 = base.iter().zip(scaled_kernel).map(|(&r, &k)| r * k).sum();
+                row_out[x] = sum;
+            }
+        }
+
+        // Right border
+        for x in border2..width {
+            let minx = x.saturating_sub(half);
+            let maxx = (x + half).min(width - 1);
+            let k_start = minx + half - x;
+            let k_end = maxx + half - x + 1;
+            let ks = &kernel[k_start..k_end];
+            let weight: f32 = ks.iter().sum();
+            let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+            let scale = 1.0 / effective;
+            let sum: f32 = row_in[minx..minx + ks.len()]
+                .iter()
+                .zip(ks)
+                .map(|(&r, &k)| r * k)
+                .sum::<f32>()
+                * scale;
+            row_out[x] = sum;
+        }
+    }
+}
+
+/// AVX2 non-transposing horizontal convolution interior.
+#[cfg(target_arch = "x86_64")]
+#[archmage::rite]
+fn convolve_horizontal_interior_v3(
+    token: archmage::X64V3Token,
+    input: &ImageF,
+    scaled_kernel: &[f32],
+    border1: usize,
+    border2: usize,
+    half: usize,
+    output: &mut ImageF,
+) {
+    use magetypes::simd::f32x8;
+    let height = input.height();
+    let kernel_len = scaled_kernel.len();
+    let simd_chunks = (border2 - border1) / 8;
+    let simd_end = border1 + simd_chunks * 8;
+
+    for y in 0..height {
+        let row_in = input.row(y);
+        let row_out = output.row_mut(y);
+
+        // SIMD path: process 8 pixels at a time, write sequentially
+        for chunk_idx in 0..simd_chunks {
+            let x = border1 + chunk_idx * 8;
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len + 7];
+            let mut sum = f32x8::zero(token);
+
+            for (j, &k) in scaled_kernel.iter().enumerate() {
+                let loaded = f32x8::from_slice(token, &base[j..]);
+                sum = loaded.mul_add(f32x8::splat(token, k), sum);
+            }
+
+            // Sequential write — no cache misses
+            let results = sum.to_array();
+            row_out[x..x + 8].copy_from_slice(&results);
+        }
+
+        // Scalar tail
+        for x in simd_end..border2 {
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len];
+            let sum: f32 = base
+                .iter()
+                .zip(scaled_kernel)
+                .fold(0.0f32, |acc, (&r, &k)| r.mul_add(k, acc));
+            row_out[x] = sum;
+        }
+    }
+}
+
+/// AVX-512 non-transposing horizontal convolution interior.
+#[cfg(target_arch = "x86_64")]
+#[archmage::rite]
+fn convolve_horizontal_interior_v4(
+    token: archmage::X64V4Token,
+    input: &ImageF,
+    scaled_kernel: &[f32],
+    border1: usize,
+    border2: usize,
+    half: usize,
+    output: &mut ImageF,
+) {
+    use magetypes::simd::v4::f32x16;
+    let height = input.height();
+    let kernel_len = scaled_kernel.len();
+    let simd_chunks = (border2 - border1) / 16;
+    let simd_end = border1 + simd_chunks * 16;
+
+    for y in 0..height {
+        let row_in = input.row(y);
+        let row_out = output.row_mut(y);
+
+        for chunk_idx in 0..simd_chunks {
+            let x = border1 + chunk_idx * 16;
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len + 15];
+            let mut sum = f32x16::zero(token);
+
+            for (j, &k) in scaled_kernel.iter().enumerate() {
+                let loaded = f32x16::from_slice(token, &base[j..]);
+                sum = loaded.mul_add(f32x16::splat(token, k), sum);
+            }
+
+            let results = sum.to_array();
+            row_out[x..x + 16].copy_from_slice(&results);
+        }
+
+        for x in simd_end..border2 {
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len];
+            let sum: f32 = base
+                .iter()
+                .zip(scaled_kernel)
+                .fold(0.0f32, |acc, (&r, &k)| r.mul_add(k, acc));
+            row_out[x] = sum;
+        }
+    }
+}
+
+/// NEON non-transposing horizontal convolution interior.
+#[cfg(target_arch = "aarch64")]
+#[archmage::rite]
+fn convolve_horizontal_interior_neon(
+    token: archmage::NeonToken,
+    input: &ImageF,
+    scaled_kernel: &[f32],
+    border1: usize,
+    border2: usize,
+    half: usize,
+    output: &mut ImageF,
+) {
+    use magetypes::simd::f32x8;
+    let height = input.height();
+    let kernel_len = scaled_kernel.len();
+    let simd_chunks = (border2 - border1) / 8;
+    let simd_end = border1 + simd_chunks * 8;
+
+    for y in 0..height {
+        let row_in = input.row(y);
+        let row_out = output.row_mut(y);
+
+        for chunk_idx in 0..simd_chunks {
+            let x = border1 + chunk_idx * 8;
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len + 7];
+            let mut sum = f32x8::zero(token);
+
+            for (j, &k) in scaled_kernel.iter().enumerate() {
+                let loaded = f32x8::load(token, (&base[j..j + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, k), sum);
+            }
+
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
+        }
+
+        for x in simd_end..border2 {
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len];
+            let sum: f32 = base
+                .iter()
+                .zip(scaled_kernel)
+                .fold(0.0f32, |acc, (&r, &k)| r.mul_add(k, acc));
+            row_out[x] = sum;
+        }
+    }
+}
+
+/// WASM SIMD128 non-transposing horizontal convolution interior.
+#[cfg(target_arch = "wasm32")]
+#[archmage::rite]
+fn convolve_horizontal_interior_wasm128(
+    token: archmage::Wasm128Token,
+    input: &ImageF,
+    scaled_kernel: &[f32],
+    border1: usize,
+    border2: usize,
+    half: usize,
+    output: &mut ImageF,
+) {
+    use magetypes::simd::f32x8;
+    let height = input.height();
+    let kernel_len = scaled_kernel.len();
+    let simd_chunks = (border2 - border1) / 8;
+    let simd_end = border1 + simd_chunks * 8;
+
+    for y in 0..height {
+        let row_in = input.row(y);
+        let row_out = output.row_mut(y);
+
+        for chunk_idx in 0..simd_chunks {
+            let x = border1 + chunk_idx * 8;
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len + 7];
+            let mut sum = f32x8::zero(token);
+
+            for (j, &k) in scaled_kernel.iter().enumerate() {
+                let loaded = f32x8::load(token, (&base[j..j + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, k), sum);
+            }
+
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
+        }
+
+        for x in simd_end..border2 {
+            let d = x - half;
+            let base = &row_in[d..d + kernel_len];
+            let sum: f32 = base
+                .iter()
+                .zip(scaled_kernel)
+                .fold(0.0f32, |acc, (&r, &k)| r.mul_add(k, acc));
+            row_out[x] = sum;
+        }
+    }
+}
+
+/// Vertical convolution with SIMD across x dimension.
+///
+/// For each output row y, accumulates across kernel_len input rows.
+/// All reads and writes are sequential — cache-friendly in both directions.
+/// Border rows use clamp-to-edge with re-normalization.
+#[cfg(target_arch = "x86_64")]
+#[archmage::rite]
+fn convolve_vertical_v3(
+    token: archmage::X64V3Token,
+    input: &ImageF,
+    kernel: &[f32],
+    scaled_kernel: &[f32],
+    border_ratio: f32,
+    output: &mut ImageF,
+) {
+    use magetypes::simd::f32x8;
+    let width = input.width();
+    let height = input.height();
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+
+    let border_top = half.min(height);
+    let border_bottom = if height > half { height - half } else { 0 };
+    let simd_width = (width / 8) * 8;
+
+    // Top border rows
+    for y in 0..border_top {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+
+        let row_out = output.row_mut(y);
+        let mut x = 0;
+        while x < simd_width {
+            let mut sum = f32x8::zero(token);
+            for (ki, &kw) in ks.iter().enumerate() {
+                let src_y = miny + ki;
+                let row_in = input.row(src_y);
+                let loaded = f32x8::from_slice(token, &row_in[x..]);
+                sum = loaded.mul_add(f32x8::splat(token, kw * scale), sum);
+            }
+            let results = sum.to_array();
+            row_out[x..x + 8].copy_from_slice(&results);
+            x += 8;
+        }
+        while x < width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in ks.iter().enumerate() {
+                sum += input.row(miny + ki)[x] * kw;
+            }
+            row_out[x] = sum * scale;
+            x += 1;
+        }
+    }
+
+    // Interior rows (no border handling needed)
+    for y in border_top..border_bottom {
+        let row_out = output.row_mut(y);
+        let start_y = y - half;
+        let mut x = 0;
+        while x < simd_width {
+            let mut sum = f32x8::zero(token);
+            for (ki, &kw) in scaled_kernel.iter().enumerate() {
+                let row_in = input.row(start_y + ki);
+                let loaded = f32x8::from_slice(token, &row_in[x..]);
+                sum = loaded.mul_add(f32x8::splat(token, kw), sum);
+            }
+            let results = sum.to_array();
+            row_out[x..x + 8].copy_from_slice(&results);
+            x += 8;
+        }
+        while x < width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in scaled_kernel.iter().enumerate() {
+                sum += input.row(start_y + ki)[x] * kw;
+            }
+            row_out[x] = sum;
+            x += 1;
+        }
+    }
+
+    // Bottom border rows
+    for y in border_bottom..height {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+
+        let row_out = output.row_mut(y);
+        let mut x = 0;
+        while x < simd_width {
+            let mut sum = f32x8::zero(token);
+            for (ki, &kw) in ks.iter().enumerate() {
+                let src_y = miny + ki;
+                let row_in = input.row(src_y);
+                let loaded = f32x8::from_slice(token, &row_in[x..]);
+                sum = loaded.mul_add(f32x8::splat(token, kw * scale), sum);
+            }
+            let results = sum.to_array();
+            row_out[x..x + 8].copy_from_slice(&results);
+            x += 8;
+        }
+        while x < width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in ks.iter().enumerate() {
+                sum += input.row(miny + ki)[x] * kw;
+            }
+            row_out[x] = sum * scale;
+            x += 1;
+        }
+    }
+}
+
+/// AVX-512 vertical convolution.
+#[cfg(target_arch = "x86_64")]
+#[archmage::rite]
+fn convolve_vertical_v4(
+    token: archmage::X64V4Token,
+    input: &ImageF,
+    kernel: &[f32],
+    scaled_kernel: &[f32],
+    border_ratio: f32,
+    output: &mut ImageF,
+) {
+    use magetypes::simd::v4::f32x16;
+    let width = input.width();
+    let height = input.height();
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+
+    let border_top = half.min(height);
+    let border_bottom = if height > half { height - half } else { 0 };
+    let simd_width = (width / 16) * 16;
+
+    // Helper: process one row with border handling
+    let process_border_row =
+        |y: usize, miny: usize, ks: &[f32], scale: f32, row_out: &mut [f32]| {
+            let mut x = 0;
+            while x + 16 <= simd_width {
+                let mut sum = f32x16::zero(token);
+                for (ki, &kw) in ks.iter().enumerate() {
+                    let row_in = input.row(miny + ki);
+                    let loaded = f32x16::from_slice(token, &row_in[x..]);
+                    sum = loaded.mul_add(f32x16::splat(token, kw * scale), sum);
+                }
+                let results = sum.to_array();
+                row_out[x..x + 16].copy_from_slice(&results);
+                x += 16;
+            }
+            while x < width {
+                let mut sum = 0.0f32;
+                for (ki, &kw) in ks.iter().enumerate() {
+                    sum += input.row(miny + ki)[x] * kw;
+                }
+                row_out[x] = sum * scale;
+                x += 1;
+            }
+            let _ = y; // suppress warning
+        };
+
+    for y in 0..border_top {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+        let row_out = output.row_mut(y);
+        process_border_row(y, miny, ks, scale, row_out);
+    }
+
+    for y in border_top..border_bottom {
+        let row_out = output.row_mut(y);
+        let start_y = y - half;
+        let mut x = 0;
+        while x + 16 <= simd_width {
+            let mut sum = f32x16::zero(token);
+            for (ki, &kw) in scaled_kernel.iter().enumerate() {
+                let row_in = input.row(start_y + ki);
+                let loaded = f32x16::from_slice(token, &row_in[x..]);
+                sum = loaded.mul_add(f32x16::splat(token, kw), sum);
+            }
+            let results = sum.to_array();
+            row_out[x..x + 16].copy_from_slice(&results);
+            x += 16;
+        }
+        while x < width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in scaled_kernel.iter().enumerate() {
+                sum += input.row(start_y + ki)[x] * kw;
+            }
+            row_out[x] = sum;
+            x += 1;
+        }
+    }
+
+    for y in border_bottom..height {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+        let row_out = output.row_mut(y);
+        process_border_row(y, miny, ks, scale, row_out);
+    }
+}
+
+/// NEON vertical convolution.
+#[cfg(target_arch = "aarch64")]
+#[archmage::rite]
+fn convolve_vertical_neon(
+    token: archmage::NeonToken,
+    input: &ImageF,
+    kernel: &[f32],
+    scaled_kernel: &[f32],
+    border_ratio: f32,
+    output: &mut ImageF,
+) {
+    use magetypes::simd::f32x8;
+    let width = input.width();
+    let height = input.height();
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+
+    let border_top = half.min(height);
+    let border_bottom = if height > half { height - half } else { 0 };
+    let simd_width = (width / 8) * 8;
+
+    // Border row helper
+    let process_border_row = |miny: usize, ks: &[f32], scale: f32, row_out: &mut [f32]| {
+        let mut x = 0;
+        while x + 8 <= simd_width {
+            let mut sum = f32x8::zero(token);
+            for (ki, &kw) in ks.iter().enumerate() {
+                let row_in = input.row(miny + ki);
+                let loaded = f32x8::load(token, (&row_in[x..x + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, kw * scale), sum);
+            }
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+        while x < width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in ks.iter().enumerate() {
+                sum += input.row(miny + ki)[x] * kw;
+            }
+            row_out[x] = sum * scale;
+            x += 1;
+        }
+    };
+
+    for y in 0..border_top {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+        process_border_row(miny, ks, scale, output.row_mut(y));
+    }
+
+    for y in border_top..border_bottom {
+        let row_out = output.row_mut(y);
+        let start_y = y - half;
+        let mut x = 0;
+        while x + 8 <= simd_width {
+            let mut sum = f32x8::zero(token);
+            for (ki, &kw) in scaled_kernel.iter().enumerate() {
+                let row_in = input.row(start_y + ki);
+                let loaded = f32x8::load(token, (&row_in[x..x + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, kw), sum);
+            }
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+        while x < width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in scaled_kernel.iter().enumerate() {
+                sum += input.row(start_y + ki)[x] * kw;
+            }
+            row_out[x] = sum;
+            x += 1;
+        }
+    }
+
+    for y in border_bottom..height {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+        process_border_row(miny, ks, scale, output.row_mut(y));
+    }
+}
+
+/// WASM SIMD128 vertical convolution.
+#[cfg(target_arch = "wasm32")]
+#[archmage::rite]
+fn convolve_vertical_wasm128(
+    token: archmage::Wasm128Token,
+    input: &ImageF,
+    kernel: &[f32],
+    scaled_kernel: &[f32],
+    border_ratio: f32,
+    output: &mut ImageF,
+) {
+    use magetypes::simd::f32x8;
+    let width = input.width();
+    let height = input.height();
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+
+    let border_top = half.min(height);
+    let border_bottom = if height > half { height - half } else { 0 };
+    let simd_width = (width / 8) * 8;
+
+    let process_border_row = |miny: usize, ks: &[f32], scale: f32, row_out: &mut [f32]| {
+        let mut x = 0;
+        while x + 8 <= simd_width {
+            let mut sum = f32x8::zero(token);
+            for (ki, &kw) in ks.iter().enumerate() {
+                let row_in = input.row(miny + ki);
+                let loaded = f32x8::load(token, (&row_in[x..x + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, kw * scale), sum);
+            }
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+        while x < width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in ks.iter().enumerate() {
+                sum += input.row(miny + ki)[x] * kw;
+            }
+            row_out[x] = sum * scale;
+            x += 1;
+        }
+    };
+
+    for y in 0..border_top {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+        process_border_row(miny, ks, scale, output.row_mut(y));
+    }
+
+    for y in border_top..border_bottom {
+        let row_out = output.row_mut(y);
+        let start_y = y - half;
+        let mut x = 0;
+        while x + 8 <= simd_width {
+            let mut sum = f32x8::zero(token);
+            for (ki, &kw) in scaled_kernel.iter().enumerate() {
+                let row_in = input.row(start_y + ki);
+                let loaded = f32x8::load(token, (&row_in[x..x + 8]).try_into().unwrap());
+                sum = loaded.mul_add(f32x8::splat(token, kw), sum);
+            }
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
+            x += 8;
+        }
+        while x < width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in scaled_kernel.iter().enumerate() {
+                sum += input.row(start_y + ki)[x] * kw;
+            }
+            row_out[x] = sum;
+            x += 1;
+        }
+    }
+
+    for y in border_bottom..height {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+        process_border_row(miny, ks, scale, output.row_mut(y));
+    }
+}
+
+/// Scalar vertical convolution fallback.
+fn convolve_vertical_scalar(
+    input: &ImageF,
+    kernel: &[f32],
+    scaled_kernel: &[f32],
+    border_ratio: f32,
+    output: &mut ImageF,
+) {
+    let width = input.width();
+    let height = input.height();
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+
+    let border_top = half.min(height);
+    let border_bottom = if height > half { height - half } else { 0 };
+
+    // Border row helper
+    let process_border_row = |miny: usize, ks: &[f32], scale: f32, row_out: &mut [f32]| {
+        for x in 0..width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in ks.iter().enumerate() {
+                sum += input.row(miny + ki)[x] * kw;
+            }
+            row_out[x] = sum * scale;
+        }
+    };
+
+    for y in 0..border_top {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+        process_border_row(miny, ks, scale, output.row_mut(y));
+    }
+
+    for y in border_top..border_bottom {
+        let row_out = output.row_mut(y);
+        let start_y = y - half;
+        for x in 0..width {
+            let mut sum = 0.0f32;
+            for (ki, &kw) in scaled_kernel.iter().enumerate() {
+                sum += input.row(start_y + ki)[x] * kw;
+            }
+            row_out[x] = sum;
+        }
+    }
+
+    for y in border_bottom..height {
+        let miny = y.saturating_sub(half);
+        let maxy = (y + half).min(height - 1);
+        let k_start = miny + half - y;
+        let k_end = maxy + half - y + 1;
+        let ks = &kernel[k_start..k_end];
+        let weight: f32 = ks.iter().sum();
+        let effective = (1.0 - border_ratio) * weight + border_ratio * weight_no_border;
+        let scale = 1.0 / effective;
+        process_border_row(miny, ks, scale, output.row_mut(y));
+    }
+}
+
 /// Applies a 2D Gaussian blur to an image.
 ///
 /// This is implemented as two separable 1D convolutions:
-/// 1. Horizontal convolution with transpose
-/// 2. Horizontal convolution on transposed result (effectively vertical) with transpose back
+/// 1. Horizontal convolution (non-transposing, sequential writes)
+/// 2. Vertical convolution with SIMD across x (sequential reads and writes)
 ///
 /// # Arguments
 /// * `input` - Input image
@@ -450,13 +1193,26 @@ fn gaussian_blur_dispatch_v4(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
-        convolve_interior_v4(token, inp, sk, b1, b2, h, out);
-    };
-    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, interior);
-    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, interior);
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+    let border1 = half.min(width);
+    let border2 = if width > half { width - half } else { 0 };
+
+    // H-pass: non-transposing
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, false);
+    if border2 > border1 {
+        convolve_horizontal_interior_v4(token, input, &scaled, border1, border2, half, &mut temp);
+    }
+
+    // V-pass: accumulate across rows
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_v4(token, &temp, &kernel, &scaled, 0.0, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -468,13 +1224,26 @@ fn gaussian_blur_dispatch_v3(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
-        convolve_interior_v3(token, inp, sk, b1, b2, h, out);
-    };
-    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, interior);
-    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, interior);
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+    let border1 = half.min(width);
+    let border2 = if width > half { width - half } else { 0 };
+
+    // H-pass: non-transposing
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, false);
+    if border2 > border1 {
+        convolve_horizontal_interior_v3(token, input, &scaled, border1, border2, half, &mut temp);
+    }
+
+    // V-pass: accumulate across rows
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_v3(token, &temp, &kernel, &scaled, 0.0, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -486,13 +1255,24 @@ fn gaussian_blur_dispatch_neon(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
-        convolve_interior_neon(token, inp, sk, b1, b2, h, out);
-    };
-    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, interior);
-    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, interior);
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+    let border1 = half.min(width);
+    let border2 = if width > half { width - half } else { 0 };
+
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, false);
+    if border2 > border1 {
+        convolve_horizontal_interior_neon(token, input, &scaled, border1, border2, half, &mut temp);
+    }
+
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_neon(token, &temp, &kernel, &scaled, 0.0, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -504,13 +1284,26 @@ fn gaussian_blur_dispatch_wasm128(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
-        convolve_interior_wasm128(token, inp, sk, b1, b2, h, out);
-    };
-    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, interior);
-    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, interior);
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+    let border1 = half.min(width);
+    let border2 = if width > half { width - half } else { 0 };
+
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, false);
+    if border2 > border1 {
+        convolve_horizontal_interior_wasm128(
+            token, input, &scaled, border1, border2, half, &mut temp,
+        );
+    }
+
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_wasm128(token, &temp, &kernel, &scaled, 0.0, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 fn gaussian_blur_dispatch_scalar(
@@ -520,10 +1313,18 @@ fn gaussian_blur_dispatch_scalar(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let temp = convolve_horizontal_transpose(input, &kernel, 0.0, pool, convolve_interior_scalar);
-    let result = convolve_horizontal_transpose(&temp, &kernel, 0.0, pool, convolve_interior_scalar);
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, true);
+
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_scalar(&temp, &kernel, &scaled, 0.0, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 /// Blur with border ratio parameter (matches C++ Blur signature).
@@ -552,13 +1353,24 @@ fn blur_with_border_dispatch_v4(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
-        convolve_interior_v4(token, inp, sk, b1, b2, h, out);
-    };
-    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool, interior);
-    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, interior);
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+    let border1 = half.min(width);
+    let border2 = if width > half { width - half } else { 0 };
+
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, false);
+    if border2 > border1 {
+        convolve_horizontal_interior_v4(token, input, &scaled, border1, border2, half, &mut temp);
+    }
+
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_v4(token, &temp, &kernel, &scaled, border_ratio, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -571,13 +1383,24 @@ fn blur_with_border_dispatch_v3(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
-        convolve_interior_v3(token, inp, sk, b1, b2, h, out);
-    };
-    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool, interior);
-    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, interior);
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+    let border1 = half.min(width);
+    let border2 = if width > half { width - half } else { 0 };
+
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, false);
+    if border2 > border1 {
+        convolve_horizontal_interior_v3(token, input, &scaled, border1, border2, half, &mut temp);
+    }
+
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_v3(token, &temp, &kernel, &scaled, border_ratio, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -590,13 +1413,24 @@ fn blur_with_border_dispatch_neon(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
-        convolve_interior_neon(token, inp, sk, b1, b2, h, out);
-    };
-    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool, interior);
-    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, interior);
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+    let border1 = half.min(width);
+    let border2 = if width > half { width - half } else { 0 };
+
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, false);
+    if border2 > border1 {
+        convolve_horizontal_interior_neon(token, input, &scaled, border1, border2, half, &mut temp);
+    }
+
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_neon(token, &temp, &kernel, &scaled, border_ratio, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -609,13 +1443,26 @@ fn blur_with_border_dispatch_wasm128(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let interior = |inp: &ImageF, sk: &[f32], b1: usize, b2: usize, h: usize, out: &mut ImageF| {
-        convolve_interior_wasm128(token, inp, sk, b1, b2, h, out);
-    };
-    let temp = convolve_horizontal_transpose(input, &kernel, border_ratio, pool, interior);
-    let result = convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, interior);
+    let half = kernel.len() / 2;
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+    let border1 = half.min(width);
+    let border2 = if width > half { width - half } else { 0 };
+
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, false);
+    if border2 > border1 {
+        convolve_horizontal_interior_wasm128(
+            token, input, &scaled, border1, border2, half, &mut temp,
+        );
+    }
+
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_wasm128(token, &temp, &kernel, &scaled, border_ratio, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 fn blur_with_border_dispatch_scalar(
@@ -626,12 +1473,18 @@ fn blur_with_border_dispatch_scalar(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let temp =
-        convolve_horizontal_transpose(input, &kernel, border_ratio, pool, convolve_interior_scalar);
-    let result =
-        convolve_horizontal_transpose(&temp, &kernel, border_ratio, pool, convolve_interior_scalar);
+    let weight_no_border: f32 = kernel.iter().sum();
+    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let width = input.width();
+    let height = input.height();
+
+    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, true);
+
+    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    convolve_vertical_scalar(&temp, &kernel, &scaled, border_ratio, &mut output);
     temp.recycle(pool);
-    result
+    output
 }
 
 /// Applies blur in-place (modifies the input image).

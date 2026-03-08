@@ -114,18 +114,6 @@ fn maximum_clamp(v: f32, max_val: f32) -> f32 {
     }
 }
 
-/// Subtracts one image from another.
-fn subtract(a: &ImageF, b: &ImageF, out: &mut ImageF) {
-    for y in 0..a.height() {
-        let row_a = a.row(y);
-        let row_b = b.row(y);
-        let row_out = out.row_mut(y);
-        for x in 0..a.width() {
-            row_out[x] = row_a[x] - row_b[x];
-        }
-    }
-}
-
 /// Converts low-frequency XYB to "vals" space for comparison.
 ///
 /// Vals space can be converted to L2-norm space through visual masking.
@@ -188,11 +176,21 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
         let (lf0, lf1, lf2) = lf.planes_mut();
         let (mf0, mf1, mf2) = mf.planes_mut();
 
+        // Fused: one pass writes LF = blurred, MF = original - blurred
         let blur_plane = |xyb_plane: &ImageF, lf_out: &mut ImageF, mf_out: &mut ImageF| {
             let p = BufferPool::new();
             let blurred = gaussian_blur(xyb_plane, sigma, &p);
-            lf_out.copy_from(&blurred);
-            subtract(xyb_plane, &blurred, mf_out);
+            let w = xyb_plane.width();
+            for y in 0..xyb_plane.height() {
+                let row_orig = xyb_plane.row(y);
+                let row_blurred = blurred.row(y);
+                let row_lf = lf_out.row_mut(y);
+                let row_mf = mf_out.row_mut(y);
+                for x in 0..w {
+                    row_lf[x] = row_blurred[x];
+                    row_mf[x] = row_orig[x] - row_blurred[x];
+                }
+            }
         };
 
         maybe_join(
@@ -207,8 +205,20 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
     } else {
         for i in 0..3 {
             let blurred = gaussian_blur(xyb.plane(i), sigma, pool);
-            lf.plane_mut(i).copy_from(&blurred);
-            subtract(xyb.plane(i), &blurred, mf.plane_mut(i));
+            // Fused: one pass writes LF and MF from blurred + original
+            let xyb_plane = xyb.plane(i);
+            let lf_plane = lf.plane_mut(i);
+            let mf_plane = mf.plane_mut(i);
+            for y in 0..height {
+                let row_orig = xyb_plane.row(y);
+                let row_blurred = blurred.row(y);
+                let row_lf = lf_plane.row_mut(y);
+                let row_mf = mf_plane.row_mut(y);
+                for x in 0..width {
+                    row_lf[x] = row_blurred[x];
+                    row_mf[x] = row_orig[x] - row_blurred[x];
+                }
+            }
             blurred.recycle(pool);
         }
     }
@@ -218,6 +228,9 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
 }
 
 /// Processes one MF→HF channel: blur, subtract, apply range function.
+///
+/// Fused approach: blur once, then compute HF = original - blurred and
+/// MF = range(blurred) in two passes, eliminating 2 full-image copies.
 fn separate_mf_hf_channel(
     mf_plane: &mut ImageF,
     hf_plane: &mut ImageF,
@@ -229,24 +242,28 @@ fn separate_mf_hf_channel(
     let width = mf_plane.width();
     let height = mf_plane.height();
 
-    // Copy to HF before blurring
-    hf_plane.copy_from(mf_plane);
-
-    // Blur MF
+    // Blur the original MF plane
     let blurred = gaussian_blur(mf_plane, sigma, &pool);
-    mf_plane.copy_from(&blurred);
 
-    // HF = original - blurred, with range adjustment on MF
+    // Pass 1: HF = original_mf - blurred (mf_plane still holds the original)
     for y in 0..height {
-        let row_mf = mf_plane.row_mut(y);
+        let row_orig = mf_plane.row(y);
+        let row_blurred = blurred.row(y);
         let row_hf = hf_plane.row_mut(y);
         for x in 0..width {
-            let hf_val = row_hf[x] - row_mf[x];
-            row_hf[x] = hf_val;
+            row_hf[x] = row_orig[x] - row_blurred[x];
+        }
+    }
+
+    // Pass 2: MF = range_adjusted(blurred) (overwrite mf_plane)
+    for y in 0..height {
+        let row_blurred = blurred.row(y);
+        let row_mf = mf_plane.row_mut(y);
+        for x in 0..width {
             if use_amplify {
-                row_mf[x] = amplify_range_around_zero(row_mf[x], range);
+                row_mf[x] = amplify_range_around_zero(row_blurred[x], range);
             } else {
-                row_mf[x] = remove_range_around_zero(row_mf[x], range);
+                row_mf[x] = remove_range_around_zero(row_blurred[x], range);
             }
         }
     }
@@ -283,28 +300,19 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
     } else {
         // Sequential path for small images
         for i in 0..2 {
-            hf[i].copy_from(mf.plane(i));
-            let blurred = gaussian_blur(mf.plane(i), sigma, pool);
-            mf.plane_mut(i).copy_from(&blurred);
-            blurred.recycle(pool);
             let range = if i == 0 {
                 REMOVE_MF_RANGE
             } else {
                 ADD_MF_RANGE
             };
-            for y in 0..height {
-                let row_mf = mf.plane_row_mut(i, y);
-                let row_hf = hf[i].row_mut(y);
-                for x in 0..width {
-                    let hf_val = row_hf[x] - row_mf[x];
-                    row_hf[x] = hf_val;
-                    if i == 0 {
-                        row_mf[x] = remove_range_around_zero(row_mf[x], range as f32);
-                    } else {
-                        row_mf[x] = amplify_range_around_zero(row_mf[x], range as f32);
-                    }
-                }
-            }
+            let use_amplify = i == 1;
+            separate_mf_hf_channel(
+                mf.plane_mut(i),
+                &mut hf[i],
+                sigma,
+                range as f32,
+                use_amplify,
+            );
         }
         let blurred_b = gaussian_blur(mf.plane(2), sigma, pool);
         mf.plane_mut(2).copy_from(&blurred_b);
@@ -330,16 +338,26 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                 let hf_x = &mut hf_x_slice[0];
                 let uhf_x = &mut uhf_x_slice[0];
                 let p = BufferPool::new();
-                uhf_x.copy_from(hf_x);
                 let blurred = gaussian_blur(hf_x, sigma, &p);
-                hf_x.copy_from(&blurred);
+
+                // UHF = original_hf - blurred, with range adjustment
                 for y in 0..height {
-                    let row_hf = hf_x.row_mut(y);
+                    let row_orig = hf_x.row(y);
+                    let row_blurred = blurred.row(y);
                     let row_uhf = uhf_x.row_mut(y);
                     for x in 0..width {
-                        let uhf_val = row_uhf[x] - row_hf[x];
-                        row_hf[x] = remove_range_around_zero(row_hf[x], REMOVE_HF_RANGE as f32);
+                        let uhf_val = row_orig[x] - row_blurred[x];
                         row_uhf[x] = remove_range_around_zero(uhf_val, REMOVE_UHF_RANGE as f32);
+                    }
+                }
+
+                // HF = range_adjusted(blurred)
+                for y in 0..height {
+                    let row_blurred = blurred.row(y);
+                    let row_hf = hf_x.row_mut(y);
+                    for x in 0..width {
+                        row_hf[x] =
+                            remove_range_around_zero(row_blurred[x], REMOVE_HF_RANGE as f32);
                     }
                 }
             },
@@ -347,17 +365,27 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                 let hf_y = &mut hf_y_slice[0];
                 let uhf_y = &mut uhf_y_slice[0];
                 let p = BufferPool::new();
-                uhf_y.copy_from(hf_y);
                 let blurred = gaussian_blur(hf_y, sigma, &p);
-                hf_y.copy_from(&blurred);
+
+                // UHF = clamp(original_hf - clamp(blurred)), with scaling
                 for y in 0..height {
-                    let row_hf = hf_y.row_mut(y);
+                    let row_orig = hf_y.row(y);
+                    let row_blurred = blurred.row(y);
                     let row_uhf = uhf_y.row_mut(y);
                     for x in 0..width {
-                        let hf_clamped = maximum_clamp(row_hf[x], MAXCLAMP_HF as f32);
-                        let uhf_val = row_uhf[x] - hf_clamped;
+                        let hf_clamped = maximum_clamp(row_blurred[x], MAXCLAMP_HF as f32);
+                        let uhf_val = row_orig[x] - hf_clamped;
                         let uhf_clamped = maximum_clamp(uhf_val, MAXCLAMP_UHF as f32);
                         row_uhf[x] = uhf_clamped * MUL_Y_UHF as f32;
+                    }
+                }
+
+                // HF = amplify_range(clamp(blurred) * scale)
+                for y in 0..height {
+                    let row_blurred = blurred.row(y);
+                    let row_hf = hf_y.row_mut(y);
+                    for x in 0..width {
+                        let hf_clamped = maximum_clamp(row_blurred[x], MAXCLAMP_HF as f32);
                         row_hf[x] = amplify_range_around_zero(
                             hf_clamped * MUL_Y_HF as f32,
                             ADD_HF_RANGE as f32,
@@ -369,24 +397,36 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
     } else {
         // Sequential path for small images
         for i in 0..2 {
-            uhf[i].copy_from(&hf[i]);
             let blurred = gaussian_blur(&hf[i], sigma, pool);
-            hf[i].copy_from(&blurred);
-            blurred.recycle(pool);
+
+            // UHF = original_hf - blurred, with adjustments
             for y in 0..height {
-                let row_hf = hf[i].row_mut(y);
+                let row_orig = hf[i].row(y);
+                let row_blurred = blurred.row(y);
                 let row_uhf = uhf[i].row_mut(y);
                 for x in 0..width {
-                    let hf_val = row_hf[x];
                     if i == 0 {
-                        let uhf_val = row_uhf[x] - hf_val;
-                        row_hf[x] = remove_range_around_zero(hf_val, REMOVE_HF_RANGE as f32);
+                        let uhf_val = row_orig[x] - row_blurred[x];
                         row_uhf[x] = remove_range_around_zero(uhf_val, REMOVE_UHF_RANGE as f32);
                     } else {
-                        let hf_clamped = maximum_clamp(hf_val, MAXCLAMP_HF as f32);
-                        let uhf_val = row_uhf[x] - hf_clamped;
+                        let hf_clamped = maximum_clamp(row_blurred[x], MAXCLAMP_HF as f32);
+                        let uhf_val = row_orig[x] - hf_clamped;
                         let uhf_clamped = maximum_clamp(uhf_val, MAXCLAMP_UHF as f32);
                         row_uhf[x] = uhf_clamped * MUL_Y_UHF as f32;
+                    }
+                }
+            }
+
+            // HF = adjusted(blurred)
+            for y in 0..height {
+                let row_blurred = blurred.row(y);
+                let row_hf = hf[i].row_mut(y);
+                for x in 0..width {
+                    if i == 0 {
+                        row_hf[x] =
+                            remove_range_around_zero(row_blurred[x], REMOVE_HF_RANGE as f32);
+                    } else {
+                        let hf_clamped = maximum_clamp(row_blurred[x], MAXCLAMP_HF as f32);
                         row_hf[x] = amplify_range_around_zero(
                             hf_clamped * MUL_Y_HF as f32,
                             ADD_HF_RANGE as f32,
@@ -394,6 +434,7 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                     }
                 }
             }
+            blurred.recycle(pool);
         }
     }
 }
