@@ -1204,6 +1204,37 @@ fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32
     (output, out_width, out_height)
 }
 
+/// Subsamples a single planar channel by 2x (interior only).
+///
+/// Uses zip+chunks_exact for bounds-check-free sequential access.
+#[archmage::autoversion]
+fn subsample_channel_2x_interior(
+    _token: archmage::SimdToken,
+    src: &[f32],
+    out: &mut [f32],
+    stride: usize,
+    interior_w: usize,
+    interior_h: usize,
+    out_width: usize,
+) {
+    let inv4 = 0.25f32;
+    for oy in 0..interior_h {
+        let row0_start = oy * 2 * stride;
+        let row1_start = (oy * 2 + 1) * stride;
+        let src_row0 = &src[row0_start..row0_start + interior_w * 2];
+        let src_row1 = &src[row1_start..row1_start + interior_w * 2];
+        let dst_row = &mut out[oy * out_width..oy * out_width + interior_w];
+
+        for ((d, pair0), pair1) in dst_row
+            .iter_mut()
+            .zip(src_row0.chunks_exact(2))
+            .zip(src_row1.chunks_exact(2))
+        {
+            *d = (pair0[0] + pair0[1] + pair1[0] + pair1[1]) * inv4;
+        }
+    }
+}
+
 /// Subsamples planar linear RGB by 2x for multi-resolution processing.
 fn subsample_planar_rgb_2x(
     r: &[f32],
@@ -1220,26 +1251,13 @@ fn subsample_planar_rgb_2x(
     let mut out_g = vec![0.0f32; out_size];
     let mut out_b = vec![0.0f32; out_size];
 
-    // Fast interior: all 2x2 blocks are fully within bounds
     let interior_w = width / 2;
     let interior_h = height / 2;
-    let inv4 = 0.25f32;
 
-    for oy in 0..interior_h {
-        let row0 = oy * 2 * stride;
-        let row1 = (oy * 2 + 1) * stride;
-        for ox in 0..interior_w {
-            let ix = ox * 2;
-            let i00 = row0 + ix;
-            let i10 = row0 + ix + 1;
-            let i01 = row1 + ix;
-            let i11 = row1 + ix + 1;
-            let out_idx = oy * out_width + ox;
-            out_r[out_idx] = (r[i00] + r[i10] + r[i01] + r[i11]) * inv4;
-            out_g[out_idx] = (g[i00] + g[i10] + g[i01] + g[i11]) * inv4;
-            out_b[out_idx] = (b[i00] + b[i10] + b[i01] + b[i11]) * inv4;
-        }
-    }
+    // Fast interior: per-channel SIMD-friendly loop
+    subsample_channel_2x_interior(r, &mut out_r, stride, interior_w, interior_h, out_width);
+    subsample_channel_2x_interior(g, &mut out_g, stride, interior_w, interior_h, out_width);
+    subsample_channel_2x_interior(b, &mut out_b, stride, interior_w, interior_h, out_width);
 
     // Right edge column (if width is odd)
     if out_width > interior_w {
