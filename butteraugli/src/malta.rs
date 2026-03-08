@@ -57,6 +57,24 @@ fn load_8(data: &[f32], start: usize) -> &[f32; 8] {
     data[start..start + 8].try_into().unwrap()
 }
 
+/// Load 16 contiguous f32 values as a fixed-size array reference.
+///
+/// With `unsafe-performance`: pointer cast (caller must pre-validate range).
+/// Without: slice + try_into with bounds check.
+#[cfg(feature = "unsafe-performance")]
+#[allow(clippy::inline_always)]
+#[inline(always)]
+fn load_16(data: &[f32], start: usize) -> &[f32; 16] {
+    // SAFETY: callers assert the full access range before any calls to this function.
+    unsafe { &*data.as_ptr().add(start).cast::<[f32; 16]>() }
+}
+
+#[cfg(not(feature = "unsafe-performance"))]
+#[inline]
+fn load_16(data: &[f32], start: usize) -> &[f32; 16] {
+    data[start..start + 16].try_into().unwrap()
+}
+
 /// Access a pixel in a 9x9 window at offset (dx, dy) from center.
 /// Center is at (4, 4), so valid offsets are -4..=4.
 macro_rules! w {
@@ -1261,7 +1279,7 @@ pub fn malta_diff_map(
 ) -> ImageF {
     archmage::incant!(
         malta_diff_map_dispatch(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool),
-        [v3, neon, wasm128]
+        [v4, v3, neon, wasm128]
     )
 }
 
@@ -1449,6 +1467,397 @@ fn malta_diff_map_dispatch_v3(
             };
             results.store((&mut out[x..x + 8]).try_into().unwrap());
             x += 8;
+        }
+        // Scalar remainder
+        while x < width - 4 {
+            let center = center_base + x;
+            out[x] = if use_lf {
+                malta_unit_lf_interior(data, center, stride)
+            } else {
+                malta_unit_interior(data, center, stride)
+            };
+            x += 1;
+        }
+    };
+
+    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
+}
+
+/// SIMD HF Malta filter for 16 consecutive interior pixels (AVX-512).
+///
+/// For 16 consecutive x-positions, each pattern offset maps to a contiguous
+/// f32x16 load since adjacent pixels share the same row data layout.
+/// Processes pixels at center, center+1, ..., center+15 simultaneously.
+#[cfg(target_arch = "x86_64")]
+#[archmage::rite]
+fn malta_unit_interior_16x_v4(
+    token: archmage::X64V4Token,
+    data: &[f32],
+    center: usize,
+    stride: usize,
+) -> magetypes::simd::v4::f32x16 {
+    use magetypes::simd::v4::f32x16;
+
+    let xs = stride as isize;
+    let xs2 = xs * 2;
+    let xs3 = xs * 3;
+    let xs4 = xs * 4;
+
+    // Pre-validate full access range: center ± (4*stride + 4), plus 15 for 16-wide SIMD
+    // Most negative offset: -(4*stride + 4), most positive end: +(4*stride + 4) + 16
+    let reach = 4 * stride + 4;
+    assert!(center >= reach && center + reach + 16 <= data.len());
+
+    macro_rules! ld {
+        ($off:expr) => {{
+            let o: isize = $off;
+            let start = (center as isize + o) as usize;
+            f32x16::load(token, load_16(data, start))
+        }};
+    }
+
+    let mut r = f32x16::splat(token, 0.0);
+
+    // Patterns 1-12: identical between libjxl and google/butteraugli
+    // Pattern 1: horizontal
+    {
+        let s = ld!(-4) + ld!(-3) + ld!(-2) + ld!(-1) + ld!(0) + ld!(1) + ld!(2) + ld!(3) + ld!(4);
+        r += s * s;
+    }
+    // Pattern 2: vertical
+    {
+        let s = ld!(-xs4)
+            + ld!(-xs3)
+            + ld!(-xs2)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2)
+            + ld!(xs3)
+            + ld!(xs4);
+        r += s * s;
+    }
+    // Pattern 3: diagonal \
+    {
+        let s = ld!(-xs3 - 3)
+            + ld!(-xs2 - 2)
+            + ld!(-xs - 1)
+            + ld!(0)
+            + ld!(xs + 1)
+            + ld!(xs2 + 2)
+            + ld!(xs3 + 3);
+        r += s * s;
+    }
+    // Pattern 4: diagonal /
+    {
+        let s = ld!(-xs3 + 3)
+            + ld!(-xs2 + 2)
+            + ld!(-xs + 1)
+            + ld!(0)
+            + ld!(xs - 1)
+            + ld!(xs2 - 2)
+            + ld!(xs3 - 3);
+        r += s * s;
+    }
+    // Pattern 5
+    {
+        let s = ld!(-xs4 + 1)
+            + ld!(-xs3 + 1)
+            + ld!(-xs2 + 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 - 1)
+            + ld!(xs3 - 1)
+            + ld!(xs4 - 1);
+        r += s * s;
+    }
+    // Pattern 6
+    {
+        let s = ld!(-xs4 - 1)
+            + ld!(-xs3 - 1)
+            + ld!(-xs2 - 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 + 1)
+            + ld!(xs3 + 1)
+            + ld!(xs4 + 1);
+        r += s * s;
+    }
+    // Pattern 7
+    {
+        let s = ld!(-4 - xs)
+            + ld!(-3 - xs)
+            + ld!(-2 - xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 + xs)
+            + ld!(3 + xs)
+            + ld!(4 + xs);
+        r += s * s;
+    }
+    // Pattern 8
+    {
+        let s = ld!(-4 + xs)
+            + ld!(-3 + xs)
+            + ld!(-2 + xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 - xs)
+            + ld!(3 - xs)
+            + ld!(4 - xs);
+        r += s * s;
+    }
+    // Pattern 9
+    {
+        let s = ld!(-xs3 - 2)
+            + ld!(-xs2 - 1)
+            + ld!(-xs - 1)
+            + ld!(0)
+            + ld!(xs + 1)
+            + ld!(xs2 + 1)
+            + ld!(xs3 + 2);
+        r += s * s;
+    }
+    // Pattern 10
+    {
+        let s = ld!(-xs3 + 2)
+            + ld!(-xs2 + 1)
+            + ld!(-xs + 1)
+            + ld!(0)
+            + ld!(xs - 1)
+            + ld!(xs2 - 1)
+            + ld!(xs3 - 2);
+        r += s * s;
+    }
+    // Pattern 11
+    {
+        let s = ld!(-xs2 - 3)
+            + ld!(-xs - 2)
+            + ld!(-xs - 1)
+            + ld!(0)
+            + ld!(xs + 1)
+            + ld!(xs + 2)
+            + ld!(xs2 + 3);
+        r += s * s;
+    }
+    // Pattern 12
+    {
+        let s = ld!(-xs2 + 3)
+            + ld!(-xs + 2)
+            + ld!(-xs + 1)
+            + ld!(0)
+            + ld!(xs - 1)
+            + ld!(xs - 2)
+            + ld!(xs2 - 3);
+        r += s * s;
+    }
+
+    // Patterns 13-16: duplicates of 8,7,6,5
+    // Pattern 13 (same offsets as 8)
+    {
+        let s = ld!(-4 + xs)
+            + ld!(-3 + xs)
+            + ld!(-2 + xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 - xs)
+            + ld!(3 - xs)
+            + ld!(4 - xs);
+        r += s * s;
+    }
+    // Pattern 14 (same offsets as 7)
+    {
+        let s = ld!(-4 - xs)
+            + ld!(-3 - xs)
+            + ld!(-2 - xs)
+            + ld!(-1)
+            + ld!(0)
+            + ld!(1)
+            + ld!(2 + xs)
+            + ld!(3 + xs)
+            + ld!(4 + xs);
+        r += s * s;
+    }
+    // Pattern 15 (same offsets as 6)
+    {
+        let s = ld!(-xs4 - 1)
+            + ld!(-xs3 - 1)
+            + ld!(-xs2 - 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 + 1)
+            + ld!(xs3 + 1)
+            + ld!(xs4 + 1);
+        r += s * s;
+    }
+    // Pattern 16 (same offsets as 5)
+    {
+        let s = ld!(-xs4 + 1)
+            + ld!(-xs3 + 1)
+            + ld!(-xs2 + 1)
+            + ld!(-xs)
+            + ld!(0)
+            + ld!(xs)
+            + ld!(xs2 - 1)
+            + ld!(xs3 - 1)
+            + ld!(xs4 - 1);
+        r += s * s;
+    }
+
+    r
+}
+
+/// SIMD LF Malta filter for 16 consecutive interior pixels (AVX-512).
+#[cfg(target_arch = "x86_64")]
+#[archmage::rite]
+fn malta_unit_lf_interior_16x_v4(
+    token: archmage::X64V4Token,
+    data: &[f32],
+    center: usize,
+    stride: usize,
+) -> magetypes::simd::v4::f32x16 {
+    use magetypes::simd::v4::f32x16;
+
+    let xs = stride as isize;
+    let xs2 = xs * 2;
+    let xs3 = xs * 3;
+    let xs4 = xs * 4;
+
+    // Pre-validate full access range: center ± (4*stride + 4), plus 15 for 16-wide SIMD
+    let reach = 4 * stride + 4;
+    assert!(center >= reach && center + reach + 16 <= data.len());
+
+    macro_rules! ld {
+        ($off:expr) => {{
+            let o: isize = $off;
+            let start = (center as isize + o) as usize;
+            f32x16::load(token, load_16(data, start))
+        }};
+    }
+
+    let mut r = f32x16::splat(token, 0.0);
+
+    // Pattern 1: sparse horizontal
+    {
+        let s = ld!(-4) + ld!(-2) + ld!(0) + ld!(2) + ld!(4);
+        r += s * s;
+    }
+    // Pattern 2: sparse vertical
+    {
+        let s = ld!(-xs4) + ld!(-xs2) + ld!(0) + ld!(xs2) + ld!(xs4);
+        r += s * s;
+    }
+    // Pattern 3: diagonal
+    {
+        let s = ld!(-xs3 - 3) + ld!(-xs2 - 2) + ld!(0) + ld!(xs2 + 2) + ld!(xs3 + 3);
+        r += s * s;
+    }
+    // Pattern 4: anti-diagonal
+    {
+        let s = ld!(-xs3 + 3) + ld!(-xs2 + 2) + ld!(0) + ld!(xs2 - 2) + ld!(xs3 - 3);
+        r += s * s;
+    }
+    // Pattern 5
+    {
+        let s = ld!(-xs4 + 1) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs4 - 1);
+        r += s * s;
+    }
+    // Pattern 6
+    {
+        let s = ld!(-xs4 - 1) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs4 + 1);
+        r += s * s;
+    }
+    // Pattern 7
+    {
+        let s = ld!(-4 - xs) + ld!(-2 - xs) + ld!(0) + ld!(2 + xs) + ld!(4 + xs);
+        r += s * s;
+    }
+    // Pattern 8
+    {
+        let s = ld!(-4 + xs) + ld!(-2 + xs) + ld!(0) + ld!(2 - xs) + ld!(4 - xs);
+        r += s * s;
+    }
+    // Pattern 9
+    {
+        let s = ld!(-xs3 - 2) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs3 + 2);
+        r += s * s;
+    }
+    // Pattern 10
+    {
+        let s = ld!(-xs3 + 2) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs3 - 2);
+        r += s * s;
+    }
+    // Pattern 11
+    {
+        let s = ld!(-xs2 - 3) + ld!(-xs - 2) + ld!(0) + ld!(xs + 2) + ld!(xs2 + 3);
+        r += s * s;
+    }
+    // Pattern 12
+    {
+        let s = ld!(-xs2 + 3) + ld!(-xs + 2) + ld!(0) + ld!(xs - 2) + ld!(xs2 - 3);
+        r += s * s;
+    }
+    // Pattern 13
+    {
+        let s = ld!(-4 + xs2) + ld!(-2 + xs) + ld!(0) + ld!(2 - xs) + ld!(4 - xs2);
+        r += s * s;
+    }
+    // Pattern 14
+    {
+        let s = ld!(-4 - xs2) + ld!(-2 - xs) + ld!(0) + ld!(2 + xs) + ld!(4 + xs2);
+        r += s * s;
+    }
+    // Pattern 15
+    {
+        let s = ld!(-xs4 - 2) + ld!(-xs2 - 1) + ld!(0) + ld!(xs2 + 1) + ld!(xs4 + 2);
+        r += s * s;
+    }
+    // Pattern 16
+    {
+        let s = ld!(-xs4 + 2) + ld!(-xs2 + 1) + ld!(0) + ld!(xs2 - 1) + ld!(xs4 - 2);
+        r += s * s;
+    }
+
+    r
+}
+
+/// AVX-512 dispatch variant: processes 16 interior pixels at a time.
+#[allow(clippy::too_many_arguments)]
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn malta_diff_map_dispatch_v4(
+    token: archmage::X64V4Token,
+    lum0: &ImageF,
+    lum1: &ImageF,
+    w_0gt1: f64,
+    w_0lt1: f64,
+    norm1: f64,
+    use_lf: bool,
+    pool: &BufferPool,
+) -> ImageF {
+    let interior = |data: &[f32],
+                    center_base: usize,
+                    stride: usize,
+                    width: usize,
+                    use_lf: bool,
+                    out: &mut [f32]| {
+        let mut x = 4;
+        // SIMD 16-wide loop
+        while x + 16 <= width - 4 {
+            let center = center_base + x;
+            let results = if use_lf {
+                malta_unit_lf_interior_16x_v4(token, data, center, stride)
+            } else {
+                malta_unit_interior_16x_v4(token, data, center, stride)
+            };
+            results.store((&mut out[x..x + 16]).try_into().unwrap());
+            x += 16;
         }
         // Scalar remainder
         while x < width - 4 {
