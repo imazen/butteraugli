@@ -15,6 +15,7 @@ use crate::consts::{
     REMOVE_HF_RANGE, REMOVE_MF_RANGE, REMOVE_UHF_RANGE, SIGMA_HF, SIGMA_LF, SIGMA_UHF, SUPPRESS_S,
     SUPPRESS_XY, XMUL_LF_TO_VALS, Y_TO_B_MUL_LF_TO_VALS, YMUL_LF_TO_VALS,
 };
+use crate::diff::maybe_join;
 use crate::image::{BufferPool, Image3F, ImageF};
 
 /// Multi-scale psychovisual decomposition of an image.
@@ -172,22 +173,83 @@ fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut Ima
     }
 }
 
+/// Minimum pixel count to parallelize blur planes within frequency separation.
+/// Below this threshold, the overhead of spawning tasks exceeds the benefit.
+const MIN_PIXELS_FOR_BLUR_PARALLEL: usize = 768 * 768;
+
 /// Separates LF (low frequency) and MF (medium frequency) components.
 fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &BufferPool) {
     let sigma = SIGMA_LF as f32;
+    let width = xyb.width();
+    let height = xyb.height();
 
-    for i in 0..3 {
-        // Extract LF via blur
-        let blurred = gaussian_blur(xyb.plane(i), sigma, pool);
-        lf.plane_mut(i).copy_from(&blurred);
+    if width * height >= MIN_PIXELS_FOR_BLUR_PARALLEL {
+        // Blur all 3 planes in parallel (each plane is independent)
+        let (lf0, lf1, lf2) = lf.planes_mut();
+        let (mf0, mf1, mf2) = mf.planes_mut();
 
-        // MF = original - LF
-        subtract(xyb.plane(i), &blurred, mf.plane_mut(i));
-        blurred.recycle(pool);
+        let blur_plane = |xyb_plane: &ImageF, lf_out: &mut ImageF, mf_out: &mut ImageF| {
+            let p = BufferPool::new();
+            let blurred = gaussian_blur(xyb_plane, sigma, &p);
+            lf_out.copy_from(&blurred);
+            subtract(xyb_plane, &blurred, mf_out);
+        };
+
+        maybe_join(
+            || blur_plane(xyb.plane(0), lf0, mf0),
+            || {
+                maybe_join(
+                    || blur_plane(xyb.plane(1), lf1, mf1),
+                    || blur_plane(xyb.plane(2), lf2, mf2),
+                )
+            },
+        );
+    } else {
+        for i in 0..3 {
+            let blurred = gaussian_blur(xyb.plane(i), sigma, pool);
+            lf.plane_mut(i).copy_from(&blurred);
+            subtract(xyb.plane(i), &blurred, mf.plane_mut(i));
+            blurred.recycle(pool);
+        }
     }
 
     // Convert LF to vals space
     xyb_low_freq_to_vals(lf);
+}
+
+/// Processes one MF→HF channel: blur, subtract, apply range function.
+fn separate_mf_hf_channel(
+    mf_plane: &mut ImageF,
+    hf_plane: &mut ImageF,
+    sigma: f32,
+    range: f32,
+    use_amplify: bool,
+) {
+    let pool = BufferPool::new();
+    let width = mf_plane.width();
+    let height = mf_plane.height();
+
+    // Copy to HF before blurring
+    hf_plane.copy_from(mf_plane);
+
+    // Blur MF
+    let blurred = gaussian_blur(mf_plane, sigma, &pool);
+    mf_plane.copy_from(&blurred);
+
+    // HF = original - blurred, with range adjustment on MF
+    for y in 0..height {
+        let row_mf = mf_plane.row_mut(y);
+        let row_hf = hf_plane.row_mut(y);
+        for x in 0..width {
+            let hf_val = row_hf[x] - row_mf[x];
+            row_hf[x] = hf_val;
+            if use_amplify {
+                row_mf[x] = amplify_range_around_zero(row_mf[x], range);
+            } else {
+                row_mf[x] = remove_range_around_zero(row_mf[x], range);
+            }
+        }
+    }
 }
 
 /// Separates MF (medium frequency) and HF (high frequency) components.
@@ -196,47 +258,60 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
     let height = mf.height();
     let sigma = SIGMA_HF as f32;
 
-    // Process X and Y channels
-    for i in 0..2 {
-        // Copy to HF before blurring
-        hf[i].copy_from(mf.plane(i));
+    if width * height >= MIN_PIXELS_FOR_BLUR_PARALLEL {
+        // Split MF planes and HF arrays for parallel mutable access
+        let (mf0, mf1, mf2) = mf.planes_mut();
+        let (hf_x_slice, hf_y_slice) = hf.split_at_mut(1);
+        let hf_x = &mut hf_x_slice[0];
+        let hf_y = &mut hf_y_slice[0];
 
-        // Blur MF
-        let blurred = gaussian_blur(mf.plane(i), sigma, pool);
-        mf.plane_mut(i).copy_from(&blurred);
-        blurred.recycle(pool);
+        maybe_join(
+            || separate_mf_hf_channel(mf0, hf_x, sigma, REMOVE_MF_RANGE as f32, false),
+            || {
+                maybe_join(
+                    || separate_mf_hf_channel(mf1, hf_y, sigma, ADD_MF_RANGE as f32, true),
+                    || {
+                        let p = BufferPool::new();
+                        let blurred_b = gaussian_blur(mf2, sigma, &p);
+                        mf2.copy_from(&blurred_b);
+                    },
+                )
+            },
+        );
 
-        // HF = original - blurred
-        let range = if i == 0 {
-            REMOVE_MF_RANGE
-        } else {
-            ADD_MF_RANGE
-        };
-
-        for y in 0..height {
-            let row_mf = mf.plane_row_mut(i, y);
-            let row_hf = hf[i].row_mut(y);
-            for x in 0..width {
-                let hf_val = row_hf[x] - row_mf[x];
-                row_hf[x] = hf_val;
-
-                if i == 0 {
-                    row_mf[x] = remove_range_around_zero(row_mf[x], range as f32);
-                } else {
-                    row_mf[x] = amplify_range_around_zero(row_mf[x], range as f32);
+        suppress_x_by_y(hf_y, hf_x);
+    } else {
+        // Sequential path for small images
+        for i in 0..2 {
+            hf[i].copy_from(mf.plane(i));
+            let blurred = gaussian_blur(mf.plane(i), sigma, pool);
+            mf.plane_mut(i).copy_from(&blurred);
+            blurred.recycle(pool);
+            let range = if i == 0 {
+                REMOVE_MF_RANGE
+            } else {
+                ADD_MF_RANGE
+            };
+            for y in 0..height {
+                let row_mf = mf.plane_row_mut(i, y);
+                let row_hf = hf[i].row_mut(y);
+                for x in 0..width {
+                    let hf_val = row_hf[x] - row_mf[x];
+                    row_hf[x] = hf_val;
+                    if i == 0 {
+                        row_mf[x] = remove_range_around_zero(row_mf[x], range as f32);
+                    } else {
+                        row_mf[x] = amplify_range_around_zero(row_mf[x], range as f32);
+                    }
                 }
             }
         }
+        let blurred_b = gaussian_blur(mf.plane(2), sigma, pool);
+        mf.plane_mut(2).copy_from(&blurred_b);
+        blurred_b.recycle(pool);
+        let (hf_x, hf_y) = hf.split_at_mut(1);
+        suppress_x_by_y(&hf_y[0], &mut hf_x[0]);
     }
-
-    // Blur B channel only (no HF/UHF for blue)
-    let blurred_b = gaussian_blur(mf.plane(2), sigma, pool);
-    mf.plane_mut(2).copy_from(&blurred_b);
-    blurred_b.recycle(pool);
-
-    // Suppress X by Y in HF (use split borrow to avoid clone)
-    let (hf_x, hf_y) = hf.split_at_mut(1);
-    suppress_x_by_y(&hf_y[0], &mut hf_x[0]);
 }
 
 /// Separates HF (high frequency) and UHF (ultra high frequency) components.
@@ -245,40 +320,78 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
     let height = hf[0].height();
     let sigma = SIGMA_UHF as f32;
 
-    for i in 0..2 {
-        // Copy to UHF before blurring
-        uhf[i].copy_from(&hf[i]);
+    if width * height >= MIN_PIXELS_FOR_BLUR_PARALLEL {
+        // Split arrays for parallel mutable access
+        let (hf_x_slice, hf_y_slice) = hf.split_at_mut(1);
+        let (uhf_x_slice, uhf_y_slice) = uhf.split_at_mut(1);
 
-        // Blur HF
-        let blurred = gaussian_blur(&hf[i], sigma, pool);
-        hf[i].copy_from(&blurred);
-        blurred.recycle(pool);
-
-        // UHF = original - blurred, with adjustments
-        for y in 0..height {
-            let row_hf = hf[i].row_mut(y);
-            let row_uhf = uhf[i].row_mut(y);
-
-            for x in 0..width {
-                let hf_val = row_hf[x];
-
-                if i == 0 {
-                    // X channel: compute UHF before any clamping
-                    let uhf_val = row_uhf[x] - hf_val;
-                    row_hf[x] = remove_range_around_zero(hf_val, REMOVE_HF_RANGE as f32);
-                    row_uhf[x] = remove_range_around_zero(uhf_val, REMOVE_UHF_RANGE as f32);
-                } else {
-                    // Y channel: C++ clamps HF BEFORE computing UHF
-                    // This is critical - the subtraction uses the clamped value
-                    let hf_clamped = maximum_clamp(hf_val, MAXCLAMP_HF as f32);
-                    let uhf_val = row_uhf[x] - hf_clamped; // Use CLAMPED HF
-                    let uhf_clamped = maximum_clamp(uhf_val, MAXCLAMP_UHF as f32);
-
-                    row_uhf[x] = uhf_clamped * MUL_Y_UHF as f32;
-                    row_hf[x] = amplify_range_around_zero(
-                        hf_clamped * MUL_Y_HF as f32,
-                        ADD_HF_RANGE as f32,
-                    );
+        maybe_join(
+            || {
+                let hf_x = &mut hf_x_slice[0];
+                let uhf_x = &mut uhf_x_slice[0];
+                let p = BufferPool::new();
+                uhf_x.copy_from(hf_x);
+                let blurred = gaussian_blur(hf_x, sigma, &p);
+                hf_x.copy_from(&blurred);
+                for y in 0..height {
+                    let row_hf = hf_x.row_mut(y);
+                    let row_uhf = uhf_x.row_mut(y);
+                    for x in 0..width {
+                        let uhf_val = row_uhf[x] - row_hf[x];
+                        row_hf[x] = remove_range_around_zero(row_hf[x], REMOVE_HF_RANGE as f32);
+                        row_uhf[x] = remove_range_around_zero(uhf_val, REMOVE_UHF_RANGE as f32);
+                    }
+                }
+            },
+            || {
+                let hf_y = &mut hf_y_slice[0];
+                let uhf_y = &mut uhf_y_slice[0];
+                let p = BufferPool::new();
+                uhf_y.copy_from(hf_y);
+                let blurred = gaussian_blur(hf_y, sigma, &p);
+                hf_y.copy_from(&blurred);
+                for y in 0..height {
+                    let row_hf = hf_y.row_mut(y);
+                    let row_uhf = uhf_y.row_mut(y);
+                    for x in 0..width {
+                        let hf_clamped = maximum_clamp(row_hf[x], MAXCLAMP_HF as f32);
+                        let uhf_val = row_uhf[x] - hf_clamped;
+                        let uhf_clamped = maximum_clamp(uhf_val, MAXCLAMP_UHF as f32);
+                        row_uhf[x] = uhf_clamped * MUL_Y_UHF as f32;
+                        row_hf[x] = amplify_range_around_zero(
+                            hf_clamped * MUL_Y_HF as f32,
+                            ADD_HF_RANGE as f32,
+                        );
+                    }
+                }
+            },
+        );
+    } else {
+        // Sequential path for small images
+        for i in 0..2 {
+            uhf[i].copy_from(&hf[i]);
+            let blurred = gaussian_blur(&hf[i], sigma, pool);
+            hf[i].copy_from(&blurred);
+            blurred.recycle(pool);
+            for y in 0..height {
+                let row_hf = hf[i].row_mut(y);
+                let row_uhf = uhf[i].row_mut(y);
+                for x in 0..width {
+                    let hf_val = row_hf[x];
+                    if i == 0 {
+                        let uhf_val = row_uhf[x] - hf_val;
+                        row_hf[x] = remove_range_around_zero(hf_val, REMOVE_HF_RANGE as f32);
+                        row_uhf[x] = remove_range_around_zero(uhf_val, REMOVE_UHF_RANGE as f32);
+                    } else {
+                        let hf_clamped = maximum_clamp(hf_val, MAXCLAMP_HF as f32);
+                        let uhf_val = row_uhf[x] - hf_clamped;
+                        let uhf_clamped = maximum_clamp(uhf_val, MAXCLAMP_UHF as f32);
+                        row_uhf[x] = uhf_clamped * MUL_Y_UHF as f32;
+                        row_hf[x] = amplify_range_around_zero(
+                            hf_clamped * MUL_Y_HF as f32,
+                            ADD_HF_RANGE as f32,
+                        );
+                    }
                 }
             }
         }

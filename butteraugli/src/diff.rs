@@ -705,18 +705,13 @@ pub(crate) fn compute_butteraugli_imgref(
 /// Converts ImgRef<RGB8> directly to interleaved linear f32, skipping
 /// intermediate Vec<u8> allocation.
 pub(crate) fn imgref_srgb_to_linear_f32(img: ImgRef<RGB8>) -> Vec<f32> {
-    let width = img.width();
-    let height = img.height();
     let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
-    let mut out = Vec::with_capacity(width * height * 3);
-    for row in img.rows() {
-        for px in row {
-            out.push(lut[px.r as usize]);
-            out.push(lut[px.g as usize]);
-            out.push(lut[px.b as usize]);
-        }
-    }
-    out
+    img.rows()
+        .flat_map(|row| {
+            row.iter()
+                .flat_map(|px| [lut[px.r as usize], lut[px.g as usize], lut[px.b as usize]])
+        })
+        .collect()
 }
 
 /// Implementation of butteraugli comparison for ImgRef<RGB<f32>>.
