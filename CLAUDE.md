@@ -123,6 +123,31 @@ dest[y][x] += 0.5 * src[y/2][x/2];
 
 ## Performance Notes
 
+### Optimization session 4 (2026-03-08)
+
+Reference mask precomputation, branch-free autoversioned per-pixel transforms,
+fuzzy erosion SIMD, Malta first-pass extraction.
+
+| Optimization | Instructions (one-shot V3) | Reduction |
+|-------------|--------------------------|-----------|
+| Baseline (post-session-3) | 2.123B | — |
+| Mask precompute + fuzzy erosion split | ~2.07B | ~2.5% |
+| DC diff fusion (combine_channels) | ~2.05B | ~1% |
+| Psycho autoversion (subtract, range) | ~2.02B | ~1.5% |
+| Fused UHF/HF single-pass (process_uhf_hf_x/y) | 1.587B | -21.7% |
+| Fuzzy erosion SIMD (update_min3 branch-free) | 1.552B | -2.2% |
+| Branch-free l2_diff_asymmetric | 1.531B | -1.4% |
+| Malta first-pass autoversion | 1.513B | -1.2% |
+
+Total: 2.123B → 1.513B = 28.7% reduction.
+
+Key techniques:
+- Branch-free patterns: copysign+max replaces if/else chains, enabling SIMD vectorization
+- update_min3: f32::min/max sorting network replaces branchy 3-element insertion sort
+- Malta diff copysign trick: `sv1 = v1 * copysign(1, v0)` unifies sign-dependent logic
+- Fused single-pass: read data once, write multiple outputs (UHF + HF from same blur)
+- Valgrind 3.18 doesn't support AVX-512; callgrind shows V3 but V4 runs natively
+
 ### Optimization session 3 (2026-03-08)
 
 V-pass row-major restructure, mask copy elimination, psycho pass fusion, LF swap.
