@@ -902,7 +902,7 @@ fn gaussian_blur_dispatch_v4(
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -910,14 +910,14 @@ fn gaussian_blur_dispatch_v4(
 
     // H-pass: non-transposing
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false);
     if border2 > border1 {
-        convolve_horizontal_interior_v4(token, input, &scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_v4(token, input, scaled, border1, border2, half, &mut temp);
     }
 
     // V-pass: accumulate across rows
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_v4(token, &temp, &kernel, &scaled, 0.0, &mut output);
+    convolve_vertical_v4(token, &temp, kernel, scaled, 0.0, &mut output);
     temp.recycle(pool);
     output
 }
@@ -934,7 +934,7 @@ fn gaussian_blur_dispatch_v3(
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -942,14 +942,14 @@ fn gaussian_blur_dispatch_v3(
 
     // H-pass: non-transposing
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false);
     if border2 > border1 {
-        convolve_horizontal_interior_v3(token, input, &scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_v3(token, input, scaled, border1, border2, half, &mut temp);
     }
 
     // V-pass: accumulate across rows
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_v3(token, &temp, &kernel, &scaled, 0.0, &mut output);
+    convolve_vertical_v3(token, &temp, kernel, scaled, 0.0, &mut output);
     temp.recycle(pool);
     output
 }
@@ -1025,15 +1025,15 @@ fn gaussian_blur_dispatch_scalar(
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, true);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, true);
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_scalar(&temp, &kernel, &scaled, 0.0, &mut output);
+    convolve_vertical_scalar(&temp, kernel, scaled, 0.0, &mut output);
     temp.recycle(pool);
     output
 }
@@ -1067,20 +1067,20 @@ fn blur_with_border_dispatch_v4(
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false);
     if border2 > border1 {
-        convolve_horizontal_interior_v4(token, input, &scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_v4(token, input, scaled, border1, border2, half, &mut temp);
     }
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_v4(token, &temp, &kernel, &scaled, border_ratio, &mut output);
+    convolve_vertical_v4(token, &temp, kernel, scaled, border_ratio, &mut output);
     temp.recycle(pool);
     output
 }
@@ -1098,20 +1098,20 @@ fn blur_with_border_dispatch_v3(
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false);
     if border2 > border1 {
-        convolve_horizontal_interior_v3(token, input, &scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_v3(token, input, scaled, border1, border2, half, &mut temp);
     }
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_v3(token, &temp, &kernel, &scaled, border_ratio, &mut output);
+    convolve_vertical_v3(token, &temp, kernel, scaled, border_ratio, &mut output);
     temp.recycle(pool);
     output
 }
@@ -1190,15 +1190,15 @@ fn blur_with_border_dispatch_scalar(
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, true);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, true);
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_scalar(&temp, &kernel, &scaled, border_ratio, &mut output);
+    convolve_vertical_scalar(&temp, kernel, scaled, border_ratio, &mut output);
     temp.recycle(pool);
     output
 }
