@@ -1283,6 +1283,45 @@ pub fn malta_diff_map(
     )
 }
 
+/// First pass of Malta: compute branch-free scaled diffs between two images.
+///
+/// Replaces 4-branch sign-dependent penalty with copysign + max clamping.
+#[archmage::autoversion]
+fn malta_compute_scaled_diffs(
+    _token: archmage::SimdToken,
+    lum0: &ImageF,
+    lum1: &ImageF,
+    norm2_0gt1: f32,
+    norm2_0lt1: f32,
+    norm1_f32: f32,
+    diffs: &mut ImageF,
+) {
+    for y in 0..lum0.height() {
+        let row0 = lum0.row(y);
+        let row1 = lum1.row(y);
+        let out = diffs.row_mut(y);
+
+        for (o, (&v0, &v1)) in out.iter_mut().zip(row0.iter().zip(row1.iter())) {
+            let absval = 0.5 * (v0.abs() + v1.abs());
+            let inv_norm = 1.0 / (norm1_f32 + absval);
+            let diff = v0 - v1;
+            let scaled_diff = norm2_0gt1 * inv_norm * diff;
+
+            // Branch-free asymmetric penalty
+            let fabs0 = v0.abs();
+            let too_small = 0.55 * fabs0;
+            let too_big = 1.05 * fabs0;
+            let sign = 1.0f32.copysign(v0);
+            let sv1 = v1 * sign;
+            let below = (too_small - sv1).max(0.0);
+            let above = (sv1 - too_big).max(0.0);
+            let impact = norm2_0lt1 * inv_norm * (below - above);
+
+            *o = scaled_diff + sign * impact;
+        }
+    }
+}
+
 /// Shared implementation for Malta diff map.
 ///
 /// The `interior_row` closure processes interior pixels (x in 4..width-4)
@@ -1321,51 +1360,9 @@ where
     let norm2_0lt1 = (w_pre0lt1 * norm1) as f32;
     let norm1_f32 = norm1 as f32;
 
-    // First pass: compute scaled differences into contiguous buffer (fully overwritten)
+    // First pass: compute scaled differences (branch-free, SIMD-vectorized)
     let mut diffs = ImageF::from_pool_dirty(width, height, pool);
-
-    for y in 0..height {
-        let row0 = lum0.row(y);
-        let row1 = lum1.row(y);
-        let out = diffs.row_mut(y);
-
-        for x in 0..width {
-            let v0 = row0[x];
-            let v1 = row1[x];
-            let absval = 0.5 * (v0.abs() + v1.abs());
-            let diff = v0 - v1;
-            let scaler = norm2_0gt1 / (norm1_f32 + absval);
-
-            // Primary symmetric quadratic objective
-            let mut scaled_diff = scaler * diff;
-
-            // Secondary half-open quadratic objectives
-            let scaler2 = norm2_0lt1 / (norm1_f32 + absval);
-            let fabs0 = v0.abs();
-            let too_small = 0.55 * fabs0;
-            let too_big = 1.05 * fabs0;
-
-            if v0 < 0.0 {
-                if v1 > -too_small {
-                    let impact = scaler2 * (v1 + too_small);
-                    scaled_diff -= impact;
-                } else if v1 < -too_big {
-                    let impact = scaler2 * (-v1 - too_big);
-                    scaled_diff += impact;
-                }
-            } else {
-                if v1 < too_small {
-                    let impact = scaler2 * (too_small - v1);
-                    scaled_diff += impact;
-                } else if v1 > too_big {
-                    let impact = scaler2 * (v1 - too_big);
-                    scaled_diff -= impact;
-                }
-            }
-
-            out[x] = scaled_diff;
-        }
-    }
+    malta_compute_scaled_diffs(lum0, lum1, norm2_0gt1, norm2_0lt1, norm1_f32, &mut diffs);
 
     // Second pass: apply Malta filter
     let mut block_diff_ac = ImageF::from_pool_dirty(width, height, pool);
