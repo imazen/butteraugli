@@ -476,15 +476,19 @@ fn extract_window(data: &ImageF, x: usize, y: usize) -> [f32; 81] {
             window[dst_start..dst_start + 9].copy_from_slice(&row[src_start..src_start + 9]);
         }
     } else {
-        // Border: check each pixel individually
-        for dy in 0..9 {
-            let sy = y as isize + dy as isize - 4;
-            for dx in 0..9 {
-                let sx = x as isize + dx as isize - 4;
-                if sy >= 0 && sy < height as isize && sx >= 0 && sx < width as isize {
-                    window[dy * 9 + dx] = data.get(sx as usize, sy as usize);
-                }
-            }
+        // Border: compute valid range once, then copy valid slices
+        let sy_min = if y >= 4 { 0 } else { 4 - y };
+        let sy_max = 9.min(height.wrapping_sub(y).wrapping_add(4));
+        let sx_min = if x >= 4 { 0 } else { 4 - x };
+        let sx_max = 9.min(width.wrapping_sub(x).wrapping_add(4));
+
+        for dy in sy_min..sy_max {
+            let src_y = y + dy - 4;
+            let src_x = x + sx_min - 4;
+            let row = data.row(src_y);
+            let count = sx_max - sx_min;
+            let dst_start = dy * 9 + sx_min;
+            window[dst_start..dst_start + count].copy_from_slice(&row[src_x..src_x + count]);
         }
     }
 
