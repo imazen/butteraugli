@@ -40,11 +40,18 @@ impl PsychoImage {
     /// Creates a new PsychoImage with empty/zero images.
     #[must_use]
     pub fn new(width: usize, height: usize) -> Self {
+        // All planes are fully overwritten by separate_frequencies, skip zeroing
         Self {
-            uhf: [ImageF::new(width, height), ImageF::new(width, height)],
-            hf: [ImageF::new(width, height), ImageF::new(width, height)],
-            mf: Image3F::new(width, height),
-            lf: Image3F::new(width, height),
+            uhf: [
+                ImageF::new_uninit(width, height),
+                ImageF::new_uninit(width, height),
+            ],
+            hf: [
+                ImageF::new_uninit(width, height),
+                ImageF::new_uninit(width, height),
+            ],
+            mf: Image3F::new_uninit(width, height),
+            lf: Image3F::new_uninit(width, height),
         }
     }
 

@@ -358,9 +358,9 @@ fn mask_psycho_image(
     let width = ps0.width();
     let height = ps0.height();
 
-    // Combine HF and UHF channels for masking
-    let mut mask0 = ImageF::new(width, height);
-    let mut mask1 = ImageF::new(width, height);
+    // Combine HF and UHF channels for masking (fully overwritten)
+    let mut mask0 = ImageF::new_uninit(width, height);
+    let mut mask1 = ImageF::new_uninit(width, height);
     combine_channels_for_masking(&ps0.hf, &ps0.uhf, &mut mask0);
     combine_channels_for_masking(&ps1.hf, &ps1.uhf, &mut mask1);
 
@@ -382,7 +382,7 @@ fn combine_channels_to_diffmap(
 ) -> ImageF {
     let width = mask.width();
     let height = mask.height();
-    let mut diffmap = ImageF::new(width, height);
+    let mut diffmap = ImageF::new_uninit(width, height);
 
     for y in 0..height {
         let mask_row = mask.row(y);
@@ -517,8 +517,8 @@ fn compute_diffmap_single_resolution_linear(
     let pool = BufferPool::new();
     let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), &pool);
 
-    // Compute DC (LF) differences
-    let mut block_diff_dc = Image3F::new(width, height);
+    // Compute DC (LF) differences (fully overwritten)
+    let mut block_diff_dc = Image3F::new_uninit(width, height);
     for c in 0..3 {
         let w = WMUL[6 + c] as f32;
         let dc = block_diff_dc.plane_mut(c);

@@ -206,8 +206,8 @@ pub fn compute_mask(
     let mut eroded0 = ImageF::from_pool_dirty(width, height, pool);
     fuzzy_erosion(&blurred0, &mut eroded0);
 
-    // Final mask computation
-    let mut mask = ImageF::new(width, height);
+    // Final mask computation (fully overwritten via copy_from_slice)
+    let mut mask = ImageF::new_uninit(width, height);
     for y in 0..height {
         let eroded_row = eroded0.row(y);
         let mask_row = mask.row_mut(y);

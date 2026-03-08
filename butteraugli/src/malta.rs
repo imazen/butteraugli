@@ -1292,8 +1292,8 @@ where
     let norm2_0lt1 = (w_pre0lt1 * norm1) as f32;
     let norm1_f32 = norm1 as f32;
 
-    // First pass: compute scaled differences into contiguous buffer
-    let mut diffs = ImageF::new(width, height);
+    // First pass: compute scaled differences into contiguous buffer (fully overwritten)
+    let mut diffs = ImageF::new_uninit(width, height);
 
     for y in 0..height {
         let row0 = lum0.row(y);

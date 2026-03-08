@@ -115,6 +115,31 @@ impl ImageF {
         }
     }
 
+    /// Creates a new image WITHOUT zero-filling.
+    ///
+    /// The buffer contains uninitialized data. Callers MUST overwrite every
+    /// pixel before reading. Use this only when the allocation will be fully
+    /// populated (e.g., blur output, copy targets, format conversion outputs).
+    #[must_use]
+    pub(crate) fn new_uninit(width: usize, height: usize) -> Self {
+        let stride = (width + 15) & !15;
+        let needed = stride * height;
+        let mut data = Vec::with_capacity(needed);
+        // SAFETY: f32 has no validity invariant beyond being initialized memory.
+        // Any bit pattern is a valid f32 (including NaN/Inf). Callers must
+        // overwrite all data before reading.
+        #[allow(clippy::uninit_vec)]
+        unsafe {
+            data.set_len(needed);
+        }
+        Self {
+            data,
+            width,
+            height,
+            stride,
+        }
+    }
+
     /// Creates an image from existing data.
     ///
     /// # Panics
@@ -229,7 +254,8 @@ impl ImageF {
     #[inline(always)]
     #[must_use]
     pub(crate) unsafe fn get_unchecked(&self, x: usize, y: usize) -> f32 {
-        *self.data.get_unchecked(y * self.stride + x)
+        // SAFETY: caller asserts y * stride + x < data.len()
+        unsafe { *self.data.get_unchecked(y * self.stride + x) }
     }
 
     /// Sets a pixel value without bounds checking.
@@ -240,7 +266,8 @@ impl ImageF {
     #[allow(clippy::inline_always)]
     #[inline(always)]
     pub(crate) unsafe fn set_unchecked(&mut self, x: usize, y: usize, value: f32) {
-        *self.data.get_unchecked_mut(y * self.stride + x) = value;
+        // SAFETY: caller asserts y * stride + x < data.len()
+        unsafe { *self.data.get_unchecked_mut(y * self.stride + x) = value };
     }
 
     /// Returns a row slice without bounds checking.
@@ -253,7 +280,8 @@ impl ImageF {
     #[must_use]
     pub(crate) unsafe fn row_unchecked(&self, y: usize) -> &[f32] {
         let start = y * self.stride;
-        self.data.get_unchecked(start..start + self.width)
+        // SAFETY: caller asserts y < height
+        unsafe { self.data.get_unchecked(start..start + self.width) }
     }
 
     /// Returns a mutable row slice without bounds checking.
@@ -265,7 +293,8 @@ impl ImageF {
     #[inline(always)]
     pub(crate) unsafe fn row_mut_unchecked(&mut self, y: usize) -> &mut [f32] {
         let start = y * self.stride;
-        self.data.get_unchecked_mut(start..start + self.width)
+        // SAFETY: caller asserts y < height
+        unsafe { self.data.get_unchecked_mut(start..start + self.width) }
     }
 
     /// Returns a raw pointer to the data for SIMD operations.
@@ -386,7 +415,7 @@ pub struct Image3F {
 }
 
 impl Image3F {
-    /// Creates a new 3-channel image.
+    /// Creates a new 3-channel image filled with zeros.
     #[must_use]
     pub fn new(width: usize, height: usize) -> Self {
         Self {
@@ -394,6 +423,20 @@ impl Image3F {
                 ImageF::new(width, height),
                 ImageF::new(width, height),
                 ImageF::new(width, height),
+            ],
+        }
+    }
+
+    /// Creates a new 3-channel image WITHOUT zero-filling.
+    ///
+    /// Callers MUST overwrite every pixel before reading.
+    #[must_use]
+    pub(crate) fn new_uninit(width: usize, height: usize) -> Self {
+        Self {
+            planes: [
+                ImageF::new_uninit(width, height),
+                ImageF::new_uninit(width, height),
+                ImageF::new_uninit(width, height),
             ],
         }
     }
