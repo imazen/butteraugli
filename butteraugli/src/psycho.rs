@@ -102,6 +102,7 @@ impl PsychoImage {
 /// Removes values in a small range around zero.
 ///
 /// Makes the area around zero less important by clamping small values to zero.
+#[cfg(test)]
 #[inline]
 fn remove_range_around_zero(x: f32, range: f32) -> f32 {
     if x > range {
@@ -116,6 +117,7 @@ fn remove_range_around_zero(x: f32, range: f32) -> f32 {
 /// Amplifies values in a small range around zero.
 ///
 /// Makes the area around zero more important by doubling small values.
+#[cfg(test)]
 #[inline]
 fn amplify_range_around_zero(x: f32, range: f32) -> f32 {
     if x > range {
@@ -130,8 +132,7 @@ fn amplify_range_around_zero(x: f32, range: f32) -> f32 {
 /// Maximum clamp function from C++ butteraugli.
 ///
 /// Compresses extreme values to prevent outliers from dominating.
-/// Note: uses manual multiply+add instead of mul_add to avoid fmaf
-/// library call overhead (this runs outside #[rite] context).
+#[cfg(test)]
 #[inline]
 fn maximum_clamp(v: f32, max_val: f32) -> f32 {
     const MUL: f32 = 0.724_216_146;
@@ -235,6 +236,95 @@ fn subtract_images(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mu
         let rd = dst.row_mut(y);
         for ((d, &va), &vb) in rd.iter_mut().zip(ra.iter()).zip(rb.iter()) {
             *d = va - vb;
+        }
+    }
+}
+
+/// Fused X-channel UHF/HF extraction: single-pass, branch-free.
+///
+/// hf_x is input (original) and output (processed HF).
+/// uhf_x is output only.
+/// blurred is the Gaussian-blurred version of original hf_x.
+///
+/// Computes:
+///   uhf_x = remove_range(orig - blurred, UHF_RANGE)
+///   hf_x  = remove_range(blurred, HF_RANGE)
+#[archmage::autoversion]
+fn process_uhf_hf_x(
+    _token: archmage::SimdToken,
+    hf_x: &mut ImageF,
+    blurred: &ImageF,
+    uhf_x: &mut ImageF,
+) {
+    let uhf_range = REMOVE_UHF_RANGE as f32;
+    let hf_range = REMOVE_HF_RANGE as f32;
+    for y in 0..hf_x.height() {
+        let rh = hf_x.row_mut(y);
+        let rb = blurred.row(y);
+        let ru = uhf_x.row_mut(y);
+        for ((h, &b), u) in rh.iter_mut().zip(rb.iter()).zip(ru.iter_mut()) {
+            let orig = *h;
+            // UHF = remove_range(orig - blurred, UHF_RANGE)
+            let diff = orig - b;
+            let abs_diff = diff.abs();
+            let reduced = abs_diff - uhf_range;
+            let clamped = if reduced > 0.0 { reduced } else { 0.0 };
+            *u = clamped.copysign(diff);
+            // HF = remove_range(blurred, HF_RANGE)
+            let abs_b = b.abs();
+            let reduced_b = abs_b - hf_range;
+            let clamped_b = if reduced_b > 0.0 { reduced_b } else { 0.0 };
+            *h = clamped_b.copysign(b);
+        }
+    }
+}
+
+/// Fused Y-channel UHF/HF extraction: single-pass, branch-free.
+///
+/// hf_y is input (original) and output (processed HF).
+/// uhf_y is output only.
+/// blurred is the Gaussian-blurred version of original hf_y.
+///
+/// Computes:
+///   hf_clamped = maximum_clamp(blurred, MAXCLAMP_HF)
+///   uhf_y = maximum_clamp(orig - hf_clamped, MAXCLAMP_UHF) * MUL_Y_UHF
+///   hf_y  = amplify_range(hf_clamped * MUL_Y_HF, ADD_HF_RANGE)
+#[archmage::autoversion]
+fn process_uhf_hf_y(
+    _token: archmage::SimdToken,
+    hf_y: &mut ImageF,
+    blurred: &ImageF,
+    uhf_y: &mut ImageF,
+) {
+    const MUL: f32 = 0.724_216_146;
+    let maxclamp_hf = MAXCLAMP_HF as f32;
+    let maxclamp_uhf = MAXCLAMP_UHF as f32;
+    let mul_y_uhf = MUL_Y_UHF as f32;
+    let mul_y_hf = MUL_Y_HF as f32;
+    let add_hf_range = ADD_HF_RANGE as f32;
+    for y in 0..hf_y.height() {
+        let rh = hf_y.row_mut(y);
+        let rb = blurred.row(y);
+        let ru = uhf_y.row_mut(y);
+        for ((h, &b), u) in rh.iter_mut().zip(rb.iter()).zip(ru.iter_mut()) {
+            let orig = *h;
+            // Branch-free maximum_clamp: clamp + (v - clamp) * MUL
+            let clamped_b = b.min(maxclamp_hf).max(-maxclamp_hf);
+            let hf_clamped = clamped_b + (b - clamped_b) * MUL;
+            // UHF: maximum_clamp(orig - hf_clamped, MAXCLAMP_UHF) * scale
+            let uhf_val = orig - hf_clamped;
+            let clamped_u = uhf_val.min(maxclamp_uhf).max(-maxclamp_uhf);
+            let uhf_clamped = clamped_u + (uhf_val - clamped_u) * MUL;
+            *u = uhf_clamped * mul_y_uhf;
+            // HF: amplify_range(hf_clamped * MUL_Y_HF, ADD_HF_RANGE)
+            let scaled = hf_clamped * mul_y_hf;
+            let abs_s = scaled.abs();
+            let boost = if abs_s < add_hf_range {
+                abs_s
+            } else {
+                add_hf_range
+            };
+            *h = scaled + boost.copysign(scaled);
         }
     }
 }
@@ -372,11 +462,9 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
 
 /// Separates HF (high frequency) and UHF (ultra high frequency) components.
 fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &BufferPool) {
-    let width = hf[0].width();
-    let height = hf[0].height();
     let sigma = SIGMA_UHF as f32;
 
-    if width * height >= MIN_PIXELS_FOR_BLUR_PARALLEL {
+    if hf[0].width() * hf[0].height() >= MIN_PIXELS_FOR_BLUR_PARALLEL {
         // Split arrays for parallel mutable access
         let (hf_x_slice, hf_y_slice) = hf.split_at_mut(1);
         let (uhf_x_slice, uhf_y_slice) = uhf.split_at_mut(1);
@@ -386,50 +474,14 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                 let hf_x = &mut hf_x_slice[0];
                 let uhf_x = &mut uhf_x_slice[0];
                 let blurred = gaussian_blur(hf_x, sigma, pool);
-
-                // Fused: UHF = range(orig - blurred), HF = range(blurred)
-                for y in 0..height {
-                    let row_orig = hf_x.row(y);
-                    let row_blurred = blurred.row(y);
-                    let row_uhf = uhf_x.row_mut(y);
-                    for x in 0..width {
-                        let uhf_val = row_orig[x] - row_blurred[x];
-                        row_uhf[x] = remove_range_around_zero(uhf_val, REMOVE_UHF_RANGE as f32);
-                    }
-                    let row_hf = hf_x.row_mut(y);
-                    for x in 0..width {
-                        row_hf[x] =
-                            remove_range_around_zero(row_blurred[x], REMOVE_HF_RANGE as f32);
-                    }
-                }
+                process_uhf_hf_x(hf_x, &blurred, uhf_x);
                 blurred.recycle(pool);
             },
             || {
                 let hf_y = &mut hf_y_slice[0];
                 let uhf_y = &mut uhf_y_slice[0];
                 let blurred = gaussian_blur(hf_y, sigma, pool);
-
-                // Fused: UHF = clamp(orig - clamp(blurred)) * scale,
-                //        HF = amplify_range(clamp(blurred) * scale)
-                for y in 0..height {
-                    let row_orig = hf_y.row(y);
-                    let row_blurred = blurred.row(y);
-                    let row_uhf = uhf_y.row_mut(y);
-                    for x in 0..width {
-                        let hf_clamped = maximum_clamp(row_blurred[x], MAXCLAMP_HF as f32);
-                        let uhf_val = row_orig[x] - hf_clamped;
-                        let uhf_clamped = maximum_clamp(uhf_val, MAXCLAMP_UHF as f32);
-                        row_uhf[x] = uhf_clamped * MUL_Y_UHF as f32;
-                    }
-                    let row_hf = hf_y.row_mut(y);
-                    for x in 0..width {
-                        let hf_clamped = maximum_clamp(row_blurred[x], MAXCLAMP_HF as f32);
-                        row_hf[x] = amplify_range_around_zero(
-                            hf_clamped * MUL_Y_HF as f32,
-                            ADD_HF_RANGE as f32,
-                        );
-                    }
-                }
+                process_uhf_hf_y(hf_y, &blurred, uhf_y);
                 blurred.recycle(pool);
             },
         );
@@ -437,36 +489,10 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
         // Sequential path for small images
         for i in 0..2 {
             let blurred = gaussian_blur(&hf[i], sigma, pool);
-
-            // Fused: UHF = adjusted(orig - blurred), HF = adjusted(blurred)
-            for y in 0..height {
-                let row_orig = hf[i].row(y);
-                let row_blurred = blurred.row(y);
-                let row_uhf = uhf[i].row_mut(y);
-                for x in 0..width {
-                    if i == 0 {
-                        let uhf_val = row_orig[x] - row_blurred[x];
-                        row_uhf[x] = remove_range_around_zero(uhf_val, REMOVE_UHF_RANGE as f32);
-                    } else {
-                        let hf_clamped = maximum_clamp(row_blurred[x], MAXCLAMP_HF as f32);
-                        let uhf_val = row_orig[x] - hf_clamped;
-                        let uhf_clamped = maximum_clamp(uhf_val, MAXCLAMP_UHF as f32);
-                        row_uhf[x] = uhf_clamped * MUL_Y_UHF as f32;
-                    }
-                }
-                let row_hf = hf[i].row_mut(y);
-                for x in 0..width {
-                    if i == 0 {
-                        row_hf[x] =
-                            remove_range_around_zero(row_blurred[x], REMOVE_HF_RANGE as f32);
-                    } else {
-                        let hf_clamped = maximum_clamp(row_blurred[x], MAXCLAMP_HF as f32);
-                        row_hf[x] = amplify_range_around_zero(
-                            hf_clamped * MUL_Y_HF as f32,
-                            ADD_HF_RANGE as f32,
-                        );
-                    }
-                }
+            if i == 0 {
+                process_uhf_hf_x(&mut hf[i], &blurred, &mut uhf[i]);
+            } else {
+                process_uhf_hf_y(&mut hf[i], &blurred, &mut uhf[i]);
             }
             blurred.recycle(pool);
         }
