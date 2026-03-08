@@ -539,7 +539,10 @@ impl ButteraugliReference {
                 let xyb2 =
                     linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool);
                 let ps2 = separate_frequencies(&xyb2, pool);
-                compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, pool)
+                let dm = compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, pool);
+                ps2.recycle(pool);
+                xyb2.recycle(pool);
+                dm
             },
             || {
                 half_ref.map(|half| {
@@ -547,7 +550,10 @@ impl ButteraugliReference {
                     let sub_xyb =
                         linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, pool);
                     let sub_ps = separate_frequencies(&sub_xyb, pool);
-                    compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, pool)
+                    let dm = compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, pool);
+                    sub_ps.recycle(pool);
+                    sub_xyb.recycle(pool);
+                    dm
                 })
             },
         );
@@ -594,7 +600,10 @@ impl ButteraugliReference {
                     pool,
                 );
                 let ps2 = separate_frequencies(&xyb2, pool);
-                compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, pool)
+                let dm = compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, pool);
+                ps2.recycle(pool);
+                xyb2.recycle(pool);
+                dm
             },
             || {
                 half_ref.map(|half| {
@@ -611,7 +620,10 @@ impl ButteraugliReference {
                         pool,
                     );
                     let sub_ps = separate_frequencies(&sub_xyb, pool);
-                    compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, pool)
+                    let dm = compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, pool);
+                    sub_ps.recycle(pool);
+                    sub_xyb.recycle(pool);
+                    dm
                 })
             },
         );
@@ -659,7 +671,7 @@ fn compute_diffmap_with_precomputed(
     let mask = mask_psycho_image(ps1, ps2, Some(block_diff_ac.plane_mut(1)), pool);
 
     // Compute DC (LF) differences (fully overwritten by compute_lf_diff)
-    let mut block_diff_dc = Image3F::new_uninit(width, height);
+    let mut block_diff_dc = Image3F::from_pool_dirty(width, height, pool);
     for c in 0..3 {
         compute_lf_diff(
             ps1.lf.plane(c),
@@ -670,7 +682,14 @@ fn compute_diffmap_with_precomputed(
     }
 
     // Combine channels to final diffmap
-    combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul())
+    let diffmap = combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul());
+
+    // Recycle temporaries back to pool
+    mask.recycle(pool);
+    block_diff_dc.recycle(pool);
+    block_diff_ac.recycle(pool);
+
+    diffmap
 }
 
 /// Computes LF (DC) squared difference - autoversioned for autovectorization.
@@ -769,8 +788,11 @@ fn compute_psycho_diff_malta(
             );
 
             add_to(&uhf_y, &mut ac_y);
+            uhf_y.recycle(pool);
             add_to(&hf_y, &mut ac_y);
+            hf_y.recycle(pool);
             add_to(&mf_y, &mut ac_y);
+            mf_y.recycle(pool);
 
             l2_diff_asymmetric(
                 &ps0.hf[1],
@@ -828,8 +850,11 @@ fn compute_psycho_diff_malta(
             );
 
             add_to(&uhf_x, &mut ac_x);
+            uhf_x.recycle(pool);
             add_to(&hf_x, &mut ac_x);
+            hf_x.recycle(pool);
             add_to(&mf_x, &mut ac_x);
+            mf_x.recycle(pool);
 
             l2_diff_asymmetric(
                 &ps0.hf[0],
@@ -866,8 +891,8 @@ fn mask_psycho_image(
     let width = ps0.width();
     let height = ps0.height();
 
-    let mut mask0 = ImageF::new_uninit(width, height);
-    let mut mask1 = ImageF::new_uninit(width, height);
+    let mut mask0 = ImageF::from_pool_dirty(width, height, pool);
+    let mut mask1 = ImageF::from_pool_dirty(width, height, pool);
     combine_channels_for_masking(&ps0.hf, &ps0.uhf, &mut mask0);
     combine_channels_for_masking(&ps1.hf, &ps1.uhf, &mut mask1);
 

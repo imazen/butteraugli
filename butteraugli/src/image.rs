@@ -477,6 +477,26 @@ impl Image3F {
         }
     }
 
+    /// Creates a new 3-channel image using pooled buffers (dirty, caller must overwrite).
+    #[must_use]
+    pub(crate) fn from_pool_dirty(width: usize, height: usize, pool: &BufferPool) -> Self {
+        Self {
+            planes: [
+                ImageF::from_pool_dirty(width, height, pool),
+                ImageF::from_pool_dirty(width, height, pool),
+                ImageF::from_pool_dirty(width, height, pool),
+            ],
+        }
+    }
+
+    /// Recycles all three planes back to the pool.
+    pub(crate) fn recycle(self, pool: &BufferPool) {
+        let [p0, p1, p2] = self.planes;
+        p0.recycle(pool);
+        p1.recycle(pool);
+        p2.recycle(pool);
+    }
+
     /// Creates from three separate planes.
     #[must_use]
     pub fn from_planes(plane0: ImageF, plane1: ImageF, plane2: ImageF) -> Self {

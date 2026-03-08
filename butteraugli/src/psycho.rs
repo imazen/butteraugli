@@ -39,6 +39,7 @@ pub struct PsychoImage {
 
 impl PsychoImage {
     /// Creates a new PsychoImage with empty/zero images.
+    #[cfg(test)]
     #[must_use]
     pub fn new(width: usize, height: usize) -> Self {
         // All planes are fully overwritten by separate_frequencies, skip zeroing
@@ -54,6 +55,35 @@ impl PsychoImage {
             mf: Image3F::new_uninit(width, height),
             lf: Image3F::new_uninit(width, height),
         }
+    }
+
+    /// Creates a new PsychoImage using pooled buffers (dirty, caller must overwrite).
+    #[must_use]
+    pub(crate) fn from_pool(width: usize, height: usize, pool: &BufferPool) -> Self {
+        Self {
+            uhf: [
+                ImageF::from_pool_dirty(width, height, pool),
+                ImageF::from_pool_dirty(width, height, pool),
+            ],
+            hf: [
+                ImageF::from_pool_dirty(width, height, pool),
+                ImageF::from_pool_dirty(width, height, pool),
+            ],
+            mf: Image3F::from_pool_dirty(width, height, pool),
+            lf: Image3F::from_pool_dirty(width, height, pool),
+        }
+    }
+
+    /// Recycles all internal buffers back to the pool.
+    pub(crate) fn recycle(self, pool: &BufferPool) {
+        let [uhf0, uhf1] = self.uhf;
+        uhf0.recycle(pool);
+        uhf1.recycle(pool);
+        let [hf0, hf1] = self.hf;
+        hf0.recycle(pool);
+        hf1.recycle(pool);
+        self.mf.recycle(pool);
+        self.lf.recycle(pool);
     }
 
     /// Width of the images.
@@ -447,7 +477,7 @@ pub fn separate_frequencies(xyb: &Image3F, pool: &BufferPool) -> PsychoImage {
     let width = xyb.width();
     let height = xyb.height();
 
-    let mut ps = PsychoImage::new(width, height);
+    let mut ps = PsychoImage::from_pool(width, height, pool);
 
     // Separate into LF and MF
     separate_lf_and_mf(xyb, &mut ps.lf, &mut ps.mf, pool);

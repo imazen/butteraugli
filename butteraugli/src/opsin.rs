@@ -169,7 +169,7 @@ pub fn opsin_dynamics_image(
     let blurred_b = blur_mirrored_5x5(rgb.plane(2), &weights, pool);
 
     // Create output XYB image (fully overwritten in the loop below)
-    let mut xyb = Image3F::new_uninit(width, height);
+    let mut xyb = Image3F::from_pool_dirty(width, height, pool);
     let min_val = 1e-4_f32;
 
     // Pre-cast matrix coefficients to f32
@@ -273,7 +273,7 @@ pub fn srgb_to_xyb_butteraugli(
     let lut = &*SRGB_TO_LINEAR_LUT;
 
     // Convert sRGB u8 to linear RGB Image3F
-    let mut linear = Image3F::new_uninit(width, height);
+    let mut linear = Image3F::from_pool_dirty(width, height, pool);
 
     // Process each plane separately to satisfy borrow checker
     for y in 0..height {
@@ -299,7 +299,9 @@ pub fn srgb_to_xyb_butteraugli(
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target, pool)
+    let xyb = opsin_dynamics_image(&linear, intensity_target, pool);
+    linear.recycle(pool);
+    xyb
 }
 
 /// sRGB transfer function (gamma decoding) - slow version
@@ -351,7 +353,7 @@ pub fn linear_rgb_to_xyb_butteraugli(
     assert_eq!(rgb.len(), width * height * 3);
 
     // Convert interleaved linear RGB to planar Image3F
-    let mut linear = Image3F::new_uninit(width, height);
+    let mut linear = Image3F::from_pool_dirty(width, height, pool);
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for y in 0..height {
@@ -368,7 +370,9 @@ pub fn linear_rgb_to_xyb_butteraugli(
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target, pool)
+    let xyb = opsin_dynamics_image(&linear, intensity_target, pool);
+    linear.recycle(pool);
+    xyb
 }
 
 /// Converts planar linear RGB f32 data to butteraugli XYB.
@@ -403,7 +407,7 @@ pub fn linear_planar_to_xyb_butteraugli(
     assert!(b.len() >= stride * height);
 
     // Copy planar data directly into Image3F (respecting source stride)
-    let mut linear = Image3F::new_uninit(width, height);
+    let mut linear = Image3F::from_pool_dirty(width, height, pool);
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for y in 0..height {
@@ -417,7 +421,9 @@ pub fn linear_planar_to_xyb_butteraugli(
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target, pool)
+    let xyb = opsin_dynamics_image(&linear, intensity_target, pool);
+    linear.recycle(pool);
+    xyb
 }
 
 /// Converts an sRGB image from ImgRef<RGB8> to butteraugli XYB.
@@ -442,7 +448,7 @@ pub(crate) fn imgref_srgb_to_xyb(
     let lut = &*SRGB_TO_LINEAR_LUT;
 
     // Convert sRGB u8 to linear RGB Image3F
-    let mut linear = Image3F::new_uninit(width, height);
+    let mut linear = Image3F::from_pool_dirty(width, height, pool);
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for (y, row) in img.rows().enumerate() {
@@ -457,7 +463,9 @@ pub(crate) fn imgref_srgb_to_xyb(
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target, pool)
+    let xyb = opsin_dynamics_image(&linear, intensity_target, pool);
+    linear.recycle(pool);
+    xyb
 }
 
 /// Converts a linear RGB image from ImgRef<RGB<f32>> to butteraugli XYB.
@@ -481,7 +489,7 @@ pub(crate) fn imgref_linear_to_xyb(
     let height = img.height();
 
     // Convert interleaved linear RGB to planar Image3F
-    let mut linear = Image3F::new_uninit(width, height);
+    let mut linear = Image3F::from_pool_dirty(width, height, pool);
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for (y, row) in img.rows().enumerate() {
@@ -496,7 +504,9 @@ pub(crate) fn imgref_linear_to_xyb(
     }
 
     // Apply OpsinDynamicsImage
-    opsin_dynamics_image(&linear, intensity_target, pool)
+    let xyb = opsin_dynamics_image(&linear, intensity_target, pool);
+    linear.recycle(pool);
+    xyb
 }
 
 #[cfg(test)]
