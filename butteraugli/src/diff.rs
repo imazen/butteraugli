@@ -10,9 +10,7 @@ use crate::consts::{
 };
 use crate::image::{BufferPool, Image3F, ImageF};
 use crate::malta::malta_diff_map;
-use crate::mask::{
-    combine_channels_for_masking, compute_mask as compute_mask_from_images, mask_dc_y, mask_y,
-};
+use crate::mask::{compute_mask_from_hf_uhf, mask_dc_y, mask_y};
 use crate::opsin::linear_rgb_to_xyb_butteraugli;
 use crate::psycho::{PsychoImage, separate_frequencies};
 use imgref::ImgRef;
@@ -362,17 +360,8 @@ fn mask_psycho_image(
     diff_ac: Option<&mut ImageF>,
     pool: &BufferPool,
 ) -> ImageF {
-    let width = ps0.width();
-    let height = ps0.height();
-
-    // Combine HF and UHF channels for masking (fully overwritten)
-    let mut mask0 = ImageF::new_uninit(width, height);
-    let mut mask1 = ImageF::new_uninit(width, height);
-    combine_channels_for_masking(&ps0.hf, &ps0.uhf, &mut mask0);
-    combine_channels_for_masking(&ps1.hf, &ps1.uhf, &mut mask1);
-
-    // Compute mask using DiffPrecompute, blur, and FuzzyErosion
-    compute_mask_from_images(&mask0, &mask1, diff_ac, pool)
+    // Fused combine_channels + diff_precompute eliminates intermediate buffers
+    compute_mask_from_hf_uhf(&ps0.hf, &ps0.uhf, &ps1.hf, &ps1.uhf, diff_ac, pool)
 }
 
 /// Combines channels to produce final diffmap.

@@ -181,17 +181,94 @@ pub fn mask_dc_y(delta: f64) -> f64 {
     retval * retval
 }
 
+/// Fused combine_channels_for_masking + diff_precompute.
+///
+/// Reads 4 input planes (hf[0], hf[1], uhf[0], uhf[1]), writes 1 output plane.
+/// Eliminates intermediate buffer and one full read+write pass per image.
+#[archmage::autoversion]
+fn combine_and_precompute(
+    _token: archmage::SimdToken,
+    hf: &[ImageF; 2],
+    uhf: &[ImageF; 2],
+    out: &mut ImageF,
+) {
+    let width = hf[0].width();
+    let height = hf[0].height();
+    let bias = MASK_MUL * MASK_BIAS;
+    let sqrt_bias = bias.sqrt();
+
+    for y in 0..height {
+        let row_y_hf = hf[1].row(y);
+        let row_y_uhf = uhf[1].row(y);
+        let row_x_hf = hf[0].row(y);
+        let row_x_uhf = uhf[0].row(y);
+        let row_out = out.row_mut(y);
+
+        for x in 0..width {
+            let xdiff = (row_x_uhf[x] + row_x_hf[x]) * COMBINE_CHANNELS_MULS[0];
+            let ydiff =
+                row_y_uhf[x] * COMBINE_CHANNELS_MULS[1] + row_y_hf[x] * COMBINE_CHANNELS_MULS[2];
+            let combined = (xdiff * xdiff + ydiff * ydiff).sqrt();
+            // combined >= 0, so abs() in diff_precompute is a no-op
+            row_out[x] = (MASK_MUL * combined + bias).sqrt() - sqrt_bias;
+        }
+    }
+}
+
+/// Computes mask directly from HF/UHF frequency bands.
+///
+/// Fuses combine_channels_for_masking + diff_precompute into a single pass,
+/// eliminating two intermediate ImageF allocations and ~4MB memory traffic.
+pub fn compute_mask_from_hf_uhf(
+    hf0: &[ImageF; 2],
+    uhf0: &[ImageF; 2],
+    hf1: &[ImageF; 2],
+    uhf1: &[ImageF; 2],
+    diff_ac: Option<&mut ImageF>,
+    pool: &BufferPool,
+) -> ImageF {
+    let width = hf0[0].width();
+    let height = hf0[0].height();
+
+    // Fused combine + precompute for image 0
+    let mut diff0 = ImageF::from_pool_dirty(width, height, pool);
+    combine_and_precompute(hf0, uhf0, &mut diff0);
+
+    // Fused combine + precompute for image 1
+    let mut diff1 = ImageF::from_pool_dirty(width, height, pool);
+    combine_and_precompute(hf1, uhf1, &mut diff1);
+
+    // Blur diff0 and diff1
+    let blurred0 = gaussian_blur(&diff0, MASK_RADIUS, pool);
+    let blurred1 = gaussian_blur(&diff1, MASK_RADIUS, pool);
+    diff0.recycle(pool);
+    diff1.recycle(pool);
+
+    // FuzzyErosion on blurred0 — result IS the mask (no copy needed)
+    let mut mask = ImageF::from_pool_dirty(width, height, pool);
+    fuzzy_erosion(&blurred0, &mut mask);
+
+    // Accumulate mask-to-error difference into diff_ac if requested
+    if let Some(ac) = diff_ac {
+        for y in 0..height {
+            let b0 = blurred0.row(y);
+            let b1 = blurred1.row(y);
+            let ac_row = ac.row_mut(y);
+            for x in 0..width {
+                let diff = b0[x] - b1[x];
+                ac_row[x] += MASK_TO_ERROR_MUL * diff * diff;
+            }
+        }
+    }
+
+    blurred0.recycle(pool);
+    blurred1.recycle(pool);
+    mask
+}
+
 /// Computes mask from both images' psychovisual representations.
 ///
 /// Matches C++ Mask function (butteraugli.cc lines 1212-1247).
-///
-/// # Arguments
-/// * `mask0` - Combined HF/UHF mask from image 0
-/// * `mask1` - Combined HF/UHF mask from image 1
-/// * `diff_ac` - Optional AC difference accumulator
-///
-/// # Returns
-/// The computed mask image
 pub fn compute_mask(
     mask0: &ImageF,
     mask1: &ImageF,
