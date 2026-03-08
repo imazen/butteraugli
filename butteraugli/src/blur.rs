@@ -907,6 +907,26 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     )
 }
 
+/// Maximum possible kernel size: 2 * floor(M * sigma_max) + 1.
+/// With M=2.25 and SIGMA_LF ≈ 7.156: 2 * 16 + 1 = 33.
+const MAX_KERNEL_SIZE: usize = 64;
+
+/// Computes normalized scaled kernel on the stack, avoiding Vec allocation.
+/// Returns the used portion of the buffer.
+#[inline]
+fn compute_scaled_kernel<'a>(
+    kernel: &[f32],
+    buf: &'a mut [f32; MAX_KERNEL_SIZE],
+) -> &'a [f32] {
+    debug_assert!(kernel.len() <= MAX_KERNEL_SIZE);
+    let weight: f32 = kernel.iter().sum();
+    let inv_weight = 1.0 / weight;
+    for (i, &k) in kernel.iter().enumerate() {
+        buf[i] = k * inv_weight;
+    }
+    &buf[..kernel.len()]
+}
+
 #[cfg(target_arch = "x86_64")]
 #[archmage::arcane]
 fn gaussian_blur_dispatch_v4(
@@ -917,8 +937,8 @@ fn gaussian_blur_dispatch_v4(
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
     let half = kernel.len() / 2;
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -948,8 +968,8 @@ fn gaussian_blur_dispatch_v3(
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
     let half = kernel.len() / 2;
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -979,8 +999,8 @@ fn gaussian_blur_dispatch_neon(
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
     let half = kernel.len() / 2;
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -1008,8 +1028,8 @@ fn gaussian_blur_dispatch_wasm128(
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
     let half = kernel.len() / 2;
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -1036,8 +1056,8 @@ fn gaussian_blur_dispatch_scalar(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
 
@@ -1077,8 +1097,8 @@ fn blur_with_border_dispatch_v4(
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
     let half = kernel.len() / 2;
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -1107,8 +1127,8 @@ fn blur_with_border_dispatch_v3(
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
     let half = kernel.len() / 2;
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -1137,8 +1157,8 @@ fn blur_with_border_dispatch_neon(
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
     let half = kernel.len() / 2;
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -1167,8 +1187,8 @@ fn blur_with_border_dispatch_wasm128(
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
     let half = kernel.len() / 2;
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
@@ -1196,8 +1216,8 @@ fn blur_with_border_dispatch_scalar(
     pool: &BufferPool,
 ) -> ImageF {
     let kernel = compute_kernel(sigma);
-    let weight_no_border: f32 = kernel.iter().sum();
-    let scaled: Vec<f32> = kernel.iter().map(|&k| k / weight_no_border).collect();
+    let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
+    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
 
