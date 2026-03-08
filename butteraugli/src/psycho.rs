@@ -165,7 +165,7 @@ fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
         for i in 0..row_x.len() {
             let vy = row_y[i];
             let vb = row_b[i];
-            row_b[i] = (y_to_b * vy + vb) * bmul;
+            row_b[i] = y_to_b.mul_add(vy, vb) * bmul;
             row_x[i] *= xmul;
             row_y[i] = vy * ymul;
         }
@@ -311,11 +311,11 @@ fn process_uhf_hf_y(
             let orig = *h;
             // Branch-free maximum_clamp: clamp + (v - clamp) * MUL
             let clamped_b = b.min(maxclamp_hf).max(-maxclamp_hf);
-            let hf_clamped = clamped_b + (b - clamped_b) * MUL;
+            let hf_clamped = (b - clamped_b).mul_add(MUL, clamped_b);
             // UHF: maximum_clamp(orig - hf_clamped, MAXCLAMP_UHF) * scale
             let uhf_val = orig - hf_clamped;
             let clamped_u = uhf_val.min(maxclamp_uhf).max(-maxclamp_uhf);
-            let uhf_clamped = clamped_u + (uhf_val - clamped_u) * MUL;
+            let uhf_clamped = (uhf_val - clamped_u).mul_add(MUL, clamped_u);
             *u = uhf_clamped * mul_y_uhf;
             // HF: amplify_range(hf_clamped * MUL_Y_HF, ADD_HF_RANGE)
             let scaled = hf_clamped * mul_y_hf;

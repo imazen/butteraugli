@@ -46,10 +46,12 @@ pub fn combine_channels_for_masking(
             // C++: xdiff = (row_x_uhf[x] + row_x_hf[x]) * muls[0]
             let xdiff = (row_x_uhf[x] + row_x_hf[x]) * COMBINE_CHANNELS_MULS[0];
             // C++: ydiff = row_y_uhf[x] * muls[1] + row_y_hf[x] * muls[2]
-            let ydiff =
-                row_y_uhf[x] * COMBINE_CHANNELS_MULS[1] + row_y_hf[x] * COMBINE_CHANNELS_MULS[2];
+            let ydiff = row_y_uhf[x].mul_add(
+                COMBINE_CHANNELS_MULS[1],
+                row_y_hf[x] * COMBINE_CHANNELS_MULS[2],
+            );
             // C++: row[x] = sqrt(xdiff * xdiff + ydiff * ydiff)
-            row_out[x] = (xdiff * xdiff + ydiff * ydiff).sqrt();
+            row_out[x] = xdiff.mul_add(xdiff, ydiff * ydiff).sqrt();
         }
     }
 }
@@ -76,7 +78,7 @@ pub fn diff_precompute(
         let row_out = out.row_mut(y);
         for x in 0..width {
             // C++: sqrt(mul * abs(row_in[x]) + bias) - sqrt_bias
-            row_out[x] = (mul * row_in[x].abs() + bias).sqrt() - sqrt_bias;
+            row_out[x] = mul.mul_add(row_in[x].abs(), bias).sqrt() - sqrt_bias;
         }
     }
 }
@@ -200,7 +202,7 @@ fn fuzzy_erosion_interior_row(
         let (m0, m1, m2) = update_min3(u_mid[i], m0, m1, m2);
         let (m0, m1, _m2) = update_min3(d_mid[i], m0, m1, m2);
 
-        out_slice[i] = 0.45 * m0 + 0.3 * m1 + 0.25 * _m2;
+        out_slice[i] = (0.45f32).mul_add(m0, (0.3f32).mul_add(m1, 0.25 * _m2));
     }
 }
 
@@ -328,11 +330,13 @@ fn combine_and_precompute(
 
         for x in 0..width {
             let xdiff = (row_x_uhf[x] + row_x_hf[x]) * COMBINE_CHANNELS_MULS[0];
-            let ydiff =
-                row_y_uhf[x] * COMBINE_CHANNELS_MULS[1] + row_y_hf[x] * COMBINE_CHANNELS_MULS[2];
-            let combined = (xdiff * xdiff + ydiff * ydiff).sqrt();
+            let ydiff = row_y_uhf[x].mul_add(
+                COMBINE_CHANNELS_MULS[1],
+                row_y_hf[x] * COMBINE_CHANNELS_MULS[2],
+            );
+            let combined = xdiff.mul_add(xdiff, ydiff * ydiff).sqrt();
             // combined >= 0, so abs() in diff_precompute is a no-op
-            row_out[x] = (MASK_MUL * combined + bias).sqrt() - sqrt_bias;
+            row_out[x] = MASK_MUL.mul_add(combined, bias).sqrt() - sqrt_bias;
         }
     }
 }
@@ -395,7 +399,7 @@ fn accumulate_mask_to_error(
         let ac_row = ac.row_mut(y);
         for ((a, &v0), &v1) in ac_row.iter_mut().zip(row0.iter()).zip(row1.iter()) {
             let diff = v0 - v1;
-            *a += MASK_TO_ERROR_MUL * diff * diff;
+            *a = (diff * diff).mul_add(MASK_TO_ERROR_MUL, *a);
         }
     }
 }

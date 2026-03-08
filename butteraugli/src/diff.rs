@@ -135,7 +135,7 @@ fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffma
 
         for ((d, &v0), &v1) in row_diff.iter_mut().zip(row0.iter()).zip(row1.iter()) {
             let diff = v0 - v1;
-            *d += diff * diff * w;
+            *d = (diff * diff).mul_add(w, *d);
         }
     }
 }
@@ -205,7 +205,7 @@ fn l2_diff_asymmetric(
             let val1 = row1[x];
 
             let diff = val0 - val1;
-            let total = row_diff[x] + diff * diff * vw_0gt1;
+            let total = (diff * diff).mul_add(vw_0gt1, row_diff[x]);
 
             // Branch-free asymmetric penalty:
             // Flip val1 to match val0's sign direction, then clamp.
@@ -215,7 +215,7 @@ fn l2_diff_asymmetric(
             let sv1 = val1 * sign;
             let v = (too_small - sv1).max(0.0) + (sv1 - fabs0).max(0.0);
 
-            row_diff[x] = total + vw_0lt1 * v * v;
+            row_diff[x] = (v * v).mul_add(vw_0lt1, total);
         }
     }
 }
@@ -439,24 +439,26 @@ fn combine_channels_to_diffmap_fused(
             let val = mask_row[x];
 
             // mask_y in f32: (global_scale * (1 + mul / (scaler * val + offset)))²
-            let c_y = my_mul / (my_scaler * val + my_offset);
-            let r_y = global_scale * (1.0 + c_y);
+            let c_y = my_mul / my_scaler.mul_add(val, my_offset);
+            let r_y = global_scale.mul_add(c_y, global_scale);
             let maskval = r_y * r_y;
 
             // mask_dc_y in f32
-            let c_dc = mdc_mul / (mdc_scaler * val + mdc_offset);
-            let r_dc = global_scale * (1.0 + c_dc);
+            let c_dc = mdc_mul / mdc_scaler.mul_add(val, mdc_offset);
+            let r_dc = global_scale.mul_add(c_dc, global_scale);
             let dc_maskval = r_dc * r_dc;
 
             // DC diff computed inline: d*d*w for each channel
             let d0 = lf1_0[x] - lf2_0[x];
             let d1 = lf1_1[x] - lf2_1[x];
             let d2 = lf1_2[x] - lf2_2[x];
-            let dc_masked = d0 * d0 * dc_w0 * xmul * dc_maskval
-                + d1 * d1 * dc_w1 * dc_maskval
-                + d2 * d2 * dc_w2 * dc_maskval;
+            let dc_masked = (d0 * d0 * dc_w0 * xmul).mul_add(
+                dc_maskval,
+                (d1 * d1 * dc_w1).mul_add(dc_maskval, d2 * d2 * dc_w2 * dc_maskval),
+            );
 
-            let ac_masked = ac0[x] * xmul * maskval + ac1[x] * maskval + ac2[x] * maskval;
+            let ac_masked =
+                (ac0[x] * xmul).mul_add(maskval, ac1[x].mul_add(maskval, ac2[x] * maskval));
 
             out[x] = (dc_masked + ac_masked).sqrt();
         }
