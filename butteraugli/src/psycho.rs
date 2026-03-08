@@ -191,6 +191,54 @@ fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut Ima
     }
 }
 
+/// Applies remove_range_around_zero: dst[x] = copysign(max(|src[x]| - range, 0), src[x]).
+///
+/// Branch-free formulation for SIMD vectorization.
+#[archmage::autoversion]
+fn apply_remove_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
+    for y in 0..src.height() {
+        let row_in = src.row(y);
+        let row_out = dst.row_mut(y);
+        for (out, &v) in row_out.iter_mut().zip(row_in.iter()) {
+            // Branch-free: copysign(max(|v| - range, 0.0), v)
+            let abs_v = v.abs();
+            let reduced = abs_v - range;
+            let clamped = if reduced > 0.0 { reduced } else { 0.0 };
+            *out = clamped.copysign(v);
+        }
+    }
+}
+
+/// Applies amplify_range_around_zero: dst[x] = src[x] + copysign(min(|src[x]|, range), src[x]).
+///
+/// Branch-free formulation for SIMD vectorization.
+#[archmage::autoversion]
+fn apply_amplify_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
+    for y in 0..src.height() {
+        let row_in = src.row(y);
+        let row_out = dst.row_mut(y);
+        for (out, &v) in row_out.iter_mut().zip(row_in.iter()) {
+            // Branch-free: v + copysign(min(|v|, range), v)
+            let abs_v = v.abs();
+            let boost = if abs_v < range { abs_v } else { range };
+            *out = v + boost.copysign(v);
+        }
+    }
+}
+
+/// Subtracts two images: dst[x] = a[x] - b[x].
+#[archmage::autoversion]
+fn subtract_images(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
+    for y in 0..a.height() {
+        let ra = a.row(y);
+        let rb = b.row(y);
+        let rd = dst.row_mut(y);
+        for ((d, &va), &vb) in rd.iter_mut().zip(ra.iter()).zip(rb.iter()) {
+            *d = va - vb;
+        }
+    }
+}
+
 /// Minimum pixel count to parallelize blur planes within frequency separation.
 /// Below this threshold, the overhead of spawning tasks exceeds the benefit.
 const MIN_PIXELS_FOR_BLUR_PARALLEL: usize = 768 * 768;
@@ -212,15 +260,7 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
             // Swap blurred into lf_out — both have same dimensions, avoids copy
             core::mem::swap(lf_out, &mut blurred);
             blurred.recycle(pool); // recycle the old dirty lf_out buffer
-            let w = xyb_plane.width();
-            for y in 0..xyb_plane.height() {
-                let row_orig = xyb_plane.row(y);
-                let row_lf = lf_out.row(y);
-                let row_mf = mf_out.row_mut(y);
-                for x in 0..w {
-                    row_mf[x] = row_orig[x] - row_lf[x];
-                }
-            }
+            subtract_images(xyb_plane, lf_out, mf_out);
         };
 
         maybe_join(
@@ -240,17 +280,7 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
             core::mem::swap(lf_plane, &mut blurred);
             blurred.recycle(pool);
             // MF = original - LF
-            let xyb_plane = xyb.plane(i);
-            let lf_plane = lf.plane(i);
-            let mf_plane = mf.plane_mut(i);
-            for y in 0..height {
-                let row_orig = xyb_plane.row(y);
-                let row_lf = lf_plane.row(y);
-                let row_mf = mf_plane.row_mut(y);
-                for x in 0..width {
-                    row_mf[x] = row_orig[x] - row_lf[x];
-                }
-            }
+            subtract_images(xyb.plane(i), lf.plane(i), mf.plane_mut(i));
         }
     }
 
@@ -270,31 +300,19 @@ fn separate_mf_hf_channel(
     use_amplify: bool,
     pool: &BufferPool,
 ) {
-    let width = mf_plane.width();
-    let height = mf_plane.height();
-
     // Blur the original MF plane
     let blurred = gaussian_blur(mf_plane, sigma, pool);
 
-    // Fused single pass: HF = orig - blurred, MF = range_adjusted(blurred)
-    for y in 0..height {
-        let row_orig = mf_plane.row(y);
-        let row_blurred = blurred.row(y);
-        let row_hf = hf_plane.row_mut(y);
-        for x in 0..width {
-            row_hf[x] = row_orig[x] - row_blurred[x];
-        }
-        let row_mf = mf_plane.row_mut(y);
-        if use_amplify {
-            for (mf_v, &b) in row_mf[..width].iter_mut().zip(row_blurred[..width].iter()) {
-                *mf_v = amplify_range_around_zero(b, range);
-            }
-        } else {
-            for (mf_v, &b) in row_mf[..width].iter_mut().zip(row_blurred[..width].iter()) {
-                *mf_v = remove_range_around_zero(b, range);
-            }
-        }
+    // HF = orig - blurred (autoversioned SIMD subtraction)
+    subtract_images(mf_plane, &blurred, hf_plane);
+
+    // MF = range_adjusted(blurred)
+    if use_amplify {
+        apply_amplify_range(&blurred, range, mf_plane);
+    } else {
+        apply_remove_range(&blurred, range, mf_plane);
     }
+
     blurred.recycle(pool);
 }
 
