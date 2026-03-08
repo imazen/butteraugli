@@ -368,16 +368,15 @@ fn convolve_vertical_v3(
 
         let row_out = output.row_mut(y);
         let mut x = 0;
-        while x < simd_width {
+        while x + 8 <= simd_width {
             let mut sum = f32x8::zero(token);
             for (ki, &kw) in ks.iter().enumerate() {
                 let src_y = miny + ki;
                 let row_in = input.row(src_y);
-                let loaded = f32x8::from_slice(token, &row_in[x..]);
+                let loaded = f32x8::load(token, (&row_in[x..x + 8]).try_into().unwrap());
                 sum = loaded.mul_add(f32x8::splat(token, kw * scale), sum);
             }
-            let results = sum.to_array();
-            row_out[x..x + 8].copy_from_slice(&results);
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
             x += 8;
         }
         while x < width {
@@ -405,14 +404,13 @@ fn convolve_vertical_v3(
         }
 
         let mut x = 0;
-        while x < simd_width {
+        while x + 8 <= simd_width {
             let mut sum = f32x8::zero(token);
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                let loaded = f32x8::from_slice(token, &rows[ki][x..]);
+                let loaded = f32x8::load(token, (&rows[ki][x..x + 8]).try_into().unwrap());
                 sum = loaded.mul_add(f32x8::splat(token, kw), sum);
             }
-            let results = sum.to_array();
-            row_out[x..x + 8].copy_from_slice(&results);
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
             x += 8;
         }
         while x < width {
@@ -438,16 +436,15 @@ fn convolve_vertical_v3(
 
         let row_out = output.row_mut(y);
         let mut x = 0;
-        while x < simd_width {
+        while x + 8 <= simd_width {
             let mut sum = f32x8::zero(token);
             for (ki, &kw) in ks.iter().enumerate() {
                 let src_y = miny + ki;
                 let row_in = input.row(src_y);
-                let loaded = f32x8::from_slice(token, &row_in[x..]);
+                let loaded = f32x8::load(token, (&row_in[x..x + 8]).try_into().unwrap());
                 sum = loaded.mul_add(f32x8::splat(token, kw * scale), sum);
             }
-            let results = sum.to_array();
-            row_out[x..x + 8].copy_from_slice(&results);
+            sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
             x += 8;
         }
         while x < width {
