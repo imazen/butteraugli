@@ -706,12 +706,17 @@ pub(crate) fn compute_butteraugli_imgref(
 /// intermediate Vec<u8> allocation.
 pub(crate) fn imgref_srgb_to_linear_f32(img: ImgRef<RGB8>) -> Vec<f32> {
     let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
-    img.rows()
-        .flat_map(|row| {
-            row.iter()
-                .flat_map(|px| [lut[px.r as usize], lut[px.g as usize], lut[px.b as usize]])
-        })
-        .collect()
+    let width = img.width();
+    let height = img.height();
+    let mut result = Vec::with_capacity(width * height * 3);
+    for row in img.rows() {
+        for px in row {
+            result.push(lut[px.r as usize]);
+            result.push(lut[px.g as usize]);
+            result.push(lut[px.b as usize]);
+        }
+    }
+    result
 }
 
 /// Implementation of butteraugli comparison for ImgRef<RGB<f32>>.
