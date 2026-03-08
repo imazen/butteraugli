@@ -201,15 +201,17 @@ impl ButteraugliReference {
             && height >= MIN_SIZE_FOR_SUBSAMPLE;
         let intensity_target = params.intensity_target();
 
-        // Run full-res and half-res in parallel (each with its own BufferPool)
-        let (full, half) = maybe_join(
+        // Run full-res and half-res in parallel (each with its own BufferPool).
+        // The full-res pool is returned and reused for compare calls.
+        let ((full, reuse_pool), half) = maybe_join(
             || {
                 let pool = BufferPool::new();
                 let xyb =
                     linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
                 let psycho = separate_frequencies(&xyb, &pool);
                 let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
-                ScaleData { psycho, mask }
+                xyb.recycle(&pool);
+                (ScaleData { psycho, mask }, pool)
             },
             || {
                 if need_half {
@@ -239,7 +241,7 @@ impl ButteraugliReference {
             width,
             height,
             params,
-            pool: BufferPool::new(),
+            pool: reuse_pool,
         })
     }
 
@@ -294,8 +296,11 @@ impl ButteraugliReference {
             && height >= MIN_SIZE_FOR_SUBSAMPLE;
         let intensity_target = params.intensity_target();
 
-        // Run full-res and half-res in parallel (each with its own BufferPool)
-        let (full, half) = maybe_join(
+        // Run full-res and half-res in parallel (each with its own BufferPool).
+        // The full-res pool is returned and reused for compare calls, so the
+        // first compare_linear_planar call reuses pre-warmed buffers instead
+        // of allocating + zeroing fresh memory.
+        let ((full, reuse_pool), half) = maybe_join(
             || {
                 let pool = BufferPool::new();
                 let xyb = linear_planar_to_xyb_butteraugli(
@@ -310,7 +315,9 @@ impl ButteraugliReference {
                 );
                 let psycho = separate_frequencies(&xyb, &pool);
                 let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
-                ScaleData { psycho, mask }
+                // Recycle xyb now — its buffers go back to pool for reuse
+                xyb.recycle(&pool);
+                (ScaleData { psycho, mask }, pool)
             },
             || {
                 if need_half {
@@ -349,7 +356,7 @@ impl ButteraugliReference {
             width,
             height,
             params,
-            pool: BufferPool::new(),
+            pool: reuse_pool,
         })
     }
 
