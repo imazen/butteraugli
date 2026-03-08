@@ -77,6 +77,7 @@ fn load_16(data: &[f32], start: usize) -> &[f32; 16] {
 
 /// Access a pixel in a 9x9 window at offset (dx, dy) from center.
 /// Center is at (4, 4), so valid offsets are -4..=4.
+#[cfg(test)]
 macro_rules! w {
     ($window:expr, $dx:expr, $dy:expr) => {
         $window[((4 + $dy) * 9 + (4 + $dx)) as usize]
@@ -87,6 +88,7 @@ macro_rules! w {
 ///
 /// Takes a 9x9 window centered on the target pixel and returns
 /// the sum of squared responses for 16 orientation patterns.
+#[cfg(test)]
 #[inline]
 fn malta_unit_window(window: &[f32; 81]) -> f32 {
     let mut retval = 0.0f32;
@@ -311,6 +313,7 @@ fn malta_unit_window(window: &[f32; 81]) -> f32 {
 /// Malta filter on a 9x9 window (LF band, 5 samples per line).
 ///
 /// Similar to `malta_unit_window` but with sparser sampling.
+#[cfg(test)]
 #[inline]
 fn malta_unit_lf_window(window: &[f32; 81]) -> f32 {
     let mut retval = 0.0f32;
@@ -482,6 +485,7 @@ fn malta_unit_lf_window(window: &[f32; 81]) -> f32 {
 ///
 /// For pixels near the border, out-of-bounds values are set to 0.0.
 #[inline]
+#[cfg(test)]
 fn extract_window(data: &ImageF, x: usize, y: usize) -> [f32; 81] {
     let width = data.width();
     let height = data.height();
@@ -1245,7 +1249,7 @@ fn malta_unit_lf_interior_8x_v3(
 ///
 /// Applies 16 different line kernels in various orientations centered at (x,y)
 /// and returns the sum of squared responses.
-///
+#[cfg(test)]
 pub fn malta_unit(data: &ImageF, x: usize, y: usize) -> f32 {
     // Use window copy approach - compiler can optimize fixed-size array access
     let window = extract_window(data, x, y);
@@ -1256,6 +1260,7 @@ pub fn malta_unit(data: &ImageF, x: usize, y: usize) -> f32 {
 ///
 /// Similar to `malta_unit` but with sparser sampling for low-frequency
 /// content. Uses 5 samples per line instead of 9.
+#[cfg(test)]
 pub fn malta_unit_lf(data: &ImageF, x: usize, y: usize) -> f32 {
     let window = extract_window(data, x, y);
     malta_unit_lf_window(&window)
@@ -1324,8 +1329,9 @@ fn malta_compute_scaled_diffs(
 
 /// Shared implementation for Malta diff map.
 ///
-/// The `interior_row` closure processes interior pixels (x in 4..width-4)
-/// for a single row, allowing SIMD dispatch at the inner loop level.
+/// The `interior_row` closure processes `count` pixels starting from
+/// `data[center_base]`, writing to `out[0..count]`. All pixels use the
+/// fast interior path thanks to zero-padded borders on the diff image.
 #[allow(clippy::inline_always, clippy::too_many_arguments)]
 #[inline(always)]
 fn malta_diff_map_impl<F>(
@@ -1364,71 +1370,38 @@ where
     let mut diffs = ImageF::from_pool_dirty(width, height, pool);
     malta_compute_scaled_diffs(lum0, lum1, norm2_0gt1, norm2_0lt1, norm1_f32, &mut diffs);
 
-    // Second pass: apply Malta filter
+    // Second pass: apply Malta filter with zero-padded borders.
+    //
+    // Create a padded copy of diffs with 4 pixels of zeros on each side.
+    // This eliminates all boundary handling — every pixel becomes "interior"
+    // and can use the fast SIMD path. The zero padding means border pixels
+    // see zeros outside the image, matching the C++ behavior where
+    // extract_window fills out-of-bounds with 0.0.
+    const PAD: usize = 4;
+    let pad_w = width + 2 * PAD;
+    let pad_h = height + 2 * PAD;
+    let mut padded = ImageF::from_pool_zeroed(pad_w, pad_h, pool);
+    let pad_stride = padded.stride();
+
+    // Copy diffs rows into the center of the padded image
+    for y in 0..height {
+        let src = diffs.row(y);
+        let dst = padded.row_mut(y + PAD);
+        dst[PAD..PAD + width].copy_from_slice(src);
+    }
+    diffs.recycle(pool);
+
     let mut block_diff_ac = ImageF::from_pool_dirty(width, height, pool);
+    let pad_data = padded.data();
 
-    {
-        let stride = diffs.stride();
-        let data = diffs.data();
-
-        // Top border (rows 0..4)
-        for y in 0..4.min(height) {
-            let out = block_diff_ac.row_mut(y);
-            for x in 0..width {
-                out[x] = if use_lf {
-                    malta_unit_lf(&diffs, x, y)
-                } else {
-                    malta_unit(&diffs, x, y)
-                };
-            }
-        }
-
-        // Middle rows (4..height-4)
-        if height > 8 {
-            for y in 4..height - 4 {
-                let out = block_diff_ac.row_mut(y);
-                let center_base = y * stride;
-
-                // Left border (x = 0..4)
-                for x in 0..4.min(width) {
-                    out[x] = if use_lf {
-                        malta_unit_lf(&diffs, x, y)
-                    } else {
-                        malta_unit(&diffs, x, y)
-                    };
-                }
-
-                // Interior - delegate to dispatch closure
-                if width > 8 {
-                    interior_row(data, center_base, stride, width, use_lf, out);
-                }
-
-                // Right border (x = width-4..width)
-                for x in (width - 4).max(4)..width {
-                    out[x] = if use_lf {
-                        malta_unit_lf(&diffs, x, y)
-                    } else {
-                        malta_unit(&diffs, x, y)
-                    };
-                }
-            }
-        }
-
-        // Bottom border (rows height-4..height)
-        for y in (height - 4).max(4.min(height))..height {
-            let out = block_diff_ac.row_mut(y);
-            for x in 0..width {
-                out[x] = if use_lf {
-                    malta_unit_lf(&diffs, x, y)
-                } else {
-                    malta_unit(&diffs, x, y)
-                };
-            }
-        }
+    // All rows use the interior SIMD path — no border handling needed
+    for y in 0..height {
+        let out = block_diff_ac.row_mut(y);
+        let center_base = (y + PAD) * pad_stride + PAD;
+        interior_row(pad_data, center_base, pad_stride, width, use_lf, out);
     }
 
-    // Recycle the temporary diff buffer back to pool
-    diffs.recycle(pool);
+    padded.recycle(pool);
 
     block_diff_ac
 }
@@ -1450,12 +1423,12 @@ fn malta_diff_map_dispatch_v3(
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
-                    width: usize,
+                    count: usize,
                     use_lf: bool,
                     out: &mut [f32]| {
-        let mut x = 4;
+        let mut x = 0;
         // SIMD 8-wide loop
-        while x + 8 <= width - 4 {
+        while x + 8 <= count {
             let center = center_base + x;
             let results = if use_lf {
                 malta_unit_lf_interior_8x_v3(token, data, center, stride)
@@ -1466,7 +1439,7 @@ fn malta_diff_map_dispatch_v3(
             x += 8;
         }
         // Scalar remainder
-        while x < width - 4 {
+        while x < count {
             let center = center_base + x;
             out[x] = if use_lf {
                 malta_unit_lf_interior(data, center, stride)
@@ -1841,12 +1814,12 @@ fn malta_diff_map_dispatch_v4(
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
-                    width: usize,
+                    count: usize,
                     use_lf: bool,
                     out: &mut [f32]| {
-        let mut x = 4;
+        let mut x = 0;
         // SIMD 16-wide loop
-        while x + 16 <= width - 4 {
+        while x + 16 <= count {
             let center = center_base + x;
             let results = if use_lf {
                 malta_unit_lf_interior_16x_v4(token, data, center, stride)
@@ -1857,7 +1830,7 @@ fn malta_diff_map_dispatch_v4(
             x += 16;
         }
         // Scalar remainder
-        while x < width - 4 {
+        while x < count {
             let center = center_base + x;
             out[x] = if use_lf {
                 malta_unit_lf_interior(data, center, stride)
@@ -2222,12 +2195,12 @@ fn malta_diff_map_dispatch_neon(
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
-                    width: usize,
+                    count: usize,
                     use_lf: bool,
                     out: &mut [f32]| {
-        let mut x = 4;
+        let mut x = 0;
         // SIMD 8-wide loop (2×NEON f32x4)
-        while x + 8 <= width - 4 {
+        while x + 8 <= count {
             let center = center_base + x;
             let results = if use_lf {
                 malta_unit_lf_interior_8x_neon(token, data, center, stride)
@@ -2238,7 +2211,7 @@ fn malta_diff_map_dispatch_neon(
             x += 8;
         }
         // Scalar remainder
-        while x < width - 4 {
+        while x < count {
             let center = center_base + x;
             out[x] = if use_lf {
                 malta_unit_lf_interior(data, center, stride)
@@ -2603,11 +2576,11 @@ fn malta_diff_map_dispatch_wasm128(
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
-                    width: usize,
+                    count: usize,
                     use_lf: bool,
                     out: &mut [f32]| {
-        let mut x = 4;
-        while x + 8 <= width - 4 {
+        let mut x = 0;
+        while x + 8 <= count {
             let center = center_base + x;
             let results = if use_lf {
                 malta_unit_lf_interior_8x_wasm128(token, data, center, stride)
@@ -2617,7 +2590,7 @@ fn malta_diff_map_dispatch_wasm128(
             results.store((&mut out[x..x + 8]).try_into().unwrap());
             x += 8;
         }
-        while x < width - 4 {
+        while x < count {
             let center = center_base + x;
             out[x] = if use_lf {
                 malta_unit_lf_interior(data, center, stride)
@@ -2646,10 +2619,10 @@ fn malta_diff_map_dispatch_scalar(
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
-                    width: usize,
+                    count: usize,
                     use_lf: bool,
                     out: &mut [f32]| {
-        for x in 4..width - 4 {
+        for x in 0..count {
             let center = center_base + x;
             out[x] = if use_lf {
                 malta_unit_lf_interior(data, center, stride)
