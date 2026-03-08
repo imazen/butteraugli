@@ -451,10 +451,8 @@ fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> 
 
     for y in 0..height {
         let row = diffmap.row(y);
-        for x in 0..width {
-            if row[x] > max_val {
-                max_val = row[x];
-            }
+        for &v in row {
+            max_val = max_val.max(v);
         }
     }
 
