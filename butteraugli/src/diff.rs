@@ -109,6 +109,32 @@ fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffma
     }
 }
 
+/// L2 difference (symmetric, write-only).
+///
+/// Like `l2_diff` but overwrites diffmap instead of accumulating.
+/// Use when diffmap is uninitialized or dirty — avoids needing zeroed memory.
+#[archmage::autoversion]
+fn l2_diff_write(
+    _token: archmage::SimdToken,
+    i0: &ImageF,
+    i1: &ImageF,
+    w: f32,
+    diffmap: &mut ImageF,
+) {
+    let height = i0.height();
+
+    for y in 0..height {
+        let row0 = i0.row(y);
+        let row1 = i1.row(y);
+        let row_diff = diffmap.row_mut(y);
+
+        for ((d, &v0), &v1) in row_diff.iter_mut().zip(row0.iter()).zip(row1.iter()) {
+            let diff = v0 - v1;
+            *d = diff * diff * w;
+        }
+    }
+}
+
 /// L2 difference asymmetric.
 ///
 /// This penalizes artifacts (original < reconstructed) more than blur
@@ -341,9 +367,9 @@ fn compute_psycho_diff_malta(
         &mut plane_y,
     );
 
-    // B channel: only L2Diff, must start zeroed
-    let mut plane_b = ImageF::new(width, height);
-    l2_diff(
+    // B channel: only L2Diff — use write-only variant (no zero-init needed)
+    let mut plane_b = ImageF::new_uninit(width, height);
+    l2_diff_write(
         ps0.mf.plane(2),
         ps1.mf.plane(2),
         WMUL[5] as f32,

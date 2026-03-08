@@ -892,9 +892,9 @@ fn compute_psycho_diff_malta(
         },
     );
 
-    // B channel L2Diff (small, run inline)
-    let mut plane_b = ImageF::from_pool_zeroed(width, height, pool);
-    l2_diff(
+    // B channel L2Diff — write-only variant (no zero-init needed)
+    let mut plane_b = ImageF::from_pool_dirty(width, height, pool);
+    l2_diff_write(
         ps0.mf.plane(2),
         ps1.mf.plane(2),
         WMUL[5] as f32,
@@ -967,6 +967,33 @@ fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffma
         for x in 0..width {
             let diff = row0[x] - row1[x];
             row_diff[x] += diff * diff * w;
+        }
+    }
+}
+
+/// L2 difference (symmetric, write-only) - autoversioned for autovectorization.
+///
+/// Like `l2_diff` but overwrites diffmap instead of accumulating.
+/// Use when diffmap is uninitialized or dirty.
+#[archmage::autoversion]
+fn l2_diff_write(
+    _token: archmage::SimdToken,
+    i0: &ImageF,
+    i1: &ImageF,
+    w: f32,
+    diffmap: &mut ImageF,
+) {
+    let width = i0.width();
+    let height = i0.height();
+
+    for y in 0..height {
+        let row0 = i0.row(y);
+        let row1 = i1.row(y);
+        let row_diff = diffmap.row_mut(y);
+
+        for x in 0..width {
+            let diff = row0[x] - row1[x];
+            row_diff[x] = diff * diff * w;
         }
     }
 }
