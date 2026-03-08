@@ -1054,6 +1054,10 @@ fn l2_diff_asymmetric(
 }
 
 /// Computes global score from diffmap - autoversioned for autovectorization.
+///
+/// Uses 8 independent max accumulators to break the loop-carried dependency,
+/// enabling LLVM to vectorize with vmaxps (8-wide packed max).
+/// Diffmap values are guaranteed non-NaN (output of sqrt of validated inputs).
 #[archmage::autoversion]
 fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> f64 {
     let width = diffmap.width();
@@ -1063,14 +1067,30 @@ fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> 
         return 0.0;
     }
 
-    let mut max_val = 0.0f32;
+    let mut lanes = [0.0f32; 8];
     for y in 0..height {
         let row = diffmap.row(y);
-        for &v in row {
-            max_val = max_val.max(v);
+        for chunk in row.chunks_exact(8) {
+            for (m, &v) in lanes.iter_mut().zip(chunk.iter()) {
+                if v > *m {
+                    *m = v;
+                }
+            }
+        }
+        for &v in row.chunks_exact(8).remainder() {
+            if v > lanes[0] {
+                lanes[0] = v;
+            }
         }
     }
 
+    // Horizontal reduction of 8 lanes
+    let mut max_val = lanes[0];
+    for &m in &lanes[1..] {
+        if m > max_val {
+            max_val = m;
+        }
+    }
     max_val as f64
 }
 
