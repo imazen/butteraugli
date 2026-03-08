@@ -27,6 +27,7 @@
 
 use crate::diff::maybe_join;
 use crate::image::{BufferPool, Image3F, ImageF};
+use crate::mask::PrecomputedMask;
 use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli};
 use crate::psycho::{PsychoImage, separate_frequencies};
 use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite_f32};
@@ -42,6 +43,8 @@ const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 struct ScaleData {
     /// Frequency-decomposed psychovisual image
     psycho: PsychoImage,
+    /// Precomputed reference-side mask (blur + fuzzy_erosion)
+    mask: PrecomputedMask,
 }
 
 /// Precomputed butteraugli reference data for fast repeated comparisons.
@@ -205,7 +208,8 @@ impl ButteraugliReference {
                 let xyb =
                     linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
                 let psycho = separate_frequencies(&xyb, &pool);
-                ScaleData { psycho }
+                let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
+                ScaleData { psycho, mask }
             },
             || {
                 if need_half {
@@ -214,7 +218,15 @@ impl ButteraugliReference {
                     let sub_xyb =
                         linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
                     let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-                    Some(ScaleData { psycho: sub_psycho })
+                    let sub_mask = crate::mask::precompute_reference_mask(
+                        &sub_psycho.hf,
+                        &sub_psycho.uhf,
+                        &pool,
+                    );
+                    Some(ScaleData {
+                        psycho: sub_psycho,
+                        mask: sub_mask,
+                    })
                 } else {
                     None
                 }
@@ -297,7 +309,8 @@ impl ButteraugliReference {
                     &pool,
                 );
                 let psycho = separate_frequencies(&xyb, &pool);
-                ScaleData { psycho }
+                let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
+                ScaleData { psycho, mask }
             },
             || {
                 if need_half {
@@ -315,7 +328,15 @@ impl ButteraugliReference {
                         &pool,
                     );
                     let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-                    Some(ScaleData { psycho: sub_psycho })
+                    let sub_mask = crate::mask::precompute_reference_mask(
+                        &sub_psycho.hf,
+                        &sub_psycho.uhf,
+                        &pool,
+                    );
+                    Some(ScaleData {
+                        psycho: sub_psycho,
+                        mask: sub_mask,
+                    })
                 } else {
                     None
                 }
@@ -530,6 +551,7 @@ impl ButteraugliReference {
         let height = self.height;
         let params = &self.params;
         let full_psycho = &self.full.psycho;
+        let full_mask = &self.full.mask;
         let half_ref = self.half.as_ref();
         let pool = &self.pool;
 
@@ -542,6 +564,7 @@ impl ButteraugliReference {
                 let dm = compute_diffmap_with_precomputed(
                     full_psycho,
                     &ps2,
+                    full_mask,
                     width,
                     height,
                     params,
@@ -560,6 +583,7 @@ impl ButteraugliReference {
                     let dm = compute_diffmap_with_precomputed(
                         &half.psycho,
                         &sub_ps,
+                        &half.mask,
                         sw,
                         sh,
                         params,
@@ -597,6 +621,7 @@ impl ButteraugliReference {
         let height = self.height;
         let params = &self.params;
         let full_psycho = &self.full.psycho;
+        let full_mask = &self.full.mask;
         let half_ref = self.half.as_ref();
         let pool = &self.pool;
 
@@ -617,6 +642,7 @@ impl ButteraugliReference {
                 let dm = compute_diffmap_with_precomputed(
                     full_psycho,
                     &ps2,
+                    full_mask,
                     width,
                     height,
                     params,
@@ -644,6 +670,7 @@ impl ButteraugliReference {
                     let dm = compute_diffmap_with_precomputed(
                         &half.psycho,
                         &sub_ps,
+                        &half.mask,
                         sw,
                         sh,
                         params,
@@ -678,12 +705,13 @@ use crate::consts::{
     W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X, WMUL,
 };
 use crate::malta::malta_diff_map;
-use crate::mask::{compute_mask_from_hf_uhf, mask_dc_y, mask_y};
+use crate::mask::{mask_dc_y, mask_y};
 
-/// Computes diffmap using precomputed reference PsychoImage.
+/// Computes diffmap using precomputed reference PsychoImage and precomputed mask.
 fn compute_diffmap_with_precomputed(
     ps1: &PsychoImage,
     ps2: &PsychoImage,
+    precomputed_mask: &PrecomputedMask,
     width: usize,
     height: usize,
     params: &ButteraugliParams,
@@ -693,8 +721,14 @@ fn compute_diffmap_with_precomputed(
     let mut block_diff_ac =
         compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul(), pool);
 
-    // Compute mask from both PsychoImages
-    let mask = mask_psycho_image(ps1, ps2, Some(block_diff_ac.plane_mut(1)), pool);
+    // Use precomputed reference mask, only compute distorted side
+    let mask = crate::mask::compute_mask_with_precomputed(
+        precomputed_mask,
+        &ps2.hf,
+        &ps2.uhf,
+        Some(block_diff_ac.plane_mut(1)),
+        pool,
+    );
 
     // Compute DC (LF) differences (fully overwritten by compute_lf_diff)
     let mut block_diff_dc = Image3F::from_pool_dirty(width, height, pool);
@@ -888,17 +922,6 @@ fn compute_psycho_diff_malta(
     );
 
     Image3F::from_planes(plane_x, plane_y, plane_b)
-}
-
-/// Computes mask from two PsychoImages.
-fn mask_psycho_image(
-    ps0: &PsychoImage,
-    ps1: &PsychoImage,
-    diff_ac: Option<&mut ImageF>,
-    pool: &BufferPool,
-) -> ImageF {
-    // Fused combine_channels + diff_precompute eliminates intermediate buffers
-    compute_mask_from_hf_uhf(&ps0.hf, &ps0.uhf, &ps1.hf, &ps1.uhf, diff_ac, pool)
 }
 
 /// Combines channels to produce final diffmap - autoversioned for autovectorization.

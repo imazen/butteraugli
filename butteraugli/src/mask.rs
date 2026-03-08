@@ -278,6 +278,77 @@ fn accumulate_mask_to_error(
     }
 }
 
+/// Precomputed reference-side mask data.
+///
+/// Stores the results of combine+precompute → blur → fuzzy_erosion for the
+/// reference image's HF/UHF bands, so these can be reused across multiple
+/// comparisons without recomputation.
+#[derive(Clone)]
+pub struct PrecomputedMask {
+    /// Fuzzy-eroded blurred mask (used as the final mask in combine_channels_to_diffmap)
+    pub mask: ImageF,
+    /// Blurred combined channels (used for accumulate_mask_to_error)
+    pub blurred: ImageF,
+}
+
+/// Precomputes the reference-side mask from HF/UHF frequency bands.
+///
+/// This performs combine_and_precompute + gaussian_blur + fuzzy_erosion on the
+/// reference image only. The result can be stored and reused for every comparison.
+pub fn precompute_reference_mask(
+    hf: &[ImageF; 2],
+    uhf: &[ImageF; 2],
+    pool: &BufferPool,
+) -> PrecomputedMask {
+    let width = hf[0].width();
+    let height = hf[0].height();
+
+    let mut diff = ImageF::from_pool_dirty(width, height, pool);
+    combine_and_precompute(hf, uhf, &mut diff);
+
+    let blurred = gaussian_blur(&diff, MASK_RADIUS, pool);
+    diff.recycle(pool);
+
+    let mut mask = ImageF::from_pool_dirty(width, height, pool);
+    fuzzy_erosion(&blurred, &mut mask);
+
+    PrecomputedMask { mask, blurred }
+}
+
+/// Computes the comparison mask using precomputed reference data.
+///
+/// Only runs combine_and_precompute + blur on the distorted image's HF/UHF bands.
+/// Uses the precomputed blurred reference mask for the mask-to-error accumulation.
+pub fn compute_mask_with_precomputed(
+    precomputed: &PrecomputedMask,
+    hf1: &[ImageF; 2],
+    uhf1: &[ImageF; 2],
+    diff_ac: Option<&mut ImageF>,
+    pool: &BufferPool,
+) -> ImageF {
+    let width = hf1[0].width();
+    let height = hf1[0].height();
+
+    // Only compute the distorted side
+    let mut diff1 = ImageF::from_pool_dirty(width, height, pool);
+    combine_and_precompute(hf1, uhf1, &mut diff1);
+
+    let blurred1 = gaussian_blur(&diff1, MASK_RADIUS, pool);
+    diff1.recycle(pool);
+
+    // Accumulate mask-to-error using precomputed reference blur
+    if let Some(ac) = diff_ac {
+        accumulate_mask_to_error(&precomputed.blurred, &blurred1, ac);
+    }
+
+    blurred1.recycle(pool);
+
+    // Clone the precomputed mask (it's reused across comparisons)
+    let mut mask = ImageF::from_pool_dirty(width, height, pool);
+    mask.copy_from(&precomputed.mask);
+    mask
+}
+
 /// Computes mask from both images' psychovisual representations.
 ///
 /// Matches C++ Mask function (butteraugli.cc lines 1212-1247).
