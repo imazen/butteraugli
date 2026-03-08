@@ -275,7 +275,7 @@ fn separate_mf_hf_channel(
     // Blur the original MF plane
     let blurred = gaussian_blur(mf_plane, sigma, pool);
 
-    // Pass 1: HF = original_mf - blurred (mf_plane still holds the original)
+    // Fused single pass: HF = orig - blurred, MF = range_adjusted(blurred)
     for y in 0..height {
         let row_orig = mf_plane.row(y);
         let row_blurred = blurred.row(y);
@@ -283,17 +283,14 @@ fn separate_mf_hf_channel(
         for x in 0..width {
             row_hf[x] = row_orig[x] - row_blurred[x];
         }
-    }
-
-    // Pass 2: MF = range_adjusted(blurred) (overwrite mf_plane)
-    for y in 0..height {
-        let row_blurred = blurred.row(y);
         let row_mf = mf_plane.row_mut(y);
-        for x in 0..width {
-            if use_amplify {
-                row_mf[x] = amplify_range_around_zero(row_blurred[x], range);
-            } else {
-                row_mf[x] = remove_range_around_zero(row_blurred[x], range);
+        if use_amplify {
+            for (mf_v, &b) in row_mf[..width].iter_mut().zip(row_blurred[..width].iter()) {
+                *mf_v = amplify_range_around_zero(b, range);
+            }
+        } else {
+            for (mf_v, &b) in row_mf[..width].iter_mut().zip(row_blurred[..width].iter()) {
+                *mf_v = remove_range_around_zero(b, range);
             }
         }
     }
@@ -371,7 +368,7 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                 let uhf_x = &mut uhf_x_slice[0];
                 let blurred = gaussian_blur(hf_x, sigma, pool);
 
-                // UHF = original_hf - blurred, with range adjustment
+                // Fused: UHF = range(orig - blurred), HF = range(blurred)
                 for y in 0..height {
                     let row_orig = hf_x.row(y);
                     let row_blurred = blurred.row(y);
@@ -380,11 +377,6 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                         let uhf_val = row_orig[x] - row_blurred[x];
                         row_uhf[x] = remove_range_around_zero(uhf_val, REMOVE_UHF_RANGE as f32);
                     }
-                }
-
-                // HF = range_adjusted(blurred)
-                for y in 0..height {
-                    let row_blurred = blurred.row(y);
                     let row_hf = hf_x.row_mut(y);
                     for x in 0..width {
                         row_hf[x] =
@@ -398,7 +390,8 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                 let uhf_y = &mut uhf_y_slice[0];
                 let blurred = gaussian_blur(hf_y, sigma, pool);
 
-                // UHF = clamp(original_hf - clamp(blurred)), with scaling
+                // Fused: UHF = clamp(orig - clamp(blurred)) * scale,
+                //        HF = amplify_range(clamp(blurred) * scale)
                 for y in 0..height {
                     let row_orig = hf_y.row(y);
                     let row_blurred = blurred.row(y);
@@ -409,11 +402,6 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                         let uhf_clamped = maximum_clamp(uhf_val, MAXCLAMP_UHF as f32);
                         row_uhf[x] = uhf_clamped * MUL_Y_UHF as f32;
                     }
-                }
-
-                // HF = amplify_range(clamp(blurred) * scale)
-                for y in 0..height {
-                    let row_blurred = blurred.row(y);
                     let row_hf = hf_y.row_mut(y);
                     for x in 0..width {
                         let hf_clamped = maximum_clamp(row_blurred[x], MAXCLAMP_HF as f32);
@@ -431,7 +419,7 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
         for i in 0..2 {
             let blurred = gaussian_blur(&hf[i], sigma, pool);
 
-            // UHF = original_hf - blurred, with adjustments
+            // Fused: UHF = adjusted(orig - blurred), HF = adjusted(blurred)
             for y in 0..height {
                 let row_orig = hf[i].row(y);
                 let row_blurred = blurred.row(y);
@@ -447,11 +435,6 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
                         row_uhf[x] = uhf_clamped * MUL_Y_UHF as f32;
                     }
                 }
-            }
-
-            // HF = adjusted(blurred)
-            for y in 0..height {
-                let row_blurred = blurred.row(y);
                 let row_hf = hf[i].row_mut(y);
                 for x in 0..width {
                     if i == 0 {

@@ -195,7 +195,7 @@ pub fn mask_dc_y(delta: f64) -> f64 {
 pub fn compute_mask(
     mask0: &ImageF,
     mask1: &ImageF,
-    mut diff_ac: Option<&mut ImageF>,
+    diff_ac: Option<&mut ImageF>,
     pool: &BufferPool,
 ) -> ImageF {
     let width = mask0.width();
@@ -215,18 +215,13 @@ pub fn compute_mask(
     diff0.recycle(pool);
     diff1.recycle(pool);
 
-    // FuzzyErosion on blurred0
-    let mut eroded0 = ImageF::from_pool_dirty(width, height, pool);
-    fuzzy_erosion(&blurred0, &mut eroded0);
-
-    // Final mask computation (fully overwritten via copy_from_slice)
+    // FuzzyErosion on blurred0 — result IS the mask (no copy needed)
     let mut mask = ImageF::from_pool_dirty(width, height, pool);
-    for y in 0..height {
-        let eroded_row = eroded0.row(y);
-        let mask_row = mask.row_mut(y);
-        mask_row[..width].copy_from_slice(&eroded_row[..width]);
+    fuzzy_erosion(&blurred0, &mut mask);
 
-        if let Some(ref mut ac) = diff_ac {
+    // Accumulate mask-to-error difference into diff_ac if requested
+    if let Some(ac) = diff_ac {
+        for y in 0..height {
             let b0 = blurred0.row(y);
             let b1 = blurred1.row(y);
             let ac_row = ac.row_mut(y);
@@ -239,7 +234,6 @@ pub fn compute_mask(
 
     blurred0.recycle(pool);
     blurred1.recycle(pool);
-    eroded0.recycle(pool);
     mask
 }
 
