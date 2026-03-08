@@ -26,7 +26,7 @@ exclude = [
 ]
 
 [features]
-default = ["rayon"]
+default = ["rayon", "avx512"]
 # Expose internal modules for testing/benchmarking. Not a stable API.
 internals = []
 # Use unchecked indexing in hot loops (Malta filters) for ~6% fewer instructions.
@@ -34,6 +34,8 @@ internals = []
 unsafe-performance = []
 # Multi-threaded parallelism via rayon. Enabled by default.
 rayon = ["dep:rayon"]
+# AVX-512 runtime dispatch (code paths compiled but only used if CPU supports).
+avx512 = ["archmage/avx512", "magetypes/avx512"]
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
 # Enable via: cargo test --features cpp-parity (after setting up local path in .cargo/config.toml)
 # cpp-parity = ["dep:jpegli-internals-sys"]
