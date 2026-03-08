@@ -15,6 +15,10 @@
 //! indexing after a single bounds assertion, eliminating per-access bounds
 //! checks for ~6% fewer instructions.
 
+// archmage::arcane generates wrapper functions that inherit the arg count
+// but not the #[allow] attribute
+#![allow(clippy::too_many_arguments)]
+
 use crate::image::{BufferPool, ImageF};
 
 /// Read a single f32 from a data slice.
@@ -1245,6 +1249,7 @@ pub fn malta_unit_lf(data: &ImageF, x: usize, y: usize) -> f32 {
 /// with asymmetric weighting to penalize artifacts differently than blur.
 ///
 /// Uses SIMD dispatch: on AVX2+ CPUs, processes 8 interior pixels simultaneously.
+#[allow(clippy::too_many_arguments)]
 pub fn malta_diff_map(
     lum0: &ImageF,
     lum1: &ImageF,

@@ -539,7 +539,14 @@ impl ButteraugliReference {
                 let xyb2 =
                     linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool);
                 let ps2 = separate_frequencies(&xyb2, pool);
-                let dm = compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, pool);
+                let dm = compute_diffmap_with_precomputed(
+                    full_psycho,
+                    &ps2,
+                    width,
+                    height,
+                    params,
+                    pool,
+                );
                 ps2.recycle(pool);
                 xyb2.recycle(pool);
                 dm
@@ -550,7 +557,14 @@ impl ButteraugliReference {
                     let sub_xyb =
                         linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, pool);
                     let sub_ps = separate_frequencies(&sub_xyb, pool);
-                    let dm = compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, pool);
+                    let dm = compute_diffmap_with_precomputed(
+                        &half.psycho,
+                        &sub_ps,
+                        sw,
+                        sh,
+                        params,
+                        pool,
+                    );
                     sub_ps.recycle(pool);
                     sub_xyb.recycle(pool);
                     dm
@@ -600,7 +614,14 @@ impl ButteraugliReference {
                     pool,
                 );
                 let ps2 = separate_frequencies(&xyb2, pool);
-                let dm = compute_diffmap_with_precomputed(full_psycho, &ps2, width, height, params, pool);
+                let dm = compute_diffmap_with_precomputed(
+                    full_psycho,
+                    &ps2,
+                    width,
+                    height,
+                    params,
+                    pool,
+                );
                 ps2.recycle(pool);
                 xyb2.recycle(pool);
                 dm
@@ -620,7 +641,14 @@ impl ButteraugliReference {
                         pool,
                     );
                     let sub_ps = separate_frequencies(&sub_xyb, pool);
-                    let dm = compute_diffmap_with_precomputed(&half.psycho, &sub_ps, sw, sh, params, pool);
+                    let dm = compute_diffmap_with_precomputed(
+                        &half.psycho,
+                        &sub_ps,
+                        sw,
+                        sh,
+                        params,
+                        pool,
+                    );
                     sub_ps.recycle(pool);
                     sub_xyb.recycle(pool);
                     dm
