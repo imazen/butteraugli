@@ -1074,21 +1074,40 @@ fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> 
     max_val as f64
 }
 
-/// Adds supersampled diffmap contribution.
-fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
-    let width = dest.width();
-    let height = dest.height();
+/// Adds supersampled diffmap contribution (2× upsampling with blending).
+///
+/// Processes pairs of destination pixels that share the same source pixel,
+/// enabling sequential access on both src and dst for better vectorization.
+#[archmage::autoversion]
+fn add_supersampled_2x(_token: archmage::SimdToken, src: &ImageF, weight: f32, dest: &mut ImageF) {
+    let dest_width = dest.width();
+    let dest_height = dest.height();
     const K_HEURISTIC_MIXING_VALUE: f32 = 0.3;
-
     let blend = 1.0 - K_HEURISTIC_MIXING_VALUE * weight;
     let src_w = src.width();
-    for y in 0..height {
-        let src_y = (y / 2).min(src.height() - 1);
+    let src_h = src.height();
+
+    for y in 0..dest_height {
+        let src_y = (y / 2).min(src_h - 1);
         let src_row = src.row(src_y);
         let dst_row = dest.row_mut(y);
-        for x in 0..width {
-            let src_val = src_row[(x / 2).min(src_w - 1)];
-            dst_row[x] = dst_row[x] * blend + weight * src_val;
+
+        // Process pairs of dest pixels that share the same source pixel.
+        // For standard half→full upsample, this covers all or all-but-one pixels.
+        let n_pairs = (dest_width / 2).min(src_w);
+        for (pair, &sv) in dst_row[..n_pairs * 2]
+            .chunks_exact_mut(2)
+            .zip(src_row[..n_pairs].iter())
+        {
+            let ws = weight * sv;
+            pair[0] = pair[0].mul_add(blend, ws);
+            pair[1] = pair[1].mul_add(blend, ws);
+        }
+
+        // Handle odd trailing pixel (when dest_width is odd)
+        if dest_width > n_pairs * 2 {
+            let sv = src_row[(dest_width / 2).min(src_w - 1)];
+            dst_row[dest_width - 1] = dst_row[dest_width - 1].mul_add(blend, weight * sv);
         }
     }
 }
