@@ -123,6 +123,36 @@ dest[y][x] += 0.5 * src[y/2][x/2];
 
 ## Performance Notes
 
+### Optimization session 5 (2026-03-08)
+
+Malta zero-padding to eliminate border handling, f32 mask computation.
+
+| Optimization | Instructions (bench V3) | Reduction |
+|-------------|----------------------|-----------|
+| Baseline (post-session-4) | 9,269M | — |
+| Malta zero-padding (eliminate extract_window) | 8,657M | -6.6% |
+| f32 mask + border-only zeroing | 8,391M | -3.1% |
+
+Total: 9,269M → 8,391M = 878M / 9.5% reduction.
+
+Key techniques:
+- Zero-pad Malta diff image with 4px borders so ALL pixels use fast SIMD interior path.
+  Eliminates extract_window (369M) and scalar malta_unit border path (97M).
+- Border-only zeroing: only zero the border strips (~2% of padded image) instead of
+  the entire image. Interior gets overwritten by the copy.
+- Convert mask_y/mask_dc_y from f64 to f32 inline in combine_channels_to_diffmap_fused.
+  The f64 division blocked SIMD vectorization. f32 precision is sufficient (34M → 25M per call).
+
+Remaining profile (V3 callgrind, bench 512x512, 21 iterations):
+- blur v3: 3,298M (39.3%) — algorithmic minimum, V4 runs natively
+- malta v3: 2,590M (30.9%) — algorithmic minimum, V4 runs natively
+- memset: 521M (6.2%) — pool allocation zeroing, needs `unsafe-performance`
+- blur_5x5 v3: 309M (3.7%) — opsin preprocessing
+- opsin v3: 269M (3.2%) — gamma/log2
+- srgb_to_linear: 196M (2.3%) — one-shot only
+- malta_compute_scaled_diffs v3: 173M (2.1%)
+- All other functions < 1.5% each
+
 ### Optimization session 4 (2026-03-08)
 
 Reference mask precomputation, branch-free autoversioned per-pixel transforms,
