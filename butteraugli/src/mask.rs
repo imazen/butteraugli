@@ -25,7 +25,13 @@ use crate::image::{BufferPool, ImageF};
 /// is considered less important in the high frequency area.
 ///
 /// Matches C++ CombineChannelsForMasking (butteraugli.cc lines 1108-1132).
-pub fn combine_channels_for_masking(hf: &[ImageF; 2], uhf: &[ImageF; 2], out: &mut ImageF) {
+#[archmage::autoversion]
+pub fn combine_channels_for_masking(
+    _token: archmage::SimdToken,
+    hf: &[ImageF; 2],
+    uhf: &[ImageF; 2],
+    out: &mut ImageF,
+) {
     let width = hf[0].width();
     let height = hf[0].height();
 
@@ -52,7 +58,14 @@ pub fn combine_channels_for_masking(hf: &[ImageF; 2], uhf: &[ImageF; 2], out: &m
 ///
 /// Applies sqrt-like transformation to make values more perceptually uniform.
 /// Matches C++ DiffPrecompute (butteraugli.cc lines 1134-1147).
-pub fn diff_precompute(xyb: &ImageF, mul: f32, bias_arg: f32, out: &mut ImageF) {
+#[archmage::autoversion]
+pub fn diff_precompute(
+    _token: archmage::SimdToken,
+    xyb: &ImageF,
+    mul: f32,
+    bias_arg: f32,
+    out: &mut ImageF,
+) {
     let width = xyb.width();
     let height = xyb.height();
     let bias = mul * bias_arg;
