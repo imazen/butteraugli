@@ -753,15 +753,24 @@ fn convolve_vertical_v3(
     }
 
     // Interior rows (no border handling needed)
+    // Pre-allocate row pointer vec to avoid per-x-chunk bounds checks
+    let kernel_len = scaled_kernel.len();
+    let mut rows: Vec<&[f32]> = Vec::with_capacity(kernel_len);
     for y in border_top..border_bottom {
         let row_out = output.row_mut(y);
         let start_y = y - half;
+
+        // Collect row slices once per output row
+        rows.clear();
+        for ki in 0..kernel_len {
+            rows.push(input.row(start_y + ki));
+        }
+
         let mut x = 0;
         while x < simd_width {
             let mut sum = f32x8::zero(token);
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                let row_in = input.row(start_y + ki);
-                let loaded = f32x8::from_slice(token, &row_in[x..]);
+                let loaded = f32x8::from_slice(token, &rows[ki][x..]);
                 sum = loaded.mul_add(f32x8::splat(token, kw), sum);
             }
             let results = sum.to_array();
@@ -771,7 +780,7 @@ fn convolve_vertical_v3(
         while x < width {
             let mut sum = 0.0f32;
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                sum += input.row(start_y + ki)[x] * kw;
+                sum += rows[ki][x] * kw;
             }
             row_out[x] = sum;
             x += 1;
@@ -874,15 +883,22 @@ fn convolve_vertical_v4(
         process_border_row(y, miny, ks, scale, row_out);
     }
 
+    let kernel_len = scaled_kernel.len();
+    let mut rows: Vec<&[f32]> = Vec::with_capacity(kernel_len);
     for y in border_top..border_bottom {
         let row_out = output.row_mut(y);
         let start_y = y - half;
+
+        rows.clear();
+        for ki in 0..kernel_len {
+            rows.push(input.row(start_y + ki));
+        }
+
         let mut x = 0;
         while x + 16 <= simd_width {
             let mut sum = f32x16::zero(token);
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                let row_in = input.row(start_y + ki);
-                let loaded = f32x16::from_slice(token, &row_in[x..]);
+                let loaded = f32x16::from_slice(token, &rows[ki][x..]);
                 sum = loaded.mul_add(f32x16::splat(token, kw), sum);
             }
             let results = sum.to_array();
@@ -892,7 +908,7 @@ fn convolve_vertical_v4(
         while x < width {
             let mut sum = 0.0f32;
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                sum += input.row(start_y + ki)[x] * kw;
+                sum += rows[ki][x] * kw;
             }
             row_out[x] = sum;
             x += 1;
@@ -969,15 +985,22 @@ fn convolve_vertical_neon(
         process_border_row(miny, ks, scale, output.row_mut(y));
     }
 
+    let kernel_len = scaled_kernel.len();
+    let mut rows: Vec<&[f32]> = Vec::with_capacity(kernel_len);
     for y in border_top..border_bottom {
         let row_out = output.row_mut(y);
         let start_y = y - half;
+
+        rows.clear();
+        for ki in 0..kernel_len {
+            rows.push(input.row(start_y + ki));
+        }
+
         let mut x = 0;
         while x + 8 <= simd_width {
             let mut sum = f32x8::zero(token);
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                let row_in = input.row(start_y + ki);
-                let loaded = f32x8::load(token, (&row_in[x..x + 8]).try_into().unwrap());
+                let loaded = f32x8::load(token, (&rows[ki][x..x + 8]).try_into().unwrap());
                 sum = loaded.mul_add(f32x8::splat(token, kw), sum);
             }
             sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
@@ -986,7 +1009,7 @@ fn convolve_vertical_neon(
         while x < width {
             let mut sum = 0.0f32;
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                sum += input.row(start_y + ki)[x] * kw;
+                sum += rows[ki][x] * kw;
             }
             row_out[x] = sum;
             x += 1;
@@ -1061,15 +1084,22 @@ fn convolve_vertical_wasm128(
         process_border_row(miny, ks, scale, output.row_mut(y));
     }
 
+    let kernel_len = scaled_kernel.len();
+    let mut rows: Vec<&[f32]> = Vec::with_capacity(kernel_len);
     for y in border_top..border_bottom {
         let row_out = output.row_mut(y);
         let start_y = y - half;
+
+        rows.clear();
+        for ki in 0..kernel_len {
+            rows.push(input.row(start_y + ki));
+        }
+
         let mut x = 0;
         while x + 8 <= simd_width {
             let mut sum = f32x8::zero(token);
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                let row_in = input.row(start_y + ki);
-                let loaded = f32x8::load(token, (&row_in[x..x + 8]).try_into().unwrap());
+                let loaded = f32x8::load(token, (&rows[ki][x..x + 8]).try_into().unwrap());
                 sum = loaded.mul_add(f32x8::splat(token, kw), sum);
             }
             sum.store((&mut row_out[x..x + 8]).try_into().unwrap());
@@ -1078,7 +1108,7 @@ fn convolve_vertical_wasm128(
         while x < width {
             let mut sum = 0.0f32;
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                sum += input.row(start_y + ki)[x] * kw;
+                sum += rows[ki][x] * kw;
             }
             row_out[x] = sum;
             x += 1;
@@ -1137,13 +1167,21 @@ fn convolve_vertical_scalar(
         process_border_row(miny, ks, scale, output.row_mut(y));
     }
 
+    let kernel_len = scaled_kernel.len();
+    let mut rows: Vec<&[f32]> = Vec::with_capacity(kernel_len);
     for y in border_top..border_bottom {
         let row_out = output.row_mut(y);
         let start_y = y - half;
+
+        rows.clear();
+        for ki in 0..kernel_len {
+            rows.push(input.row(start_y + ki));
+        }
+
         for x in 0..width {
             let mut sum = 0.0f32;
             for (ki, &kw) in scaled_kernel.iter().enumerate() {
-                sum += input.row(start_y + ki)[x] * kw;
+                sum += rows[ki][x] * kw;
             }
             row_out[x] = sum;
         }
