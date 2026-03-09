@@ -23,6 +23,7 @@ exclude = [
     "tests/intermediate_values.rs",
     "tests/step_by_step_comparison.rs",
     "tests/reference_parity.rs",
+    "tests/capture_cpp_scores.rs",
 ]
 
 [features]
