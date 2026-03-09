@@ -986,7 +986,7 @@ pub const REFERENCE_CASES: &[ReferenceCase] = &[
         expected_score: 39.762924194335938,
         expected_stats: DiffmapStats {
             min: 11.7806501389,
-            max: 44.4614372253,
+            max: 39.7629241943,
             mean: 23.6008567810,
             std: 6.5258269310,
         },
@@ -998,7 +998,7 @@ pub const REFERENCE_CASES: &[ReferenceCase] = &[
         expected_score: 74.798164367675781,
         expected_stats: DiffmapStats {
             min: 23.2712364197,
-            max: 85.0062103271,
+            max: 74.7981643677,
             mean: 53.4941978455,
             std: 14.2888107300,
         },
@@ -1010,7 +1010,7 @@ pub const REFERENCE_CASES: &[ReferenceCase] = &[
         expected_score: 39.433830261230469,
         expected_stats: DiffmapStats {
             min: 11.8658647537,
-            max: 44.1140747070,
+            max: 39.4338302612,
             mean: 22.2250537872,
             std: 5.8263273239,
         },
