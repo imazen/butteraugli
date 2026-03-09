@@ -23,28 +23,34 @@ exclude = [
     "tests/intermediate_values.rs",
     "tests/step_by_step_comparison.rs",
     "tests/reference_parity.rs",
+    "tests/capture_cpp_scores.rs",
 ]
 
 [features]
-default = []
+default = ["rayon", "avx512"]
 # Expose internal modules for testing/benchmarking. Not a stable API.
 internals = []
 # Use unchecked indexing in hot loops (Malta filters) for ~6% fewer instructions.
 # Safety: each function pre-validates the full access range with an assert!().
 unsafe-performance = []
+# Multi-threaded parallelism via rayon. Enabled by default.
+rayon = ["dep:rayon"]
+# AVX-512 runtime dispatch (code paths compiled but only used if CPU supports).
+avx512 = ["archmage/avx512", "magetypes/avx512"]
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
 # Enable via: cargo test --features cpp-parity (after setting up local path in .cargo/config.toml)
 # cpp-parity = ["dep:jpegli-internals-sys"]
 
 [lints.rust]
 # cpp-parity tests check for a feature not published to crates.io
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cpp-parity", "avx512"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cpp-parity", "avx512", "rayon"))'] }
 
 [dependencies]
 archmage.workspace = true
 magetypes.workspace = true
 imgref.workspace = true
 rgb.workspace = true
+rayon = { workspace = true, optional = true }
 
 # C++ butteraugli bindings for parity testing (not on crates.io)
 # For local C++ parity testing, add jpegli-internals-sys to .cargo/config.toml

@@ -131,21 +131,38 @@ SIMD-accelerated via [`archmage`](https://crates.io/crates/archmage) with runtim
 
 No C dependencies. Safe Rust by default (`unsafe-performance` is opt-in).
 
+### vs libjxl C++ `butteraugli_main`
+
+Benchmarked on AMD Ryzen 9 7950X (Zen 4), sRGB-only PNGs (no ICC profiles), mozjpeg q100 vs q50, 5 iterations per image:
+
+| Image | Single-threaded | Multi-threaded (32T) |
+|-------|:-:|:-:|
+| 1022x818 | 1.2x faster | 1.5x faster |
+| 1024x1024 (3 images) | 1.0-1.3x faster | 1.5-2.0x faster |
+| 512x512 | 1.3x faster | 1.6x faster |
+
+Multi-threaded gains are larger because Rust parallelizes blur and Malta filter passes via rayon, while `butteraugli_main` shows no effective threading benefit on these image sizes.
+
 ## Accuracy
 
-Validated against libjxl's `butteraugli_main` on 21 real photograph pairs across multiple sizes and JPEG quality levels:
+Validated against libjxl's `butteraugli_main` on sRGB photographs (no ICC profiles or gAMA/cHRM chunks) across multiple sizes and JPEG quality levels:
 
-| Image | C++ libjxl | Rust | Relative Diff |
-|-------|-----------|------|--------------|
-| baby (576x576, Q75) | 3.0873 | 3.0873 | 0.0000% |
-| bulb (576x576, Q75) | 2.3174 | 2.3174 | 0.0003% |
-| city (576x576, Q75) | 3.8511 | 3.8511 | 0.0000% |
-| guitar (576x576, Q75) | 6.5399 | 6.5399 | 0.0000% |
-| ... (6 more at 576x576) | | | < 0.0001% |
-| 3 images at Q50/Q90 | | | < 0.0001% |
-| 5 images at 1024-2048px | | | < 0.0001% |
+| Image | Size | Quality | C++ libjxl | Rust | Relative Diff |
+|-------|------|---------|-----------|------|--------------|
+| baby | 576x576 | Q75 | 3.0873 | 3.0873 | 0.0000% |
+| bulb | 576x576 | Q75 | 2.3174 | 2.3174 | 0.0003% |
+| city | 576x576 | Q75 | 3.8511 | 3.8511 | 0.0000% |
+| guitar | 576x576 | Q75 | 6.5399 | 6.5399 | 0.0000% |
+| photo A | 1024x1024 | Q25 | 11.3686 | 11.3686 | 0.0000% |
+| photo A | 1024x1024 | Q50 | 4.9663 | 4.9663 | 0.0000% |
+| photo A | 1024x1024 | Q90 | 1.8161 | 1.8161 | 0.0007% |
+| photo B | 1024x1024 | Q75 | 2.9628 | 2.9628 | 0.0003% |
+| photo C | 1024x1024 | Q50 | 3.1502 | 3.1502 | 0.0000% |
+| photo D | 1022x818 | Q50 | 5.4199 | 5.4199 | 0.0000% |
 
-**All 21 test pairs: < 0.0003% relative difference vs libjxl.**
+**All test pairs: < 0.001% relative difference vs libjxl `butteraugli_main`.** Residual differences are FMA rounding noise from hardware fused multiply-add instructions.
+
+> **ICC profiles:** This crate assumes sRGB input. libjxl's `butteraugli_main` applies ICC profile and gAMA/cHRM transforms via its CMS before scoring. Images with non-sRGB ICC profiles (Adobe RGB, Display P3, ProPhoto RGB) will produce different scores between the two implementations. Strip ICC profiles or convert to sRGB before comparing.
 
 ## API Comparison with C++ libjxl
 
@@ -153,6 +170,7 @@ Validated against libjxl's `butteraugli_main` on 21 real photograph pairs across
 |---------|-----------------|------------|
 | Input format | Linear RGB float | sRGB u8 or linear RGB f32 |
 | Color space | Linear RGB only | sRGB (auto-converted) or linear |
+| ICC profiles | CMS transforms to linear sRGB | Assumes sRGB (profiles ignored) |
 | Channel layout | Planar | Interleaved RGB via `imgref` |
 | Stride support | Manual | Built-in via `ImgRef::new_stride()` |
 

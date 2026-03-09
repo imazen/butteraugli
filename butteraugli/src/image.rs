@@ -4,17 +4,34 @@
 //! with row-stride support for cache-friendly access patterns.
 
 use imgref::ImgVec;
-use std::cell::RefCell;
 use std::ops::{Index, IndexMut};
+use std::sync::Mutex;
 
 /// Reusable buffer pool for `ImageF` allocations.
 ///
-/// Avoids repeated mmap/munmap for large temporary buffers. Owned by the
-/// caller (typically `ButteraugliReference` or a local in standalone API
-/// functions). When the pool is dropped, all cached buffers are freed.
-#[derive(Debug, Default)]
+/// Avoids repeated mmap/munmap for large temporary buffers. Thread-safe via
+/// `Mutex`, so it can be shared across rayon tasks. Owned by the caller
+/// (typically `ButteraugliReference` or a local in standalone API functions).
+/// When the pool is dropped, all cached buffers are freed.
 pub struct BufferPool {
-    buffers: RefCell<Vec<Vec<f32>>>,
+    buffers: Mutex<Vec<Vec<f32>>>,
+}
+
+impl core::fmt::Debug for BufferPool {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let count = self.buffers.lock().unwrap().len();
+        f.debug_struct("BufferPool")
+            .field("cached_buffers", &count)
+            .finish()
+    }
+}
+
+impl Default for BufferPool {
+    fn default() -> Self {
+        Self {
+            buffers: Mutex::new(Vec::new()),
+        }
+    }
 }
 
 impl BufferPool {
@@ -29,7 +46,7 @@ impl BufferPool {
     ///
     /// With `unsafe-performance`, new allocations skip zero-fill entirely.
     pub(crate) fn take(&self, needed: usize) -> Vec<f32> {
-        let mut pool = self.buffers.borrow_mut();
+        let mut pool = self.buffers.lock().unwrap();
         let mut best_idx = None;
         let mut best_excess = usize::MAX;
         for (i, buf) in pool.iter().enumerate() {
@@ -41,6 +58,7 @@ impl BufferPool {
         }
         if let Some(idx) = best_idx {
             let mut buf = pool.swap_remove(idx);
+            drop(pool); // release lock before potential realloc
             buf.truncate(needed);
             if buf.len() < needed {
                 #[cfg(feature = "unsafe-performance")]
@@ -56,6 +74,7 @@ impl BufferPool {
             }
             buf
         } else {
+            drop(pool); // release lock before allocation
             #[cfg(feature = "unsafe-performance")]
             #[allow(clippy::uninit_vec)]
             {
@@ -72,10 +91,10 @@ impl BufferPool {
         }
     }
 
-    /// Returns a buffer to the pool. Dropped silently if pool is full (32 buffers).
+    /// Returns a buffer to the pool. Dropped silently if pool is full (48 buffers).
     pub(crate) fn put(&self, buf: Vec<f32>) {
-        let mut pool = self.buffers.borrow_mut();
-        if pool.len() < 32 {
+        let mut pool = self.buffers.lock().unwrap();
+        if pool.len() < 48 {
             pool.push(buf);
         }
     }
@@ -109,6 +128,37 @@ impl ImageF {
         let stride = (width + 15) & !15;
         Self {
             data: vec![0.0; stride * height],
+            width,
+            height,
+            stride,
+        }
+    }
+
+    /// Creates a new image WITHOUT zero-filling (when `unsafe-performance` is enabled).
+    ///
+    /// Without the feature, this falls back to zero-filled allocation (same as `new`).
+    /// Use this only when the allocation will be fully populated before reading
+    /// (e.g., blur output, copy targets, format conversion outputs).
+    #[must_use]
+    pub(crate) fn new_uninit(width: usize, height: usize) -> Self {
+        let stride = (width + 15) & !15;
+        let needed = stride * height;
+        #[cfg(feature = "unsafe-performance")]
+        let data = {
+            let mut buf = Vec::with_capacity(needed);
+            // SAFETY: f32 has no validity invariant beyond being initialized memory.
+            // Any bit pattern is a valid f32 (including NaN/Inf). Callers must
+            // overwrite all data before reading.
+            #[allow(clippy::uninit_vec)]
+            unsafe {
+                buf.set_len(needed);
+            }
+            buf
+        };
+        #[cfg(not(feature = "unsafe-performance"))]
+        let data = vec![0.0; needed];
+        Self {
+            data,
             width,
             height,
             stride,
@@ -229,7 +279,8 @@ impl ImageF {
     #[inline(always)]
     #[must_use]
     pub(crate) unsafe fn get_unchecked(&self, x: usize, y: usize) -> f32 {
-        *self.data.get_unchecked(y * self.stride + x)
+        // SAFETY: caller asserts y * stride + x < data.len()
+        unsafe { *self.data.get_unchecked(y * self.stride + x) }
     }
 
     /// Sets a pixel value without bounds checking.
@@ -240,7 +291,8 @@ impl ImageF {
     #[allow(clippy::inline_always)]
     #[inline(always)]
     pub(crate) unsafe fn set_unchecked(&mut self, x: usize, y: usize, value: f32) {
-        *self.data.get_unchecked_mut(y * self.stride + x) = value;
+        // SAFETY: caller asserts y * stride + x < data.len()
+        unsafe { *self.data.get_unchecked_mut(y * self.stride + x) = value };
     }
 
     /// Returns a row slice without bounds checking.
@@ -253,7 +305,8 @@ impl ImageF {
     #[must_use]
     pub(crate) unsafe fn row_unchecked(&self, y: usize) -> &[f32] {
         let start = y * self.stride;
-        self.data.get_unchecked(start..start + self.width)
+        // SAFETY: caller asserts y < height
+        unsafe { self.data.get_unchecked(start..start + self.width) }
     }
 
     /// Returns a mutable row slice without bounds checking.
@@ -265,7 +318,8 @@ impl ImageF {
     #[inline(always)]
     pub(crate) unsafe fn row_mut_unchecked(&mut self, y: usize) -> &mut [f32] {
         let start = y * self.stride;
-        self.data.get_unchecked_mut(start..start + self.width)
+        // SAFETY: caller asserts y < height
+        unsafe { self.data.get_unchecked_mut(start..start + self.width) }
     }
 
     /// Returns a raw pointer to the data for SIMD operations.
@@ -311,6 +365,17 @@ impl ImageF {
             height,
             stride,
         }
+    }
+
+    /// Creates a new zero-filled image using a pooled buffer if available.
+    ///
+    /// Use for accumulator images that need zeroing before `+=` operations.
+    /// Saves mmap/munmap syscalls on repeated calls when the pool is warm.
+    #[must_use]
+    pub fn from_pool_zeroed(width: usize, height: usize, pool: &BufferPool) -> Self {
+        let mut img = Self::from_pool_dirty(width, height, pool);
+        img.data.fill(0.0);
+        img
     }
 
     /// Returns the internal buffer to the pool for reuse.
@@ -386,7 +451,7 @@ pub struct Image3F {
 }
 
 impl Image3F {
-    /// Creates a new 3-channel image.
+    /// Creates a new 3-channel image filled with zeros.
     #[must_use]
     pub fn new(width: usize, height: usize) -> Self {
         Self {
@@ -396,6 +461,40 @@ impl Image3F {
                 ImageF::new(width, height),
             ],
         }
+    }
+
+    /// Creates a new 3-channel image WITHOUT zero-filling.
+    ///
+    /// Callers MUST overwrite every pixel before reading.
+    #[must_use]
+    pub(crate) fn new_uninit(width: usize, height: usize) -> Self {
+        Self {
+            planes: [
+                ImageF::new_uninit(width, height),
+                ImageF::new_uninit(width, height),
+                ImageF::new_uninit(width, height),
+            ],
+        }
+    }
+
+    /// Creates a new 3-channel image using pooled buffers (dirty, caller must overwrite).
+    #[must_use]
+    pub(crate) fn from_pool_dirty(width: usize, height: usize, pool: &BufferPool) -> Self {
+        Self {
+            planes: [
+                ImageF::from_pool_dirty(width, height, pool),
+                ImageF::from_pool_dirty(width, height, pool),
+                ImageF::from_pool_dirty(width, height, pool),
+            ],
+        }
+    }
+
+    /// Recycles all three planes back to the pool.
+    pub(crate) fn recycle(self, pool: &BufferPool) {
+        let [p0, p1, p2] = self.planes;
+        p0.recycle(pool);
+        p1.recycle(pool);
+        p2.recycle(pool);
     }
 
     /// Creates from three separate planes.

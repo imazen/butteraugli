@@ -25,7 +25,9 @@
 //! }
 //! ```
 
+use crate::diff::maybe_join;
 use crate::image::{BufferPool, Image3F, ImageF};
+use crate::mask::PrecomputedMask;
 use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli};
 use crate::psycho::{PsychoImage, separate_frequencies};
 use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite_f32};
@@ -41,6 +43,8 @@ const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 struct ScaleData {
     /// Frequency-decomposed psychovisual image
     psycho: PsychoImage,
+    /// Precomputed reference-side mask (blur + fuzzy_erosion)
+    mask: PrecomputedMask,
 }
 
 /// Precomputed butteraugli reference data for fast repeated comparisons.
@@ -52,11 +56,15 @@ struct ScaleData {
 /// Uses single-level multiresolution matching C++ `ButteraugliComparator::Diffmap`:
 /// the full-resolution diffmap plus one half-resolution sub-level.
 ///
+/// A persistent `BufferPool` is maintained across compare calls. After the first
+/// comparison, all subsequent comparisons reuse previously allocated temporary
+/// buffers, eliminating mmap/munmap overhead and reducing memset to only the
+/// buffers that need zeroing (accumulators).
+///
 /// Ideal for:
 /// - Simulated annealing optimization
 /// - Batch quality assessment
 /// - Encoder tuning loops
-#[derive(Clone)]
 pub struct ButteraugliReference {
     /// Full resolution precomputed data
     full: ScaleData,
@@ -67,16 +75,27 @@ pub struct ButteraugliReference {
     height: usize,
     /// Parameters used for precomputation
     params: ButteraugliParams,
-    /// Reusable buffer pool for temporary ImageF allocations.
-    /// Owned by this instance so buffers are freed on drop.
+    /// Persistent buffer pool — reused across compare calls to avoid re-allocation
     pool: BufferPool,
+}
+
+impl Clone for ButteraugliReference {
+    fn clone(&self) -> Self {
+        Self {
+            full: self.full.clone(),
+            half: self.half.clone(),
+            width: self.width,
+            height: self.height,
+            params: self.params.clone(),
+            pool: BufferPool::new(), // fresh empty pool for the clone
+        }
+    }
 }
 
 /// Converts sRGB u8 buffer to linear f32.
 fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
-    rgb.iter()
-        .map(|&v| crate::opsin::srgb_to_linear(v))
-        .collect()
+    let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
+    rgb.iter().map(|&v| lut[v as usize]).collect()
 }
 
 impl ButteraugliReference {
@@ -177,27 +196,44 @@ impl ButteraugliReference {
 
         check_finite_f32(rgb, "linear rgb")?;
 
-        let pool = BufferPool::new();
-
-        // Compute full-resolution XYB and frequency decomposition
-        let xyb =
-            linear_rgb_to_xyb_butteraugli(rgb, width, height, params.intensity_target(), &pool);
-        let psycho = separate_frequencies(&xyb, &pool);
-        let full = ScaleData { psycho };
-
-        // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
-        let half = if !params.single_resolution()
+        let need_half = !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
-            && height >= MIN_SIZE_FOR_SUBSAMPLE
-        {
-            let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
-            let sub_xyb =
-                linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, params.intensity_target(), &pool);
-            let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-            Some(ScaleData { psycho: sub_psycho })
-        } else {
-            None
-        };
+            && height >= MIN_SIZE_FOR_SUBSAMPLE;
+        let intensity_target = params.intensity_target();
+
+        // Run full-res and half-res in parallel (each with its own BufferPool).
+        // The full-res pool is returned and reused for compare calls.
+        let ((full, reuse_pool), half) = maybe_join(
+            || {
+                let pool = BufferPool::new();
+                let xyb =
+                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
+                let psycho = separate_frequencies(&xyb, &pool);
+                let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
+                xyb.recycle(&pool);
+                (ScaleData { psycho, mask }, pool)
+            },
+            || {
+                if need_half {
+                    let pool = BufferPool::new();
+                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
+                    let sub_xyb =
+                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
+                    let sub_psycho = separate_frequencies(&sub_xyb, &pool);
+                    let sub_mask = crate::mask::precompute_reference_mask(
+                        &sub_psycho.hf,
+                        &sub_psycho.uhf,
+                        &pool,
+                    );
+                    Some(ScaleData {
+                        psycho: sub_psycho,
+                        mask: sub_mask,
+                    })
+                } else {
+                    None
+                }
+            },
+        );
 
         Ok(Self {
             full,
@@ -205,7 +241,7 @@ impl ButteraugliReference {
             width,
             height,
             params,
-            pool,
+            pool: reuse_pool,
         })
     }
 
@@ -255,44 +291,64 @@ impl ButteraugliReference {
         check_finite_f32(&g[..min_size], "planar g")?;
         check_finite_f32(&b[..min_size], "planar b")?;
 
-        let pool = BufferPool::new();
-
-        // Compute XYB directly from planar data (avoids interleave overhead)
-        let xyb = linear_planar_to_xyb_butteraugli(
-            r,
-            g,
-            b,
-            width,
-            height,
-            stride,
-            params.intensity_target(),
-            &pool,
-        );
-        let psycho = separate_frequencies(&xyb, &pool);
-        let full = ScaleData { psycho };
-
-        // Compute single half-resolution sub-level (matches C++ Diffmap behavior)
-        let half = if !params.single_resolution()
+        let need_half = !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
-            && height >= MIN_SIZE_FOR_SUBSAMPLE
-        {
-            let (sub_r, sub_g, sub_b, sw, sh) =
-                subsample_planar_rgb_2x(r, g, b, width, height, stride);
-            let sub_xyb = linear_planar_to_xyb_butteraugli(
-                &sub_r,
-                &sub_g,
-                &sub_b,
-                sw,
-                sh,
-                sw,
-                params.intensity_target(),
-                &pool,
-            );
-            let sub_psycho = separate_frequencies(&sub_xyb, &pool);
-            Some(ScaleData { psycho: sub_psycho })
-        } else {
-            None
-        };
+            && height >= MIN_SIZE_FOR_SUBSAMPLE;
+        let intensity_target = params.intensity_target();
+
+        // Run full-res and half-res in parallel (each with its own BufferPool).
+        // The full-res pool is returned and reused for compare calls, so the
+        // first compare_linear_planar call reuses pre-warmed buffers instead
+        // of allocating + zeroing fresh memory.
+        let ((full, reuse_pool), half) = maybe_join(
+            || {
+                let pool = BufferPool::new();
+                let xyb = linear_planar_to_xyb_butteraugli(
+                    r,
+                    g,
+                    b,
+                    width,
+                    height,
+                    stride,
+                    intensity_target,
+                    &pool,
+                );
+                let psycho = separate_frequencies(&xyb, &pool);
+                let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
+                // Recycle xyb now — its buffers go back to pool for reuse
+                xyb.recycle(&pool);
+                (ScaleData { psycho, mask }, pool)
+            },
+            || {
+                if need_half {
+                    let pool = BufferPool::new();
+                    let (sub_r, sub_g, sub_b, sw, sh) =
+                        subsample_planar_rgb_2x(r, g, b, width, height, stride);
+                    let sub_xyb = linear_planar_to_xyb_butteraugli(
+                        &sub_r,
+                        &sub_g,
+                        &sub_b,
+                        sw,
+                        sh,
+                        sw,
+                        intensity_target,
+                        &pool,
+                    );
+                    let sub_psycho = separate_frequencies(&sub_xyb, &pool);
+                    let sub_mask = crate::mask::precompute_reference_mask(
+                        &sub_psycho.hf,
+                        &sub_psycho.uhf,
+                        &pool,
+                    );
+                    Some(ScaleData {
+                        psycho: sub_psycho,
+                        mask: sub_mask,
+                    })
+                } else {
+                    None
+                }
+            },
+        );
 
         Ok(Self {
             full,
@@ -300,7 +356,7 @@ impl ButteraugliReference {
             width,
             height,
             params,
-            pool,
+            pool: reuse_pool,
         })
     }
 
@@ -425,8 +481,8 @@ impl ButteraugliReference {
         img: imgref::ImgRef<rgb::RGB8>,
         params: ButteraugliParams,
     ) -> Result<Self, ButteraugliError> {
-        let rgb = crate::diff::imgref_rgb8_to_u8_vec(img);
-        Self::new(&rgb, img.width(), img.height(), params)
+        let linear = crate::diff::imgref_srgb_to_linear_f32(img);
+        Self::new_linear(&linear, img.width(), img.height(), params)
     }
 
     /// Precompute reference data from an `ImgRef<RGB<f32>>` (linear RGB).
@@ -459,8 +515,8 @@ impl ButteraugliReference {
                 h2: img.height(),
             });
         }
-        let rgb = crate::diff::imgref_rgb8_to_u8_vec(img);
-        self.compare(&rgb)
+        let linear = crate::diff::imgref_srgb_to_linear_f32(img);
+        self.compare_linear(&linear)
     }
 
     /// Compare a distorted linear RGB image (as `ImgRef<RGB<f32>>`) against the reference.
@@ -497,47 +553,49 @@ impl ButteraugliReference {
     /// a single half-resolution sub-level via AddSupersampled2x. This matches
     /// C++ `ButteraugliComparator::Diffmap` which only uses one sub-level.
     fn compare_linear_impl(&self, rgb: &[f32]) -> ButteraugliResult {
-        // Convert distorted image to XYB and compute frequency decomposition
-        let xyb2 = linear_rgb_to_xyb_butteraugli(
-            rgb,
-            self.width,
-            self.height,
-            self.params.intensity_target(),
-            &self.pool,
+        let intensity_target = self.params.intensity_target();
+        let width = self.width;
+        let height = self.height;
+        let params = &self.params;
+        let full_psycho = &self.full.psycho;
+        let full_mask = &self.full.mask;
+        let half_ref = self.half.as_ref();
+        let pool = &self.pool;
+
+        // Run full-res and half-res in parallel (shared pool via Mutex)
+        let (mut diffmap, sub_diffmap) = maybe_join(
+            || {
+                let xyb2 =
+                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool);
+                let ps2 = separate_frequencies(&xyb2, pool);
+                let dm =
+                    compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
+                ps2.recycle(pool);
+                xyb2.recycle(pool);
+                dm
+            },
+            || {
+                half_ref.map(|half| {
+                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
+                    let sub_xyb =
+                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, pool);
+                    let sub_ps = separate_frequencies(&sub_xyb, pool);
+                    let dm = compute_diffmap_with_precomputed(
+                        &half.psycho,
+                        &sub_ps,
+                        &half.mask,
+                        params,
+                        pool,
+                    );
+                    sub_ps.recycle(pool);
+                    sub_xyb.recycle(pool);
+                    dm
+                })
+            },
         );
-        let ps2 = separate_frequencies(&xyb2, &self.pool);
 
-        // Compute diffmap at full resolution using precomputed reference
-        let mut diffmap = compute_diffmap_with_precomputed(
-            &self.full.psycho,
-            &ps2,
-            self.width,
-            self.height,
-            &self.params,
-            &self.pool,
-        );
-
-        // Add single half-resolution sub-level
-        if let Some(ref half) = self.half {
-            let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, self.width, self.height);
-            let sub_xyb = linear_rgb_to_xyb_butteraugli(
-                &sub_rgb,
-                sw,
-                sh,
-                self.params.intensity_target(),
-                &self.pool,
-            );
-            let sub_ps = separate_frequencies(&sub_xyb, &self.pool);
-
-            let sub_diffmap = compute_diffmap_with_precomputed(
-                &half.psycho,
-                &sub_ps,
-                sw,
-                sh,
-                &self.params,
-                &self.pool,
-            );
-            add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
+        if let Some(sub) = sub_diffmap {
+            add_supersampled_2x(&sub, 0.5, &mut diffmap);
         }
 
         let score = compute_score_from_diffmap(&diffmap);
@@ -556,54 +614,66 @@ impl ButteraugliReference {
         b: &[f32],
         stride: usize,
     ) -> ButteraugliResult {
-        // Convert distorted planar data directly to XYB (no interleave round-trip)
-        let xyb2 = linear_planar_to_xyb_butteraugli(
-            r,
-            g,
-            b,
-            self.width,
-            self.height,
-            stride,
-            self.params.intensity_target(),
-            &self.pool,
+        let intensity_target = self.params.intensity_target();
+        let width = self.width;
+        let height = self.height;
+        let params = &self.params;
+        let full_psycho = &self.full.psycho;
+        let full_mask = &self.full.mask;
+        let half_ref = self.half.as_ref();
+        let pool = &self.pool;
+
+        // Run full-res and half-res in parallel (shared pool via Mutex)
+        let (mut diffmap, sub_diffmap) = maybe_join(
+            || {
+                let xyb2 = linear_planar_to_xyb_butteraugli(
+                    r,
+                    g,
+                    b,
+                    width,
+                    height,
+                    stride,
+                    intensity_target,
+                    pool,
+                );
+                let ps2 = separate_frequencies(&xyb2, pool);
+                let dm =
+                    compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
+                ps2.recycle(pool);
+                xyb2.recycle(pool);
+                dm
+            },
+            || {
+                half_ref.map(|half| {
+                    let (sub_r, sub_g, sub_b, sw, sh) =
+                        subsample_planar_rgb_2x(r, g, b, width, height, stride);
+                    let sub_xyb = linear_planar_to_xyb_butteraugli(
+                        &sub_r,
+                        &sub_g,
+                        &sub_b,
+                        sw,
+                        sh,
+                        sw,
+                        intensity_target,
+                        pool,
+                    );
+                    let sub_ps = separate_frequencies(&sub_xyb, pool);
+                    let dm = compute_diffmap_with_precomputed(
+                        &half.psycho,
+                        &sub_ps,
+                        &half.mask,
+                        params,
+                        pool,
+                    );
+                    sub_ps.recycle(pool);
+                    sub_xyb.recycle(pool);
+                    dm
+                })
+            },
         );
-        let ps2 = separate_frequencies(&xyb2, &self.pool);
 
-        // Compute diffmap at full resolution using precomputed reference
-        let mut diffmap = compute_diffmap_with_precomputed(
-            &self.full.psycho,
-            &ps2,
-            self.width,
-            self.height,
-            &self.params,
-            &self.pool,
-        );
-
-        // Add single half-resolution sub-level
-        if let Some(ref half) = self.half {
-            let (sub_r, sub_g, sub_b, sw, sh) =
-                subsample_planar_rgb_2x(r, g, b, self.width, self.height, stride);
-            let sub_xyb = linear_planar_to_xyb_butteraugli(
-                &sub_r,
-                &sub_g,
-                &sub_b,
-                sw,
-                sh,
-                sw,
-                self.params.intensity_target(),
-                &self.pool,
-            );
-            let sub_ps = separate_frequencies(&sub_xyb, &self.pool);
-
-            let sub_diffmap = compute_diffmap_with_precomputed(
-                &half.psycho,
-                &sub_ps,
-                sw,
-                sh,
-                &self.params,
-                &self.pool,
-            );
-            add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
+        if let Some(sub) = sub_diffmap {
+            add_supersampled_2x(&sub, 0.5, &mut diffmap);
         }
 
         let score = compute_score_from_diffmap(&diffmap);
@@ -624,63 +694,41 @@ use crate::consts::{
     W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X, WMUL,
 };
 use crate::malta::malta_diff_map;
-use crate::mask::{
-    combine_channels_for_masking, compute_mask as compute_mask_from_images, mask_dc_y, mask_y,
-};
 
-/// Computes diffmap using precomputed reference PsychoImage.
+/// Computes diffmap using precomputed reference PsychoImage and precomputed mask.
 fn compute_diffmap_with_precomputed(
     ps1: &PsychoImage,
     ps2: &PsychoImage,
-    width: usize,
-    height: usize,
+    precomputed_mask: &PrecomputedMask,
     params: &ButteraugliParams,
     pool: &BufferPool,
 ) -> ImageF {
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
-        compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul());
+        compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul(), pool);
 
-    // Compute mask from both PsychoImages
-    let mask = mask_psycho_image(ps1, ps2, Some(block_diff_ac.plane_mut(1)), pool);
+    // Apply distorted-side mask correction (blur + mask-to-error accumulation)
+    crate::mask::apply_mask_correction_precomputed(
+        precomputed_mask,
+        &ps2.hf,
+        &ps2.uhf,
+        Some(block_diff_ac.plane_mut(1)),
+        pool,
+    );
 
-    // Compute DC (LF) differences
-    let mut block_diff_dc = Image3F::new(width, height);
-    for c in 0..3 {
-        compute_lf_diff(
-            ps1.lf.plane(c),
-            ps2.lf.plane(c),
-            WMUL[6 + c] as f32,
-            block_diff_dc.plane_mut(c),
-        );
-    }
+    // Use precomputed mask directly (no copy needed — read-only reference)
+    let diffmap = combine_channels_to_diffmap_fused(
+        &precomputed_mask.mask,
+        &ps1.lf,
+        &ps2.lf,
+        &block_diff_ac,
+        params.xmul(),
+    );
 
-    // Combine channels to final diffmap
-    combine_channels_to_diffmap(&mask, &block_diff_dc, &block_diff_ac, params.xmul())
-}
+    // Recycle temporaries back to pool
+    block_diff_ac.recycle(pool);
 
-/// Computes LF (DC) squared difference - autoversioned for autovectorization.
-#[archmage::autoversion]
-fn compute_lf_diff(
-    _token: archmage::SimdToken,
-    p1: &ImageF,
-    p2: &ImageF,
-    w: f32,
-    out: &mut ImageF,
-) {
-    let width = p1.width();
-    let height = p1.height();
-
-    for y in 0..height {
-        let row1 = p1.row(y);
-        let row2 = p2.row(y);
-        let row_out = out.row_mut(y);
-
-        for x in 0..width {
-            let d = row1[x] - row2[x];
-            row_out[x] = d * d * w;
-        }
-    }
+    diffmap
 }
 
 /// Computes difference between two PsychoImages using Malta filter.
@@ -689,219 +737,218 @@ fn compute_psycho_diff_malta(
     ps1: &PsychoImage,
     hf_asymmetry: f32,
     _xmul: f32,
+    pool: &BufferPool,
 ) -> Image3F {
     let width = ps0.width();
     let height = ps0.height();
-
-    let mut block_diff_ac = Image3F::new(width, height);
-
-    // UHF Y channel
-    let uhf_y_diff = malta_diff_map(
-        &ps0.uhf[1],
-        &ps1.uhf[1],
-        W_UHF_MALTA * hf_asymmetry as f64,
-        W_UHF_MALTA / hf_asymmetry as f64,
-        NORM1_UHF,
-        false,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(1);
-        for y in 0..height {
-            let src = uhf_y_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
-
-    // UHF X channel
-    let uhf_x_diff = malta_diff_map(
-        &ps0.uhf[0],
-        &ps1.uhf[0],
-        W_UHF_MALTA_X * hf_asymmetry as f64,
-        W_UHF_MALTA_X / hf_asymmetry as f64,
-        NORM1_UHF_X,
-        false,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(0);
-        for y in 0..height {
-            let src = uhf_x_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
-
-    // HF channels (LF Malta)
     let sqrt_hf_asym = hf_asymmetry.sqrt();
 
-    let hf_y_diff = malta_diff_map(
-        &ps0.hf[1],
-        &ps1.hf[1],
-        W_HF_MALTA * sqrt_hf_asym as f64,
-        W_HF_MALTA / sqrt_hf_asym as f64,
-        NORM1_HF,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(1);
-        for y in 0..height {
-            let src = hf_y_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
+    // Run Y-channel and X-channel Malta computations in parallel
+    let (plane_y, plane_x) = maybe_join(
+        || {
+            // Y channel: UHF_Y + HF_Y + MF_Y Malta + L2 diffs
+            let (uhf_y, (hf_y, mf_y)) = maybe_join(
+                || {
+                    malta_diff_map(
+                        &ps0.uhf[1],
+                        &ps1.uhf[1],
+                        W_UHF_MALTA * hf_asymmetry as f64,
+                        W_UHF_MALTA / hf_asymmetry as f64,
+                        NORM1_UHF,
+                        false,
+                        pool,
+                    )
+                },
+                || {
+                    maybe_join(
+                        || {
+                            malta_diff_map(
+                                &ps0.hf[1],
+                                &ps1.hf[1],
+                                W_HF_MALTA * sqrt_hf_asym as f64,
+                                W_HF_MALTA / sqrt_hf_asym as f64,
+                                NORM1_HF,
+                                true,
+                                pool,
+                            )
+                        },
+                        || {
+                            malta_diff_map(
+                                ps0.mf.plane(1),
+                                ps1.mf.plane(1),
+                                W_MF_MALTA,
+                                W_MF_MALTA,
+                                NORM1_MF,
+                                true,
+                                pool,
+                            )
+                        },
+                    )
+                },
+            );
 
-    let hf_x_diff = malta_diff_map(
-        &ps0.hf[0],
-        &ps1.hf[0],
-        W_HF_MALTA_X * sqrt_hf_asym as f64,
-        W_HF_MALTA_X / sqrt_hf_asym as f64,
-        NORM1_HF_X,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(0);
-        for y in 0..height {
-            let src = hf_x_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
+            // Use uhf_y directly as accumulator (no zero-init + add_to needed)
+            let mut ac_y = uhf_y;
+            // Fuse hf_y + mf_y into a single accumulation pass
+            accumulate_two(&hf_y, &mf_y, &mut ac_y);
+            hf_y.recycle(pool);
+            mf_y.recycle(pool);
 
-    // MF channels (LF Malta)
-    let mf_y_diff = malta_diff_map(
-        ps0.mf.plane(1),
-        ps1.mf.plane(1),
-        W_MF_MALTA,
-        W_MF_MALTA,
-        NORM1_MF,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(1);
-        for y in 0..height {
-            let src = mf_y_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
+            l2_diff_asymmetric(
+                &ps0.hf[1],
+                &ps1.hf[1],
+                WMUL[1] as f32 * hf_asymmetry,
+                WMUL[1] as f32 / hf_asymmetry,
+                &mut ac_y,
+            );
+            l2_diff(ps0.mf.plane(1), ps1.mf.plane(1), WMUL[4] as f32, &mut ac_y);
 
-    let mf_x_diff = malta_diff_map(
-        ps0.mf.plane(0),
-        ps1.mf.plane(0),
-        W_MF_MALTA_X,
-        W_MF_MALTA_X,
-        NORM1_MF_X,
-        true,
-    );
-    {
-        let ac = block_diff_ac.plane_mut(0);
-        for y in 0..height {
-            let src = mf_x_diff.row(y);
-            let dst = ac.row_mut(y);
-            for x in 0..width {
-                dst[x] += src[x];
-            }
-        }
-    }
+            ac_y
+        },
+        || {
+            // X channel: UHF_X + HF_X + MF_X Malta + L2 diffs
+            let (uhf_x, (hf_x, mf_x)) = maybe_join(
+                || {
+                    malta_diff_map(
+                        &ps0.uhf[0],
+                        &ps1.uhf[0],
+                        W_UHF_MALTA_X * hf_asymmetry as f64,
+                        W_UHF_MALTA_X / hf_asymmetry as f64,
+                        NORM1_UHF_X,
+                        false,
+                        pool,
+                    )
+                },
+                || {
+                    maybe_join(
+                        || {
+                            malta_diff_map(
+                                &ps0.hf[0],
+                                &ps1.hf[0],
+                                W_HF_MALTA_X * sqrt_hf_asym as f64,
+                                W_HF_MALTA_X / sqrt_hf_asym as f64,
+                                NORM1_HF_X,
+                                true,
+                                pool,
+                            )
+                        },
+                        || {
+                            malta_diff_map(
+                                ps0.mf.plane(0),
+                                ps1.mf.plane(0),
+                                W_MF_MALTA_X,
+                                W_MF_MALTA_X,
+                                NORM1_MF_X,
+                                true,
+                                pool,
+                            )
+                        },
+                    )
+                },
+            );
 
-    // L2DiffAsymmetric for HF channels
-    l2_diff_asymmetric(
-        &ps0.hf[0],
-        &ps1.hf[0],
-        WMUL[0] as f32 * hf_asymmetry,
-        WMUL[0] as f32 / hf_asymmetry,
-        block_diff_ac.plane_mut(0),
-    );
-    l2_diff_asymmetric(
-        &ps0.hf[1],
-        &ps1.hf[1],
-        WMUL[1] as f32 * hf_asymmetry,
-        WMUL[1] as f32 / hf_asymmetry,
-        block_diff_ac.plane_mut(1),
+            // Use uhf_x directly as accumulator
+            let mut ac_x = uhf_x;
+            // Fuse hf_x + mf_x into a single accumulation pass
+            accumulate_two(&hf_x, &mf_x, &mut ac_x);
+            hf_x.recycle(pool);
+            mf_x.recycle(pool);
+
+            l2_diff_asymmetric(
+                &ps0.hf[0],
+                &ps1.hf[0],
+                WMUL[0] as f32 * hf_asymmetry,
+                WMUL[0] as f32 / hf_asymmetry,
+                &mut ac_x,
+            );
+            l2_diff(ps0.mf.plane(0), ps1.mf.plane(0), WMUL[3] as f32, &mut ac_x);
+
+            ac_x
+        },
     );
 
-    // L2Diff for MF channels
-    l2_diff(
-        ps0.mf.plane(0),
-        ps1.mf.plane(0),
-        WMUL[3] as f32,
-        block_diff_ac.plane_mut(0),
-    );
-    l2_diff(
-        ps0.mf.plane(1),
-        ps1.mf.plane(1),
-        WMUL[4] as f32,
-        block_diff_ac.plane_mut(1),
-    );
-    l2_diff(
+    // B channel L2Diff — write-only variant (no zero-init needed)
+    let mut plane_b = ImageF::from_pool_dirty(width, height, pool);
+    l2_diff_write(
         ps0.mf.plane(2),
         ps1.mf.plane(2),
         WMUL[5] as f32,
-        block_diff_ac.plane_mut(2),
+        &mut plane_b,
     );
 
-    block_diff_ac
+    Image3F::from_planes(plane_x, plane_y, plane_b)
 }
 
-/// Computes mask from two PsychoImages.
-fn mask_psycho_image(
-    ps0: &PsychoImage,
-    ps1: &PsychoImage,
-    diff_ac: Option<&mut ImageF>,
-    pool: &BufferPool,
-) -> ImageF {
-    let width = ps0.width();
-    let height = ps0.height();
-
-    let mut mask0 = ImageF::new(width, height);
-    let mut mask1 = ImageF::new(width, height);
-    combine_channels_for_masking(&ps0.hf, &ps0.uhf, &mut mask0);
-    combine_channels_for_masking(&ps1.hf, &ps1.uhf, &mut mask1);
-
-    compute_mask_from_images(&mask0, &mask1, diff_ac, pool)
-}
-
-/// Combines channels to produce final diffmap - autoversioned for autovectorization.
+/// Combines AC channels with inline DC diff computation from LF planes.
+///
+/// Fuses compute_lf_diff + combine_channels_to_diffmap into a single pass,
+/// eliminating 3 intermediate DC diff plane allocations and 6MB memory traffic.
 #[archmage::autoversion]
-fn combine_channels_to_diffmap(
+fn combine_channels_to_diffmap_fused(
     _token: archmage::SimdToken,
     mask: &ImageF,
-    block_diff_dc: &Image3F,
+    lf1: &Image3F,
+    lf2: &Image3F,
     block_diff_ac: &Image3F,
     xmul: f32,
 ) -> ImageF {
+    use crate::consts::{
+        MASK_DC_Y_MUL, MASK_DC_Y_OFFSET, MASK_DC_Y_SCALER, MASK_Y_MUL, MASK_Y_OFFSET, MASK_Y_SCALER,
+    };
+
     let width = mask.width();
     let height = mask.height();
-    let mut diffmap = ImageF::new(width, height);
+    let mut diffmap = ImageF::new_uninit(width, height);
+    let dc_w0 = WMUL[6] as f32;
+    let dc_w1 = WMUL[7] as f32;
+    let dc_w2 = WMUL[8] as f32;
+
+    // Precompute f32 mask constants for SIMD-friendly inner loop
+    let global_scale = crate::consts::GLOBAL_SCALE;
+    let my_mul = MASK_Y_MUL as f32;
+    let my_scaler = MASK_Y_SCALER as f32;
+    let my_offset = MASK_Y_OFFSET as f32;
+    let mdc_mul = MASK_DC_Y_MUL as f32;
+    let mdc_scaler = MASK_DC_Y_SCALER as f32;
+    let mdc_offset = MASK_DC_Y_OFFSET as f32;
 
     for y in 0..height {
         let mask_row = mask.row(y);
-        let dc0 = block_diff_dc.plane(0).row(y);
-        let dc1 = block_diff_dc.plane(1).row(y);
-        let dc2 = block_diff_dc.plane(2).row(y);
+        let lf1_0 = lf1.plane(0).row(y);
+        let lf1_1 = lf1.plane(1).row(y);
+        let lf1_2 = lf1.plane(2).row(y);
+        let lf2_0 = lf2.plane(0).row(y);
+        let lf2_1 = lf2.plane(1).row(y);
+        let lf2_2 = lf2.plane(2).row(y);
         let ac0 = block_diff_ac.plane(0).row(y);
         let ac1 = block_diff_ac.plane(1).row(y);
         let ac2 = block_diff_ac.plane(2).row(y);
         let out = diffmap.row_mut(y);
 
         for x in 0..width {
-            let val = mask_row[x] as f64;
-            let maskval = mask_y(val) as f32;
-            let dc_maskval = mask_dc_y(val) as f32;
+            let val = mask_row[x];
 
-            let dc_masked = dc0[x] * xmul * dc_maskval + dc1[x] * dc_maskval + dc2[x] * dc_maskval;
-            let ac_masked = ac0[x] * xmul * maskval + ac1[x] * maskval + ac2[x] * maskval;
+            // mask_y in f32: (global_scale * (1 + mul / (scaler * val + offset)))²
+            let c_y = my_mul / my_scaler.mul_add(val, my_offset);
+            let r_y = global_scale.mul_add(c_y, global_scale);
+            let maskval = r_y * r_y;
+
+            // mask_dc_y in f32
+            let c_dc = mdc_mul / mdc_scaler.mul_add(val, mdc_offset);
+            let r_dc = global_scale.mul_add(c_dc, global_scale);
+            let dc_maskval = r_dc * r_dc;
+
+            // DC diff computed inline: d*d*w for each channel
+            let d0 = lf1_0[x] - lf2_0[x];
+            let d1 = lf1_1[x] - lf2_1[x];
+            let d2 = lf1_2[x] - lf2_2[x];
+            let dc_masked = (d0 * d0 * dc_w0 * xmul).mul_add(
+                dc_maskval,
+                (d1 * d1 * dc_w1).mul_add(dc_maskval, d2 * d2 * dc_w2 * dc_maskval),
+            );
+
+            let ac_masked =
+                (ac0[x] * xmul).mul_add(maskval, ac1[x].mul_add(maskval, ac2[x] * maskval));
 
             out[x] = (dc_masked + ac_masked).sqrt();
         }
@@ -910,10 +957,23 @@ fn combine_channels_to_diffmap(
     diffmap
 }
 
+/// Accumulates two source images into a destination: dst[x] += a[x] + b[x].
+#[archmage::autoversion]
+fn accumulate_two(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
+    let height = a.height();
+    for y in 0..height {
+        let ra = a.row(y);
+        let rb = b.row(y);
+        let rd = dst.row_mut(y);
+        for ((d, &va), &vb) in rd.iter_mut().zip(ra.iter()).zip(rb.iter()) {
+            *d += va + vb;
+        }
+    }
+}
+
 /// L2 difference (symmetric) - autoversioned for autovectorization.
 #[archmage::autoversion]
 fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-    let width = i0.width();
     let height = i0.height();
 
     for y in 0..height {
@@ -921,9 +981,35 @@ fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffma
         let row1 = i1.row(y);
         let row_diff = diffmap.row_mut(y);
 
-        for x in 0..width {
-            let diff = row0[x] - row1[x];
-            row_diff[x] += diff * diff * w;
+        for ((d, &v0), &v1) in row_diff.iter_mut().zip(row0.iter()).zip(row1.iter()) {
+            let diff = v0 - v1;
+            *d = (diff * diff).mul_add(w, *d);
+        }
+    }
+}
+
+/// L2 difference (symmetric, write-only) - autoversioned for autovectorization.
+///
+/// Like `l2_diff` but overwrites diffmap instead of accumulating.
+/// Use when diffmap is uninitialized or dirty.
+#[archmage::autoversion]
+fn l2_diff_write(
+    _token: archmage::SimdToken,
+    i0: &ImageF,
+    i1: &ImageF,
+    w: f32,
+    diffmap: &mut ImageF,
+) {
+    let height = i0.height();
+
+    for y in 0..height {
+        let row0 = i0.row(y);
+        let row1 = i1.row(y);
+        let row_diff = diffmap.row_mut(y);
+
+        for ((d, &v0), &v1) in row_diff.iter_mut().zip(row0.iter()).zip(row1.iter()) {
+            let diff = v0 - v1;
+            *d = diff * diff * w;
         }
     }
 }
@@ -942,7 +1028,6 @@ fn l2_diff_asymmetric(
         return;
     }
 
-    let width = i0.width();
     let height = i0.height();
     let vw_0gt1 = w_0gt1 * 0.8;
     let vw_0lt1 = w_0lt1 * 0.8;
@@ -952,42 +1037,29 @@ fn l2_diff_asymmetric(
         let row1 = i1.row(y);
         let row_diff = diffmap.row_mut(y);
 
-        for x in 0..width {
-            let val0 = row0[x];
-            let val1 = row1[x];
-
+        for ((d, &val0), &val1) in row_diff.iter_mut().zip(row0.iter()).zip(row1.iter()) {
             let diff = val0 - val1;
-            let mut total = row_diff[x] + diff * diff * vw_0gt1;
+            let total = (diff * diff).mul_add(vw_0gt1, *d);
 
+            // Branch-free asymmetric penalty:
+            // Flip val1 to match val0's sign direction, then clamp.
             let fabs0 = val0.abs();
             let too_small = 0.4 * fabs0;
-            let too_big = fabs0;
+            let sign = 1.0f32.copysign(val0);
+            let sv1 = val1 * sign;
+            // v = max(too_small - sv1, 0) + max(sv1 - fabs0, 0)
+            let v = (too_small - sv1).max(0.0) + (sv1 - fabs0).max(0.0);
 
-            let v = if val0 < 0.0 {
-                if val1 > -too_small {
-                    val1 + too_small
-                } else if val1 < -too_big {
-                    -val1 - too_big
-                } else {
-                    0.0
-                }
-            } else {
-                if val1 < too_small {
-                    too_small - val1
-                } else if val1 > too_big {
-                    val1 - too_big
-                } else {
-                    0.0
-                }
-            };
-
-            total += vw_0lt1 * v * v;
-            row_diff[x] = total;
+            *d = (v * v).mul_add(vw_0lt1, total);
         }
     }
 }
 
 /// Computes global score from diffmap - autoversioned for autovectorization.
+///
+/// Uses 8 independent max accumulators to break the loop-carried dependency,
+/// enabling LLVM to vectorize with vmaxps (8-wide packed max).
+/// Diffmap values are guaranteed non-NaN (output of sqrt of validated inputs).
 #[archmage::autoversion]
 fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> f64 {
     let width = diffmap.width();
@@ -997,35 +1069,67 @@ fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> 
         return 0.0;
     }
 
-    let mut max_val = 0.0f32;
+    let mut lanes = [0.0f32; 8];
     for y in 0..height {
         let row = diffmap.row(y);
-        for x in 0..width {
-            let v = row[x];
-            if v > max_val {
-                max_val = v;
+        for chunk in row.chunks_exact(8) {
+            for (m, &v) in lanes.iter_mut().zip(chunk.iter()) {
+                if v > *m {
+                    *m = v;
+                }
+            }
+        }
+        for &v in row.chunks_exact(8).remainder() {
+            if v > lanes[0] {
+                lanes[0] = v;
             }
         }
     }
 
+    // Horizontal reduction of 8 lanes
+    let mut max_val = lanes[0];
+    for &m in &lanes[1..] {
+        if m > max_val {
+            max_val = m;
+        }
+    }
     max_val as f64
 }
 
-/// Adds supersampled diffmap contribution.
-fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
-    let width = dest.width();
-    let height = dest.height();
+/// Adds supersampled diffmap contribution (2× upsampling with blending).
+///
+/// Processes pairs of destination pixels that share the same source pixel,
+/// enabling sequential access on both src and dst for better vectorization.
+#[archmage::autoversion]
+fn add_supersampled_2x(_token: archmage::SimdToken, src: &ImageF, weight: f32, dest: &mut ImageF) {
+    let dest_width = dest.width();
+    let dest_height = dest.height();
     const K_HEURISTIC_MIXING_VALUE: f32 = 0.3;
-
     let blend = 1.0 - K_HEURISTIC_MIXING_VALUE * weight;
     let src_w = src.width();
-    for y in 0..height {
-        let src_y = (y / 2).min(src.height() - 1);
+    let src_h = src.height();
+
+    for y in 0..dest_height {
+        let src_y = (y / 2).min(src_h - 1);
         let src_row = src.row(src_y);
         let dst_row = dest.row_mut(y);
-        for x in 0..width {
-            let src_val = src_row[(x / 2).min(src_w - 1)];
-            dst_row[x] = dst_row[x] * blend + weight * src_val;
+
+        // Process pairs of dest pixels that share the same source pixel.
+        // For standard half→full upsample, this covers all or all-but-one pixels.
+        let n_pairs = (dest_width / 2).min(src_w);
+        for (pair, &sv) in dst_row[..n_pairs * 2]
+            .chunks_exact_mut(2)
+            .zip(src_row[..n_pairs].iter())
+        {
+            let ws = weight * sv;
+            pair[0] = pair[0].mul_add(blend, ws);
+            pair[1] = pair[1].mul_add(blend, ws);
+        }
+
+        // Handle odd trailing pixel (when dest_width is odd)
+        if dest_width > n_pairs * 2 {
+            let sv = src_row[(dest_width / 2).min(src_w - 1)];
+            dst_row[dest_width - 1] = dst_row[dest_width - 1].mul_add(blend, weight * sv);
         }
     }
 }
@@ -1034,39 +1138,103 @@ fn add_supersampled_2x(src: &ImageF, weight: f32, dest: &mut ImageF) {
 fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
-    let mut output = vec![0.0f32; out_width * out_height * 3];
+    let out_size = out_width * out_height * 3;
+    let mut output = vec![0.0f32; out_size];
 
-    for oy in 0..out_height {
-        for ox in 0..out_width {
-            let mut r_sum = 0.0f32;
-            let mut g_sum = 0.0f32;
-            let mut b_sum = 0.0f32;
-            let mut count = 0.0f32;
+    // Fast interior: all 2x2 blocks fully within bounds
+    let interior_w = width / 2;
+    let interior_h = height / 2;
+    let inv4 = 0.25f32;
 
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let ix = ox * 2 + dx;
-                    let iy = oy * 2 + dy;
-                    if ix < width && iy < height {
-                        let idx = (iy * width + ix) * 3;
-                        r_sum += rgb[idx];
-                        g_sum += rgb[idx + 1];
-                        b_sum += rgb[idx + 2];
-                        count += 1.0;
-                    }
-                }
-            }
+    for oy in 0..interior_h {
+        let row0 = oy * 2 * width * 3;
+        let row1 = (oy * 2 + 1) * width * 3;
+        for ox in 0..interior_w {
+            let ix = ox * 2;
+            let i00 = row0 + ix * 3;
+            let i10 = row0 + (ix + 1) * 3;
+            let i01 = row1 + ix * 3;
+            let i11 = row1 + (ix + 1) * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = (rgb[i00] + rgb[i10] + rgb[i01] + rgb[i11]) * inv4;
+            output[out_idx + 1] =
+                (rgb[i00 + 1] + rgb[i10 + 1] + rgb[i01 + 1] + rgb[i11 + 1]) * inv4;
+            output[out_idx + 2] =
+                (rgb[i00 + 2] + rgb[i10 + 2] + rgb[i01 + 2] + rgb[i11 + 2]) * inv4;
+        }
+    }
 
-            if count > 0.0 {
-                let out_idx = (oy * out_width + ox) * 3;
-                output[out_idx] = r_sum / count;
-                output[out_idx + 1] = g_sum / count;
-                output[out_idx + 2] = b_sum / count;
-            }
+    // Right edge column (if width is odd)
+    if out_width > interior_w {
+        let ox = interior_w;
+        let ix = ox * 2;
+        for oy in 0..interior_h {
+            let row0 = oy * 2 * width * 3 + ix * 3;
+            let row1 = (oy * 2 + 1) * width * 3 + ix * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = (rgb[row0] + rgb[row1]) * 0.5;
+            output[out_idx + 1] = (rgb[row0 + 1] + rgb[row1 + 1]) * 0.5;
+            output[out_idx + 2] = (rgb[row0 + 2] + rgb[row1 + 2]) * 0.5;
+        }
+    }
+
+    // Bottom edge row (if height is odd)
+    if out_height > interior_h {
+        let oy = interior_h;
+        let row0 = oy * 2 * width * 3;
+        for ox in 0..interior_w {
+            let ix = ox * 2;
+            let i00 = row0 + ix * 3;
+            let i10 = row0 + (ix + 1) * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = (rgb[i00] + rgb[i10]) * 0.5;
+            output[out_idx + 1] = (rgb[i00 + 1] + rgb[i10 + 1]) * 0.5;
+            output[out_idx + 2] = (rgb[i00 + 2] + rgb[i10 + 2]) * 0.5;
+        }
+        // Bottom-right corner (if both odd)
+        if out_width > interior_w {
+            let ox = interior_w;
+            let ix = ox * 2;
+            let i00 = row0 + ix * 3;
+            let out_idx = (oy * out_width + ox) * 3;
+            output[out_idx] = rgb[i00];
+            output[out_idx + 1] = rgb[i00 + 1];
+            output[out_idx + 2] = rgb[i00 + 2];
         }
     }
 
     (output, out_width, out_height)
+}
+
+/// Subsamples a single planar channel by 2x (interior only).
+///
+/// Uses zip+chunks_exact for bounds-check-free sequential access.
+#[archmage::autoversion]
+fn subsample_channel_2x_interior(
+    _token: archmage::SimdToken,
+    src: &[f32],
+    out: &mut [f32],
+    stride: usize,
+    interior_w: usize,
+    interior_h: usize,
+    out_width: usize,
+) {
+    let inv4 = 0.25f32;
+    for oy in 0..interior_h {
+        let row0_start = oy * 2 * stride;
+        let row1_start = (oy * 2 + 1) * stride;
+        let src_row0 = &src[row0_start..row0_start + interior_w * 2];
+        let src_row1 = &src[row1_start..row1_start + interior_w * 2];
+        let dst_row = &mut out[oy * out_width..oy * out_width + interior_w];
+
+        for ((d, pair0), pair1) in dst_row
+            .iter_mut()
+            .zip(src_row0.chunks_exact(2))
+            .zip(src_row1.chunks_exact(2))
+        {
+            *d = (pair0[0] + pair0[1] + pair1[0] + pair1[1]) * inv4;
+        }
+    }
 }
 
 /// Subsamples planar linear RGB by 2x for multi-resolution processing.
@@ -1080,37 +1248,52 @@ fn subsample_planar_rgb_2x(
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
-    let mut out_r = vec![0.0f32; out_width * out_height];
-    let mut out_g = vec![0.0f32; out_width * out_height];
-    let mut out_b = vec![0.0f32; out_width * out_height];
+    let out_size = out_width * out_height;
+    let mut out_r = vec![0.0f32; out_size];
+    let mut out_g = vec![0.0f32; out_size];
+    let mut out_b = vec![0.0f32; out_size];
 
-    for oy in 0..out_height {
-        for ox in 0..out_width {
-            let mut rs = 0.0f32;
-            let mut gs = 0.0f32;
-            let mut bs = 0.0f32;
-            let mut count = 0.0f32;
+    let interior_w = width / 2;
+    let interior_h = height / 2;
 
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let ix = ox * 2 + dx;
-                    let iy = oy * 2 + dy;
-                    if ix < width && iy < height {
-                        let idx = iy * stride + ix;
-                        rs += r[idx];
-                        gs += g[idx];
-                        bs += b[idx];
-                        count += 1.0;
-                    }
-                }
-            }
+    // Fast interior: per-channel SIMD-friendly loop
+    subsample_channel_2x_interior(r, &mut out_r, stride, interior_w, interior_h, out_width);
+    subsample_channel_2x_interior(g, &mut out_g, stride, interior_w, interior_h, out_width);
+    subsample_channel_2x_interior(b, &mut out_b, stride, interior_w, interior_h, out_width);
 
-            if count > 0.0 {
-                let out_idx = oy * out_width + ox;
-                out_r[out_idx] = rs / count;
-                out_g[out_idx] = gs / count;
-                out_b[out_idx] = bs / count;
-            }
+    // Right edge column (if width is odd)
+    if out_width > interior_w {
+        let ox = interior_w;
+        let ix = ox * 2;
+        for oy in 0..interior_h {
+            let row0 = oy * 2 * stride;
+            let row1 = (oy * 2 + 1) * stride;
+            let out_idx = oy * out_width + ox;
+            out_r[out_idx] = (r[row0 + ix] + r[row1 + ix]) * 0.5;
+            out_g[out_idx] = (g[row0 + ix] + g[row1 + ix]) * 0.5;
+            out_b[out_idx] = (b[row0 + ix] + b[row1 + ix]) * 0.5;
+        }
+    }
+
+    // Bottom edge row (if height is odd)
+    if out_height > interior_h {
+        let oy = interior_h;
+        let row0 = oy * 2 * stride;
+        for ox in 0..interior_w {
+            let ix = ox * 2;
+            let out_idx = oy * out_width + ox;
+            out_r[out_idx] = (r[row0 + ix] + r[row0 + ix + 1]) * 0.5;
+            out_g[out_idx] = (g[row0 + ix] + g[row0 + ix + 1]) * 0.5;
+            out_b[out_idx] = (b[row0 + ix] + b[row0 + ix + 1]) * 0.5;
+        }
+        // Bottom-right corner (if both odd)
+        if out_width > interior_w {
+            let ox = interior_w;
+            let ix = ox * 2;
+            let out_idx = oy * out_width + ox;
+            out_r[out_idx] = r[row0 + ix];
+            out_g[out_idx] = g[row0 + ix];
+            out_b[out_idx] = b[row0 + ix];
         }
     }
 
