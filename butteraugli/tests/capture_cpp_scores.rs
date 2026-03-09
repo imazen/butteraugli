@@ -4,13 +4,13 @@
 //! Run with:
 //!   cargo test --test capture_cpp_scores -- --ignored --nocapture 2>&1 | tee /tmp/capture.log
 //!
-//! It generates PPM image pairs, runs butteraugli_main on each, and writes
-//! the results to /tmp/butteraugli_reference_data.rs for pasting into
-//! butteraugli/src/reference_data.rs.
+//! It generates PPM image pairs, runs butteraugli_main on each, computes diffmap
+//! stats from Rust, and writes the results to /tmp/butteraugli_reference_data.rs.
 
 mod common;
 
-use common::generators::generate_image_pair;
+use butteraugli::{ButteraugliParams, Img, butteraugli};
+use common::generators::{generate_image_pair, rgb_bytes_to_pixels};
 use std::io::Write;
 use std::process::Command;
 
@@ -43,7 +43,6 @@ fn run_cpp(ref_path: &str, dist_path: &str) -> f64 {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // First line is the score
     stdout
         .lines()
         .next()
@@ -53,12 +52,61 @@ fn run_cpp(ref_path: &str, dist_path: &str) -> f64 {
         .expect("failed to parse score")
 }
 
-/// All test case specifications: (pattern_prefix, shift/param, sizes).
-/// The name is constructed as "{pattern}_{W}x{H}".
+struct DiffmapStats {
+    min: f32,
+    max: f32,
+    mean: f32,
+    std: f32,
+}
+
+/// Compute diffmap stats from Rust butteraugli.
+fn compute_rust_stats(img_a: &[u8], img_b: &[u8], w: usize, h: usize) -> DiffmapStats {
+    let pixels_a = rgb_bytes_to_pixels(img_a);
+    let pixels_b = rgb_bytes_to_pixels(img_b);
+    let img_a = Img::new(pixels_a, w, h);
+    let img_b = Img::new(pixels_b, w, h);
+
+    let params = ButteraugliParams::default()
+        .with_intensity_target(INTENSITY_TARGET.parse::<f32>().unwrap())
+        .with_compute_diffmap(true);
+    let result = butteraugli(img_a.as_ref(), img_b.as_ref(), &params).expect("valid input");
+    let diffmap = result.diffmap.expect("diffmap requested");
+    let buf = diffmap.buf();
+
+    let mut min = f32::INFINITY;
+    let mut max = f32::NEG_INFINITY;
+    let mut sum = 0.0f64;
+    for &v in buf {
+        if v < min {
+            min = v;
+        }
+        if v > max {
+            max = v;
+        }
+        sum += v as f64;
+    }
+    let n = buf.len() as f64;
+    let mean = sum / n;
+
+    let mut var_sum = 0.0f64;
+    for &v in buf {
+        let d = v as f64 - mean;
+        var_sum += d * d;
+    }
+    let std = (var_sum / n).sqrt() as f32;
+
+    DiffmapStats {
+        min,
+        max,
+        mean: mean as f32,
+        std,
+    }
+}
+
+/// All test case specifications.
 fn test_cases() -> Vec<(String, usize, usize)> {
     let mut cases = Vec::new();
 
-    // Square sizes
     let sq_small: &[(usize, usize)] = &[
         (8, 8),
         (9, 9),
@@ -76,34 +124,27 @@ fn test_cases() -> Vec<(String, usize, usize)> {
     ];
     let sq_medium: &[(usize, usize)] = &[(128, 128), (192, 192), (256, 256)];
     let sq_large: &[(usize, usize)] = &[(384, 384), (512, 512)];
-
-    // Non-square sizes
     let nonsq: &[(usize, usize)] = &[(23, 31), (31, 23), (47, 33), (33, 47), (128, 96), (96, 128)];
 
-    // All sizes combined
     let all_small: Vec<(usize, usize)> = sq_small
         .iter()
         .copied()
         .chain(nonsq.iter().copied())
         .collect();
-    // Medium + large
     let all_medium: Vec<(usize, usize)> = sq_medium.to_vec();
     let all_large: Vec<(usize, usize)> = sq_large.to_vec();
 
-    // Sizes for most patterns: small + medium
     let standard: Vec<(usize, usize)> = all_small
         .iter()
         .copied()
         .chain(all_medium.iter().copied())
         .collect();
-    // Extended: standard + large
     let extended: Vec<(usize, usize)> = standard
         .iter()
         .copied()
         .chain(all_large.iter().copied())
         .collect();
 
-    // Helper: add cases for a pattern at given sizes (min dimension filter)
     let mut add = |prefix: &str, sizes: &[(usize, usize)], min_dim: usize| {
         for &(w, h) in sizes {
             if w >= min_dim && h >= min_dim {
@@ -112,57 +153,43 @@ fn test_cases() -> Vec<(String, usize, usize)> {
         }
     };
 
-    // === Uniform gray shifts ===
     for shift in [1, 5, 10, 20, 50] {
         add(&format!("uniform_gray_128_shift_{shift}"), &extended, 8);
     }
-
-    // === Uniform color shifts ===
     for color in ["red", "green", "blue"] {
         add(&format!("uniform_{color}_shift_20"), &standard, 8);
     }
-
-    // === Gradient patterns ===
     for dir in ["h", "v"] {
         add(&format!("gradient_{dir}_shift_15"), &extended, 8);
     }
     add("gradient_diag_shift_20", &standard, 8);
     add("color_gradient_shift_10", &standard, 8);
 
-    // === Checkerboard vs inverse ===
     for block in [1, 2] {
         add(&format!("checkerboard_vs_inverse_{block}px"), &standard, 8);
     }
     for block in [4, 8] {
-        // Need at least 2*block for meaningful pattern
         add(
             &format!("checkerboard_vs_inverse_{block}px"),
             &standard,
             block * 2,
         );
     }
-
-    // === Checkerboard shift ===
     add("checkerboard_shift_10", &standard, 8);
 
-    // === Stripes ===
     add("stripes_h_2px_shift_15", &standard, 8);
     add("stripes_v_2px_shift_15", &standard, 8);
 
-    // === Sine waves ===
     for freq in ["1x1", "2x2", "4x4"] {
         add(&format!("sine_{freq}_shift_10"), &standard, 16);
     }
 
-    // === Radial ===
     add("radial_shift_15", &standard, 8);
 
-    // === Edges ===
     add("edge_v_shift_10", &standard, 8);
     add("edge_h_shift_10", &standard, 8);
     add("edge_v_vs_blur", &standard, 8);
 
-    // === Random seeded ===
     for seed_idx in 0..5 {
         add(&format!("random_seed{seed_idx}_shift_10"), &standard, 8);
     }
@@ -170,13 +197,11 @@ fn test_cases() -> Vec<(String, usize, usize)> {
         add(&format!("random_seed{seed_idx}_noise_20"), &standard, 8);
     }
 
-    // === Random midrange distortions ===
     add("random_mid_contrast_1.2", &standard, 16);
     add("random_mid_gamma_0.9", &standard, 16);
     add("random_mid_blur", &standard, 16);
     add("random_mid_quantize_32", &standard, 16);
 
-    // === Color distortions ===
     add("color_grad_channel_swap", &standard, 8);
     add("color_grad_hue_shift", &standard, 8);
     add("random_color_channel_swap", &standard, 16);
@@ -185,10 +210,17 @@ fn test_cases() -> Vec<(String, usize, usize)> {
     cases
 }
 
+struct CaseResult {
+    name: String,
+    width: usize,
+    height: usize,
+    cpp_score: f64,
+    stats: DiffmapStats,
+}
+
 #[test]
 #[ignore]
 fn capture_all_cpp_scores() {
-    // Verify butteraugli_main exists
     assert!(
         std::path::Path::new(BUTTERAUGLI_MAIN).exists(),
         "butteraugli_main not found at {BUTTERAUGLI_MAIN}"
@@ -199,9 +231,8 @@ fn capture_all_cpp_scores() {
     let cases = test_cases();
     eprintln!("Generating {} test cases...", cases.len());
 
-    let mut results: Vec<(String, usize, usize, f64)> = Vec::new();
+    let mut results: Vec<CaseResult> = Vec::new();
     let mut skipped = 0;
-    let failed = 0;
 
     for (i, (name, w, h)) in cases.iter().enumerate() {
         if i % 50 == 0 {
@@ -217,27 +248,29 @@ fn capture_all_cpp_scores() {
             }
         };
 
+        // C++ score
         let ref_path = format!("{PPM_DIR}/{name}_a.ppm");
         let dist_path = format!("{PPM_DIR}/{name}_b.ppm");
         write_ppm(&ref_path, &pair.0, *w, *h);
         write_ppm(&dist_path, &pair.1, *w, *h);
-
-        let score = run_cpp(&ref_path, &dist_path);
-
-        results.push((name.clone(), *w, *h, score));
-
-        // Clean up PPMs to save disk
+        let cpp_score = run_cpp(&ref_path, &dist_path);
         let _ = std::fs::remove_file(&ref_path);
         let _ = std::fs::remove_file(&dist_path);
+
+        // Rust diffmap stats
+        let stats = compute_rust_stats(&pair.0, &pair.1, *w, *h);
+
+        results.push(CaseResult {
+            name: name.clone(),
+            width: *w,
+            height: *h,
+            cpp_score,
+            stats,
+        });
     }
 
-    if failed > 0 || skipped > 0 {
-        eprintln!(
-            "\n{} captured, {} skipped, {} failed",
-            results.len(),
-            skipped,
-            failed
-        );
+    if skipped > 0 {
+        eprintln!("\n{} captured, {} skipped", results.len(), skipped);
     }
 
     // Write Rust source file
@@ -246,18 +279,24 @@ fn capture_all_cpp_scores() {
 
     writeln!(
         f,
-        "//! Reference scores captured from libjxl butteraugli_main."
+        "//! Reference scores from libjxl butteraugli_main + diffmap stats from Rust."
+    )
+    .unwrap();
+    writeln!(f, "//!").unwrap();
+    writeln!(
+        f,
+        "//! Scores: captured from C++ butteraugli_main (ground truth for parity testing)."
+    )
+    .unwrap();
+    writeln!(
+        f,
+        "//! Stats: computed from Rust butteraugli diffmap (regression detection)."
     )
     .unwrap();
     writeln!(f, "//!").unwrap();
     writeln!(
         f,
         "//! Generated by: cargo test --test capture_cpp_scores -- --ignored"
-    )
-    .unwrap();
-    writeln!(
-        f,
-        "//! butteraugli_main: /home/lilith/work/jxl-efforts/libjxl/build/tools/butteraugli_main"
     )
     .unwrap();
     writeln!(
@@ -282,9 +321,19 @@ fn capture_all_cpp_scores() {
     .unwrap();
     writeln!(f).unwrap();
 
+    writeln!(f, "/// Diffmap statistics computed from Rust butteraugli.").unwrap();
+    writeln!(f, "#[derive(Debug, Clone, Copy)]").unwrap();
+    writeln!(f, "pub struct DiffmapStats {{").unwrap();
+    writeln!(f, "    pub min: f32,").unwrap();
+    writeln!(f, "    pub max: f32,").unwrap();
+    writeln!(f, "    pub mean: f32,").unwrap();
+    writeln!(f, "    pub std: f32,").unwrap();
+    writeln!(f, "}}").unwrap();
+    writeln!(f).unwrap();
+
     writeln!(
         f,
-        "/// A reference test case with expected butteraugli score from C++ libjxl."
+        "/// A reference test case with C++ score and Rust diffmap stats."
     )
     .unwrap();
     writeln!(f, "#[derive(Debug)]").unwrap();
@@ -292,7 +341,18 @@ fn capture_all_cpp_scores() {
     writeln!(f, "    pub name: &'static str,").unwrap();
     writeln!(f, "    pub width: usize,").unwrap();
     writeln!(f, "    pub height: usize,").unwrap();
+    writeln!(
+        f,
+        "    /// Ground truth score from C++ libjxl butteraugli_main."
+    )
+    .unwrap();
     writeln!(f, "    pub expected_score: f64,").unwrap();
+    writeln!(
+        f,
+        "    /// Diffmap statistics from Rust butteraugli (for regression detection)."
+    )
+    .unwrap();
+    writeln!(f, "    pub expected_stats: DiffmapStats,").unwrap();
     writeln!(f, "}}").unwrap();
     writeln!(f).unwrap();
 
@@ -305,25 +365,25 @@ fn capture_all_cpp_scores() {
     .unwrap();
     writeln!(f).unwrap();
 
-    writeln!(
-        f,
-        "/// All reference cases with C++ butteraugli_main scores."
-    )
-    .unwrap();
+    writeln!(f, "/// All reference cases.").unwrap();
     writeln!(f, "pub const REFERENCE_CASES: &[ReferenceCase] = &[").unwrap();
 
-    for (name, w, h, score) in &results {
+    for r in &results {
         writeln!(f, "    ReferenceCase {{").unwrap();
-        writeln!(f, "        name: \"{name}\",").unwrap();
-        writeln!(f, "        width: {w},").unwrap();
-        writeln!(f, "        height: {h},").unwrap();
-        // Use full precision
-        writeln!(f, "        expected_score: {score:.15},").unwrap();
+        writeln!(f, "        name: \"{}\",", r.name).unwrap();
+        writeln!(f, "        width: {},", r.width).unwrap();
+        writeln!(f, "        height: {},", r.height).unwrap();
+        writeln!(f, "        expected_score: {:.15},", r.cpp_score).unwrap();
+        writeln!(f, "        expected_stats: DiffmapStats {{").unwrap();
+        writeln!(f, "            min: {:?},", r.stats.min).unwrap();
+        writeln!(f, "            max: {:?},", r.stats.max).unwrap();
+        writeln!(f, "            mean: {:?},", r.stats.mean).unwrap();
+        writeln!(f, "            std: {:?},", r.stats.std).unwrap();
+        writeln!(f, "        }},").unwrap();
         writeln!(f, "    }},").unwrap();
     }
 
     writeln!(f, "];").unwrap();
 
     eprintln!("\nWrote {} reference cases to {out_path}", results.len());
-    eprintln!("Copy to butteraugli/src/reference_data.rs after review.");
 }
