@@ -14,6 +14,7 @@ pub const REFERENCE_INTENSITY_TARGET: f32 = 80.0;
 
 /// Diffmap statistics computed from Rust butteraugli.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct DiffmapStats {
     pub min: f32,
     pub max: f32,
@@ -23,6 +24,7 @@ pub struct DiffmapStats {
 
 /// A reference test case with C++ score and Rust diffmap stats.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ReferenceCase {
     pub name: &'static str,
     pub width: usize,

@@ -323,6 +323,7 @@ fn capture_all_cpp_scores() {
 
     writeln!(f, "/// Diffmap statistics computed from Rust butteraugli.").unwrap();
     writeln!(f, "#[derive(Debug, Clone, Copy)]").unwrap();
+    writeln!(f, "#[non_exhaustive]").unwrap();
     writeln!(f, "pub struct DiffmapStats {{").unwrap();
     writeln!(f, "    pub min: f32,").unwrap();
     writeln!(f, "    pub max: f32,").unwrap();
@@ -337,6 +338,7 @@ fn capture_all_cpp_scores() {
     )
     .unwrap();
     writeln!(f, "#[derive(Debug)]").unwrap();
+    writeln!(f, "#[non_exhaustive]").unwrap();
     writeln!(f, "pub struct ReferenceCase {{").unwrap();
     writeln!(f, "    pub name: &'static str,").unwrap();
     writeln!(f, "    pub width: usize,").unwrap();

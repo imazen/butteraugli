@@ -435,6 +435,7 @@ pub const BUTTERAUGLI_BAD: f64 = 2.0;
 
 /// Butteraugli image comparison result.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ButteraugliResult {
     /// Global difference score. < 1.0 is "good", > 2.0 is "bad".
     pub score: f64,
