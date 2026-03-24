@@ -14,8 +14,8 @@ rust-version = "1.89"
 
 [workspace.dependencies]
 butteraugli = { path = "butteraugli", version = "0.9.0" }
-archmage = { version = "0.9.6", features = ["avx512"] }
-magetypes = { version = "0.9.6", features = ["avx512"] }
+archmage = { version = "0.9.7", features = ["avx512"] }
+magetypes = { version = "0.9.7", features = ["avx512"] }
 clap = { version = "4.5", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1.0", features = ["derive"] }
