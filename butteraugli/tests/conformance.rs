@@ -11,6 +11,7 @@ mod common;
 
 use butteraugli::{BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD, ButteraugliParams, Img, RGB8, butteraugli};
 use std::fs;
+use std::io::BufReader;
 use std::path::Path;
 
 /// Convert RGB byte slice to Vec<RGB8>
@@ -23,9 +24,9 @@ fn rgb_bytes_to_pixels(rgb: &[u8]) -> Vec<RGB8> {
 /// Load a PNG file and return RGB data.
 fn load_png(path: &Path) -> Option<(Vec<u8>, usize, usize)> {
     let file = fs::File::open(path).ok()?;
-    let decoder = png::Decoder::new(file);
+    let decoder = png::Decoder::new(BufReader::new(file));
     let mut reader = decoder.read_info().ok()?;
-    let mut buf = vec![0; reader.output_buffer_size()];
+    let mut buf = vec![0; reader.output_buffer_size().expect("output_buffer_size")];
     let info = reader.next_frame(&mut buf).ok()?;
 
     let (width, height) = (info.width as usize, info.height as usize);

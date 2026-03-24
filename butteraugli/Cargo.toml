@@ -57,7 +57,7 @@ rayon = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Image I/O for testing
-png = "0.17"
+png = "0.18"
 
 # Testing utilities
 approx = "0.5"

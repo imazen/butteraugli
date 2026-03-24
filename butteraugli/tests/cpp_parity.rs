@@ -12,14 +12,15 @@ use jpegli_internals_sys::{
     butteraugli_gamma, butteraugli_srgb_to_linear,
 };
 use std::fs;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 /// Load a PNG file and return RGB data.
 fn load_png(path: &Path) -> Option<(Vec<u8>, usize, usize)> {
     let file = fs::File::open(path).ok()?;
-    let decoder = png::Decoder::new(file);
+    let decoder = png::Decoder::new(BufReader::new(file));
     let mut reader = decoder.read_info().ok()?;
-    let mut buf = vec![0; reader.output_buffer_size()];
+    let mut buf = vec![0; reader.output_buffer_size().expect("output_buffer_size")];
     let info = reader.next_frame(&mut buf).ok()?;
 
     let (width, height) = (info.width as usize, info.height as usize);

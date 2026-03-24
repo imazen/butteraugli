@@ -7,7 +7,7 @@ fn load_png(path: &str) -> (Vec<RGB8>, usize, usize) {
     let file = File::open(path).unwrap_or_else(|e| panic!("Failed to open {path}: {e}"));
     let decoder = png::Decoder::new(BufReader::new(file));
     let mut reader = decoder.read_info().unwrap();
-    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let mut buf = vec![0u8; reader.output_buffer_size().expect("output_buffer_size")];
     let info = reader.next_frame(&mut buf).unwrap();
     let bytes = &buf[..info.buffer_size()];
 
