@@ -17,6 +17,8 @@ use crate::image::{BufferPool, ImageF};
 use archmage::{autoversion, incant, magetypes};
 use core::f64::consts::PI;
 use magetypes::simd::generic::f32x8 as GenericF32x8;
+#[cfg(all(target_arch = "x86_64", feature = "avx512"))]
+use magetypes::simd::v4::f32x16 as MtF32x16;
 
 /// IIR weights for one Gaussian sigma. Three parallel 2-pole sections (k=1,3,5),
 /// constants derived in f64 for numerical stability and stored as f32.
@@ -210,8 +212,100 @@ fn vertical_pass(
 ) {
     incant!(
         vertical_pass_inner(input, output, width, height, coeffs),
-        [v3, neon, wasm128, scalar]
+        [v4, v3, neon, wasm128, scalar]
     )
+}
+
+// AVX-512 path: 16 columns at a time. On Zen 4 this is the same throughput as
+// 2× v3 f32x8 (zmm splits to 2× ymm μops), but cuts loop overhead in half and
+// frees more registers for IIR state, which matters for serial recurrences.
+#[cfg(all(target_arch = "x86_64", feature = "avx512"))]
+#[archmage::arcane]
+fn vertical_pass_inner_v4(
+    token: archmage::X64V4Token,
+    input: &[f32],
+    output: &mut [f32],
+    width: usize,
+    height: usize,
+    coeffs: &IirCoeffs,
+) {
+    const LANES: usize = 16;
+    let big_n = coeffs.radius as isize;
+    let height_i = height as isize;
+    let groups = width / LANES;
+
+    let mi1 = MtF32x16::splat(token, coeffs.mul_in[0]);
+    let mi3 = MtF32x16::splat(token, coeffs.mul_in[1]);
+    let mi5 = MtF32x16::splat(token, coeffs.mul_in[2]);
+    let mp1 = MtF32x16::splat(token, coeffs.mul_prev[0]);
+    let mp3 = MtF32x16::splat(token, coeffs.mul_prev[1]);
+    let mp5 = MtF32x16::splat(token, coeffs.mul_prev[2]);
+    let zeroes = MtF32x16::zero(token);
+
+    for g in 0..groups {
+        let col = g * LANES;
+        let mut prev_1 = zeroes;
+        let mut prev_3 = zeroes;
+        let mut prev_5 = zeroes;
+        let mut prev2_1 = zeroes;
+        let mut prev2_3 = zeroes;
+        let mut prev2_5 = zeroes;
+
+        let mut n = -big_n + 1;
+        while n < height_i {
+            let top = n - big_n - 1;
+            let bottom = n + big_n - 1;
+
+            let top_v = if top >= 0 && top < height_i {
+                MtF32x16::from_array(
+                    token,
+                    input[top as usize * width + col..][..LANES]
+                        .try_into()
+                        .unwrap(),
+                )
+            } else {
+                zeroes
+            };
+            let bot_v = if bottom >= 0 && bottom < height_i {
+                MtF32x16::from_array(
+                    token,
+                    input[bottom as usize * width + col..][..LANES]
+                        .try_into()
+                        .unwrap(),
+                )
+            } else {
+                zeroes
+            };
+            let sum = top_v + bot_v;
+
+            let acc1 = prev_1.mul_add(mp1, prev2_1);
+            let acc3 = prev_3.mul_add(mp3, prev2_3);
+            let acc5 = prev_5.mul_add(mp5, prev2_5);
+            let out1 = sum.mul_add(mi1, -acc1);
+            let out3 = sum.mul_add(mi3, -acc3);
+            let out5 = sum.mul_add(mi5, -acc5);
+
+            prev2_1 = prev_1;
+            prev2_3 = prev_3;
+            prev2_5 = prev_5;
+            prev_1 = out1;
+            prev_3 = out3;
+            prev_5 = out5;
+
+            if n >= 0 {
+                let result = out1 + out3 + out5;
+                let dst = n as usize * width + col;
+                output[dst..dst + LANES].copy_from_slice(&result.to_array());
+            }
+            n += 1;
+        }
+    }
+
+    // Scalar remainder for columns past the last full LANES group.
+    let scalar_start = groups * LANES;
+    if scalar_start < width {
+        vertical_pass_scalar_columns(input, output, width, height, scalar_start, coeffs);
+    }
 }
 
 #[magetypes(v3, neon, wasm128, scalar)]
