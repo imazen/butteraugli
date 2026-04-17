@@ -150,7 +150,6 @@ fn horizontal_pass(input: &[f32], output: &mut [f32], width: usize, coeffs: &Iir
 fn horizontal_row(input: &[f32], output: &mut [f32], coeffs: &IirCoeffs) {
     let width = input.len() as isize;
     let big_n = coeffs.radius as isize;
-    let big_n_u = big_n as usize;
 
     let mi1 = coeffs.mul_in[0];
     let mi3 = coeffs.mul_in[1];
@@ -166,41 +165,15 @@ fn horizontal_row(input: &[f32], output: &mut [f32], coeffs: &IirCoeffs) {
     let mut prev2_3 = 0f32;
     let mut prev2_5 = 0f32;
 
-    macro_rules! iir_step {
-        ($sum:expr) => {{
-            let sum = $sum;
-            let out_1 = sum.mul_add(mi1, -mp1.mul_add(prev_1, prev2_1));
-            let out_3 = sum.mul_add(mi3, -mp3.mul_add(prev_3, prev2_3));
-            let out_5 = sum.mul_add(mi5, -mp5.mul_add(prev_5, prev2_5));
-            prev2_1 = prev_1;
-            prev2_3 = prev_3;
-            prev2_5 = prev_5;
-            prev_1 = out_1;
-            prev_3 = out_3;
-            prev_5 = out_5;
-            out_1 + out_3 + out_5
-        }};
-    }
-
-    // Three-phase split eliminates per-iteration bounds checks in the dominant
-    // interior phase (~85–99% of the row depending on sigma).
-    //
-    // n indexes the output position. left = n - big_n - 1, right = n + big_n - 1.
-    // left becomes valid (>= 0) when n >= big_n + 1.
-    // right stays valid (< width) when n <= width - big_n.
-    let warmup_end = (big_n + 1).min(width);
-    let interior_end = (width - big_n + 1).max(warmup_end);
-
-    // Phase 1: warm-up. Output for n >= 0 only.
-    // Boundary handling is zero-padding here — switching to clamp-to-edge
-    // diverges because the IIR's DC pole (mp = -2*cos(ω) ≈ -1.996 for sigma 7
-    // section 1) is on the edge of marginal stability. Zero-pad warmup is
-    // mathematically required by Charalampidis 2016.
+    // Boundary handling is zero-padding — switching to clamp-to-edge diverges
+    // because the IIR's DC pole (mp = -2*cos(ω) ≈ -1.996 for sigma 7 section 1)
+    // is on the edge of marginal stability. Zero-pad warmup is mathematically
+    // required by Charalampidis 2016.
     let mut n = -big_n + 1;
-    while n < warmup_end {
+    while n < width {
         let left = n - big_n - 1;
         let right = n + big_n - 1;
-        let left_val = if left >= 0 {
+        let left_val = if left >= 0 && left < width {
             input[left as usize]
         } else {
             0f32
@@ -210,42 +183,22 @@ fn horizontal_row(input: &[f32], output: &mut [f32], coeffs: &IirCoeffs) {
         } else {
             0f32
         };
-        let result = iir_step!(left_val + right_val);
+        let sum = left_val + right_val;
+
+        let out_1 = sum.mul_add(mi1, -mp1.mul_add(prev_1, prev2_1));
+        let out_3 = sum.mul_add(mi3, -mp3.mul_add(prev_3, prev2_3));
+        let out_5 = sum.mul_add(mi5, -mp5.mul_add(prev_5, prev2_5));
+
+        prev2_1 = prev_1;
+        prev2_3 = prev_3;
+        prev2_5 = prev_5;
+        prev_1 = out_1;
+        prev_3 = out_3;
+        prev_5 = out_5;
+
         if n >= 0 {
-            output[n as usize] = result;
+            output[n as usize] = out_1 + out_3 + out_5;
         }
-        n += 1;
-    }
-
-    // Phase 2: interior. Zip slices to eliminate per-iteration bounds checks.
-    if interior_end > n {
-        let phase2_len = (interior_end - n) as usize;
-        let n_start = n as usize;
-        let left_slice = &input[n_start - big_n_u - 1..n_start - big_n_u - 1 + phase2_len];
-        let right_slice = &input[n_start + big_n_u - 1..n_start + big_n_u - 1 + phase2_len];
-        let out_slice = &mut output[n_start..n_start + phase2_len];
-
-        for ((&l, &r), o) in left_slice.iter().zip(right_slice.iter()).zip(out_slice) {
-            *o = iir_step!(l + r);
-        }
-        n = interior_end;
-    }
-
-    // Phase 3: tail. Right is zero-padded.
-    while n < width {
-        let left = n - big_n - 1;
-        let right = n + big_n - 1;
-        let left_val = if left >= 0 && left < width {
-            input[left as usize]
-        } else {
-            0f32
-        };
-        let right_val = if right < width {
-            input[right as usize]
-        } else {
-            0f32
-        };
-        output[n as usize] = iir_step!(left_val + right_val);
         n += 1;
     }
 }
