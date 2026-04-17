@@ -2131,6 +2131,10 @@ mod tests {
         assert!(sum > 0.0);
     }
 
+    // Asserts a FIR-clamp-to-edge boundary property: a constant image stays
+    // constant in the interior. The IIR path uses zero-padding and intentionally
+    // attenuates the boundary, so this property does not hold under iir-blur.
+    #[cfg(not(feature = "iir-blur"))]
     #[test]
     fn test_blur_constant_image() {
         // Blurring a constant image should give the same constant

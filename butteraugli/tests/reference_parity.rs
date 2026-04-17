@@ -6,6 +6,11 @@
 //! for some synthetic patterns).
 //!
 //! Run with: `cargo test --test reference_parity`
+//!
+//! Reference scores were captured from the FIR blur path. The iir-blur feature
+//! changes scores by 0.1–5% on real photos and far more on tiny synthetics, so
+//! this whole file is FIR-only — `cargo test --features iir-blur` skips it.
+#![cfg(not(feature = "iir-blur"))]
 
 mod common;
 

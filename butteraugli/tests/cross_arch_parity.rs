@@ -284,6 +284,10 @@ fn run_case(name: &str, expected_bits: u64) -> CaseResult {
     }
 }
 
+// Reference scores were recorded against the FIR blur path. Enabling iir-blur
+// changes scores by 0.1–5% on real photos and far more on tiny synthetics,
+// well past this 1e-4 tolerance — gating to FIR-only.
+#[cfg(not(feature = "iir-blur"))]
 #[test]
 fn test_cross_arch_parity_all() {
     let mut bit_exact = 0usize;
