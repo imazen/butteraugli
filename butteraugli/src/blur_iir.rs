@@ -136,7 +136,10 @@ fn solve_3x3(a: [[f64; 3]; 3], b: [f64; 3]) -> [f64; 3] {
 fn horizontal_pass(input: &[f32], output: &mut [f32], width: usize, coeffs: &IirCoeffs) {
     debug_assert_eq!(input.len(), output.len());
     debug_assert_eq!(input.len() % width, 0);
-    for (in_row, out_row) in input.chunks_exact(width).zip(output.chunks_exact_mut(width)) {
+    for (in_row, out_row) in input
+        .chunks_exact(width)
+        .zip(output.chunks_exact_mut(width))
+    {
         horizontal_row(in_row, out_row, coeffs);
     }
 }
@@ -164,8 +167,16 @@ fn horizontal_row(input: &[f32], output: &mut [f32], coeffs: &IirCoeffs) {
     while n < width {
         let left = n - big_n - 1;
         let right = n + big_n - 1;
-        let left_val = if left >= 0 && left < width { input[left as usize] } else { 0f32 };
-        let right_val = if right >= 0 && right < width { input[right as usize] } else { 0f32 };
+        let left_val = if left >= 0 && left < width {
+            input[left as usize]
+        } else {
+            0f32
+        };
+        let right_val = if right >= 0 && right < width {
+            input[right as usize]
+        } else {
+            0f32
+        };
         let sum = left_val + right_val;
 
         let out_1 = sum.mul_add(mi1, -mp1.mul_add(prev_1, prev2_1));
@@ -248,7 +259,9 @@ fn vertical_pass_inner(
             let top_v = if top >= 0 && top < height_i {
                 f32x8::from_array(
                     token,
-                    input[top as usize * width + col..][..LANES].try_into().unwrap(),
+                    input[top as usize * width + col..][..LANES]
+                        .try_into()
+                        .unwrap(),
                 )
             } else {
                 zeroes
@@ -256,7 +269,9 @@ fn vertical_pass_inner(
             let bot_v = if bottom >= 0 && bottom < height_i {
                 f32x8::from_array(
                     token,
-                    input[bottom as usize * width + col..][..LANES].try_into().unwrap(),
+                    input[bottom as usize * width + col..][..LANES]
+                        .try_into()
+                        .unwrap(),
                 )
             } else {
                 zeroes
@@ -326,8 +341,16 @@ fn vertical_pass_scalar_columns(
         while n < height_i {
             let top = n - big_n - 1;
             let bottom = n + big_n - 1;
-            let top_v = if top >= 0 && top < height_i { input[top as usize * width + x] } else { 0f32 };
-            let bot_v = if bottom >= 0 && bottom < height_i { input[bottom as usize * width + x] } else { 0f32 };
+            let top_v = if top >= 0 && top < height_i {
+                input[top as usize * width + x]
+            } else {
+                0f32
+            };
+            let bot_v = if bottom >= 0 && bottom < height_i {
+                input[bottom as usize * width + x]
+            } else {
+                0f32
+            };
             let sum = top_v + bot_v;
 
             let out_1 = sum.mul_add(mi1, -mp1.mul_add(prev_1, prev2_1));
