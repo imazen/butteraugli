@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `iir-blur` cargo feature — Charalampidis 2016 recursive Gaussian as an O(N)
+  per-pixel alternative to the FIR separable convolution (a62453a, ef750a3).
+  Off by default. Real-photo parity vs FIR: 0.1–5% relative score deviation
+  (mean ~2%, GB82 corpus Q75 576×576). Tiny synthetic images deviate widely
+  because the IIR uses zero-padding while FIR uses clamp-to-edge — unsuitable
+  for parity-sensitive workflows. Speed: matches FIR on Zen 4 with AVX-512;
+  ~22% faster on hardware without v4 (most ARM, older x86). The CLI accepts
+  the same `iir-blur` feature for consistent dispatch.
+
 ## [0.6.2] - 2026-02-15
 
 ### Fixed

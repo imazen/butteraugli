@@ -7,6 +7,34 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 None currently known. Parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 
+## IIR Blur Feature (2026-04-17)
+
+`iir-blur` cargo feature provides Charalampidis 2016 recursive Gaussian as an
+alternative to the FIR convolution. **Off by default.** See `src/blur_iir.rs`.
+
+Real-photo parity (GB82 Q75 576×576 vs FIR baseline):
+- mean ~2%, max 5.1% (bulb), all underestimate
+- 4/10 images within 1%
+- Tiny synthetic images blow up (zero-padding vs clamp-to-edge boundary) — flagged in
+  the feature gate doc. Don't use IIR for parity testing or tiny-image regression
+  suites; use it for encoder rate-distortion search where relative ordering matters
+  more than absolute scores.
+
+Performance (Zen 4, 512×512 compare_linear_planar):
+- FIR (default+avx512): 10.3 ms
+- IIR (default+avx512+iir-blur): 10.2 ms — basically equal
+- IIR has no v4 (AVX-512) path yet — only v3, NEON, wasm128, scalar via magetypes.
+  Adding a manual v4 path with `magetypes::simd::v4::f32x16` is the next available
+  optimization if Zen 4 IIR becomes a priority.
+
+Callgrind (single 512×512 compare):
+- FIR blur: 295M instructions (46% of total)
+- IIR blur: 247M instructions (-16%, 42% of total)
+- IIR H pass: 199M (autoversioned scalar, FMA-enabled)
+- IIR V pass: 48M (SIMD across 8 columns, IIR state in registers)
+- IIR is 7% fewer total instructions but Zen 4's AVX-512 throughput on FIR
+  cancels the win at wall-clock.
+
 ## Parity Status (2026-02-14)
 
 ### FIXED: Subsampling in sRGB u8 instead of linear float
