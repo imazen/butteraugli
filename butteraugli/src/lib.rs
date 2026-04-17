@@ -82,6 +82,12 @@
 #![allow(clippy::useless_let_if_seq)]
 // archmage uses _token parameters implicitly via proc macros
 #![allow(clippy::used_underscore_binding)]
+// archmage 0.9.20 deprecates the SimdToken parameter on #[autoversion] functions
+// and the implicit `scalar` fallback in incant! tier lists. Both removals are
+// mechanical (~20 functions across 6 modules + every incant! call site). Tracking
+// as a follow-up so this PR stays focused on the iir-blur feature.
+// TODO(post-iir-blur): migrate per archmage 0.9.20 deprecation notes, then remove.
+#![allow(deprecated)]
 
 // Internal modules - exposed with "internals" feature for testing/benchmarking.
 // The pub(crate) variants allow dead_code because these modules contain items

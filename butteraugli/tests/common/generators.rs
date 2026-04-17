@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+// Newer clippy flags `if x > 0 { y / x } else { fallback }` as `manual_checked_ops`,
+// preferring `y.checked_div(x).unwrap_or(fallback)`. The current shape is more
+// readable for test fixtures; suppressing rather than rewriting.
+#![allow(clippy::manual_checked_ops)]
 //! Shared image generation and distortion functions for butteraugli tests.
 //!
 //! These produce deterministic synthetic images using an LCG PRNG,
