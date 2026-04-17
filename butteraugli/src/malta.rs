@@ -1291,7 +1291,7 @@ pub fn malta_diff_map(
 /// First pass of Malta: compute branch-free scaled diffs between two images.
 ///
 /// Replaces 4-branch sign-dependent penalty with copysign + max clamping.
-#[archmage::autoversion]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn malta_compute_scaled_diffs(
     _token: archmage::SimdToken,
     lum0: &ImageF,

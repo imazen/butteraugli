@@ -883,7 +883,7 @@ fn compute_psycho_diff_malta(
 ///
 /// Fuses compute_lf_diff + combine_channels_to_diffmap into a single pass,
 /// eliminating 3 intermediate DC diff plane allocations and 6MB memory traffic.
-#[archmage::autoversion]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn combine_channels_to_diffmap_fused(
     _token: archmage::SimdToken,
     mask: &ImageF,
@@ -958,7 +958,7 @@ fn combine_channels_to_diffmap_fused(
 }
 
 /// Accumulates two source images into a destination: dst[x] += a[x] + b[x].
-#[archmage::autoversion]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn accumulate_two(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
     let height = a.height();
     for y in 0..height {
@@ -972,7 +972,7 @@ fn accumulate_two(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut
 }
 
 /// L2 difference (symmetric) - autoversioned for autovectorization.
-#[archmage::autoversion]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
     let height = i0.height();
 
@@ -992,7 +992,7 @@ fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffma
 ///
 /// Like `l2_diff` but overwrites diffmap instead of accumulating.
 /// Use when diffmap is uninitialized or dirty.
-#[archmage::autoversion]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn l2_diff_write(
     _token: archmage::SimdToken,
     i0: &ImageF,
@@ -1015,7 +1015,7 @@ fn l2_diff_write(
 }
 
 /// L2 difference asymmetric - autoversioned for autovectorization.
-#[archmage::autoversion]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn l2_diff_asymmetric(
     _token: archmage::SimdToken,
     i0: &ImageF,
@@ -1060,7 +1060,7 @@ fn l2_diff_asymmetric(
 /// Uses 8 independent max accumulators to break the loop-carried dependency,
 /// enabling LLVM to vectorize with vmaxps (8-wide packed max).
 /// Diffmap values are guaranteed non-NaN (output of sqrt of validated inputs).
-#[archmage::autoversion]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> f64 {
     let width = diffmap.width();
     let height = diffmap.height();
@@ -1100,7 +1100,7 @@ fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> 
 ///
 /// Processes pairs of destination pixels that share the same source pixel,
 /// enabling sequential access on both src and dst for better vectorization.
-#[archmage::autoversion]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn add_supersampled_2x(_token: archmage::SimdToken, src: &ImageF, weight: f32, dest: &mut ImageF) {
     let dest_width = dest.width();
     let dest_height = dest.height();
@@ -1209,7 +1209,7 @@ fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32
 /// Subsamples a single planar channel by 2x (interior only).
 ///
 /// Uses zip+chunks_exact for bounds-check-free sequential access.
-#[archmage::autoversion]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn subsample_channel_2x_interior(
     _token: archmage::SimdToken,
     src: &[f32],
