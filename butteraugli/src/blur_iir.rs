@@ -228,71 +228,63 @@ fn vertical_pass_inner(
     let mp5 = f32x8::splat(token, coeffs.mul_prev[2]);
     let zeroes = f32x8::zero(token);
 
-    // Column-wise IIR state: 6 vectors per group of LANES columns.
-    let state_size = groups * LANES;
-    let mut prev_1 = vec![0.0f32; state_size];
-    let mut prev_3 = vec![0.0f32; state_size];
-    let mut prev_5 = vec![0.0f32; state_size];
-    let mut prev2_1 = vec![0.0f32; state_size];
-    let mut prev2_3 = vec![0.0f32; state_size];
-    let mut prev2_5 = vec![0.0f32; state_size];
+    // Process one column group at a time, all rows in a tight inner loop.
+    // State stays in 6 SIMD registers across the n loop — no per-iteration
+    // memory traffic for state, so loop is bound only by FMA latency.
+    for g in 0..groups {
+        let col = g * LANES;
+        let mut prev_1 = zeroes;
+        let mut prev_3 = zeroes;
+        let mut prev_5 = zeroes;
+        let mut prev2_1 = zeroes;
+        let mut prev2_3 = zeroes;
+        let mut prev2_5 = zeroes;
 
-    let mut n = -big_n + 1;
-    while n < height_i {
-        let top = n - big_n - 1;
-        let bottom = n + big_n - 1;
+        let mut n = -big_n + 1;
+        while n < height_i {
+            let top = n - big_n - 1;
+            let bottom = n + big_n - 1;
 
-        let top_valid = top >= 0 && top < height_i;
-        let bottom_valid = bottom >= 0 && bottom < height_i;
-        let top_row_start = if top_valid { top as usize * width } else { 0 };
-        let bot_row_start = if bottom_valid { bottom as usize * width } else { 0 };
-
-        for g in 0..groups {
-            let col = g * LANES;
-
-            let top_v = if top_valid {
-                f32x8::from_array(token, input[top_row_start + col..][..LANES].try_into().unwrap())
+            let top_v = if top >= 0 && top < height_i {
+                f32x8::from_array(
+                    token,
+                    input[top as usize * width + col..][..LANES].try_into().unwrap(),
+                )
             } else {
                 zeroes
             };
-            let bot_v = if bottom_valid {
-                f32x8::from_array(token, input[bot_row_start + col..][..LANES].try_into().unwrap())
+            let bot_v = if bottom >= 0 && bottom < height_i {
+                f32x8::from_array(
+                    token,
+                    input[bottom as usize * width + col..][..LANES].try_into().unwrap(),
+                )
             } else {
                 zeroes
             };
             let sum = top_v + bot_v;
 
-            let p1 = f32x8::from_array(token, prev_1[col..col + LANES].try_into().unwrap());
-            let p3 = f32x8::from_array(token, prev_3[col..col + LANES].try_into().unwrap());
-            let p5 = f32x8::from_array(token, prev_5[col..col + LANES].try_into().unwrap());
-            let p21 = f32x8::from_array(token, prev2_1[col..col + LANES].try_into().unwrap());
-            let p23 = f32x8::from_array(token, prev2_3[col..col + LANES].try_into().unwrap());
-            let p25 = f32x8::from_array(token, prev2_5[col..col + LANES].try_into().unwrap());
-
             // out = sum * mi - mp * prev - prev2
-            //     = sum.mul_add(mi, -(mp.mul_add(prev, prev2)))
-            let acc1 = p1.mul_add(mp1, p21);
-            let acc3 = p3.mul_add(mp3, p23);
-            let acc5 = p5.mul_add(mp5, p25);
+            let acc1 = prev_1.mul_add(mp1, prev2_1);
+            let acc3 = prev_3.mul_add(mp3, prev2_3);
+            let acc5 = prev_5.mul_add(mp5, prev2_5);
             let out1 = sum.mul_add(mi1, -acc1);
             let out3 = sum.mul_add(mi3, -acc3);
             let out5 = sum.mul_add(mi5, -acc5);
 
-            prev2_1[col..col + LANES].copy_from_slice(&p1.to_array());
-            prev2_3[col..col + LANES].copy_from_slice(&p3.to_array());
-            prev2_5[col..col + LANES].copy_from_slice(&p5.to_array());
-            prev_1[col..col + LANES].copy_from_slice(&out1.to_array());
-            prev_3[col..col + LANES].copy_from_slice(&out3.to_array());
-            prev_5[col..col + LANES].copy_from_slice(&out5.to_array());
+            prev2_1 = prev_1;
+            prev2_3 = prev_3;
+            prev2_5 = prev_5;
+            prev_1 = out1;
+            prev_3 = out3;
+            prev_5 = out5;
 
             if n >= 0 {
                 let result = out1 + out3 + out5;
                 let dst = n as usize * width + col;
                 output[dst..dst + LANES].copy_from_slice(&result.to_array());
             }
+            n += 1;
         }
-
-        n += 1;
     }
 
     // Scalar remainder for columns past the last full LANES group.
