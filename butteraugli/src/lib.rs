@@ -92,6 +92,10 @@ pub mod blur;
 #[allow(dead_code)]
 pub(crate) mod blur;
 
+#[cfg(feature = "iir-blur")]
+#[allow(dead_code)]
+pub(crate) mod blur_iir;
+
 #[cfg(feature = "internals")]
 pub mod consts;
 #[cfg(not(feature = "internals"))]

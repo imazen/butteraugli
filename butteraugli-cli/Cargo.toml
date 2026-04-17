@@ -16,6 +16,11 @@ readme = "README.md"
 name = "butteraugli"
 path = "src/main.rs"
 
+[features]
+default = []
+# Forwards to the butteraugli crate's iir-blur feature. Non-bit-exact, ~4-10× faster blur.
+iir-blur = ["butteraugli/iir-blur"]
+
 [dependencies]
 butteraugli.workspace = true
 clap.workspace = true

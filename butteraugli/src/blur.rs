@@ -867,6 +867,11 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     if sigma <= 0.0 {
         return input.clone();
     }
+    #[cfg(feature = "iir-blur")]
+    {
+        return crate::blur_iir::gaussian_blur_iir(input, sigma, pool);
+    }
+    #[cfg(not(feature = "iir-blur"))]
     archmage::incant!(
         gaussian_blur_dispatch(input, sigma, pool),
         [v4, v3, neon, wasm128]
