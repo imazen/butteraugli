@@ -7,6 +7,37 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 None currently known. Parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 
+## FIR Blur — At LLVM Ceiling (2026-04-17)
+
+The FIR `convolve_horizontal_interior_*` and `convolve_vertical_*` functions
+look naive (single accumulator, full-kernel loop, no symmetry exploitation).
+This is intentional. **Adding any of the libjxl manual-unroll tricks makes it
+SLOWER** in callgrind — LLVM is already auto-optimizing them.
+
+Investigation results (callgrind, single 512×512 compare, FIR baseline 295M
+instructions in `gaussian_blur_dispatch_v3`):
+
+| Variant attempted                                         | Total instr | Verdict |
+|-----------------------------------------------------------|------------|---------|
+| Baseline (single accumulator, full-kernel loop)           | 295M       | best    |
+| 4 round-robin accumulators (no symmetry)                  | 370M       | -25%    |
+| 4 accumulators + kernel symmetry (libjxl case-33 style)   | 357M       | -21%    |
+
+LLVM appears to already split the `sum` reduction into multiple accumulators
+during loop unrolling. Adding explicit accumulators or symmetry pairs
+introduces extra bookkeeping (zero-init, final reduction add) that LLVM can't
+constant-fold away.
+
+Compared to libjxl/butteraugli.cc:
+- libjxl uses **transpose-based double convolution** (`Convolution(Convolution(in,k),k)`)
+- Our session-3 restructure eliminated the transpose for ~20% speedup
+- libjxl's case-33 manual unroll is a SCALAR optimization; LLVM does equivalent
+  for our SIMD loops automatically
+
+**Don't try to "improve" the FIR inner loop** without first measuring callgrind.
+Algorithmic wins (IIR via `iir-blur`, fewer blur calls) are the only paths
+forward for FIR speedup.
+
 ## IIR Blur Feature (2026-04-17)
 
 `iir-blur` cargo feature provides Charalampidis 2016 recursive Gaussian as an
