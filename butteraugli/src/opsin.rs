@@ -150,7 +150,7 @@ pub fn opsin_absorbance(r: f32, g: f32, b: f32, clamp: bool) -> (f32, f32, f32) 
 ///
 /// # Returns
 /// XYB image (3 planes)
-#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion]
 pub fn opsin_dynamics_image(
     _token: archmage::SimdToken,
     rgb: &Image3F,

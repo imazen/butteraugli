@@ -134,7 +134,7 @@ fn solve_3x3(a: [[f64; 3]; 3], b: [f64; 3]) -> [f64; 3] {
 // ---------------------------------------------------------------------------
 
 #[allow(unused_imports)] // autoversion fallback path triggers a false positive on i686
-#[autoversion(v4, v3, neon, wasm128, scalar)]
+#[autoversion]
 fn horizontal_pass(input: &[f32], output: &mut [f32], width: usize, coeffs: &IirCoeffs) {
     debug_assert_eq!(input.len(), output.len());
     debug_assert_eq!(input.len() % width, 0);
@@ -408,7 +408,7 @@ fn vertical_pass_inner(
 }
 
 #[allow(unused_imports)]
-#[autoversion(v4, v3, neon, wasm128, scalar)]
+#[autoversion]
 fn vertical_pass_scalar_columns(
     input: &[f32],
     output: &mut [f32],
