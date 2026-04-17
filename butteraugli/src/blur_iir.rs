@@ -192,6 +192,10 @@ fn horizontal_row(input: &[f32], output: &mut [f32], coeffs: &IirCoeffs) {
     let interior_end = (width - big_n + 1).max(warmup_end);
 
     // Phase 1: warm-up. Output for n >= 0 only.
+    // Boundary handling is zero-padding here — switching to clamp-to-edge
+    // diverges because the IIR's DC pole (mp = -2*cos(ω) ≈ -1.996 for sigma 7
+    // section 1) is on the edge of marginal stability. Zero-pad warmup is
+    // mathematically required by Charalampidis 2016.
     let mut n = -big_n + 1;
     while n < warmup_end {
         let left = n - big_n - 1;
