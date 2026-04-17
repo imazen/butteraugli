@@ -874,7 +874,7 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     #[cfg(not(feature = "iir-blur"))]
     archmage::incant!(
         gaussian_blur_dispatch(input, sigma, pool),
-        [v4, v3, neon, wasm128]
+        [v4x, v4, v3, neon, wasm128]
     )
 }
 
@@ -925,6 +925,21 @@ fn gaussian_blur_dispatch_v4(
     convolve_vertical_v4(token, &temp, kernel, scaled, 0.0, &mut output);
     temp.recycle(pool);
     output
+}
+
+// V4x is X64V4Token + advanced AVX-512 extensions (VBMI/VNNI/IFMA/BF16/GFNI/etc).
+// None help pure-f32 blur math, so the v4x dispatcher just downcasts to v4 and
+// reuses the same implementation. Compiler emits identical code modulo the
+// target_feature attribute, which is harmless extra info LLVM may exploit.
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn gaussian_blur_dispatch_v4x(
+    token: archmage::X64V4xToken,
+    input: &ImageF,
+    sigma: f32,
+    pool: &BufferPool,
+) -> ImageF {
+    gaussian_blur_dispatch_v4(token.v4(), input, sigma, pool)
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -1055,8 +1070,21 @@ pub fn blur_with_border(
     }
     archmage::incant!(
         blur_with_border_dispatch(input, sigma, border_ratio, pool),
-        [v4, v3, neon, wasm128]
+        [v4x, v4, v3, neon, wasm128]
     )
+}
+
+// V4x wrapper — see comment on gaussian_blur_dispatch_v4x.
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn blur_with_border_dispatch_v4x(
+    token: archmage::X64V4xToken,
+    input: &ImageF,
+    sigma: f32,
+    border_ratio: f32,
+    pool: &BufferPool,
+) -> ImageF {
+    blur_with_border_dispatch_v4(token.v4(), input, sigma, border_ratio, pool)
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -1250,8 +1278,20 @@ fn mirror(mut x: i32, size: i32) -> usize {
 pub fn blur_mirrored_5x5(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
     archmage::incant!(
         blur_mirrored_5x5(input, weights, pool),
-        [v4, v3, neon, wasm128]
+        [v4x, v4, v3, neon, wasm128]
     )
+}
+
+// V4x wrapper — see comment on gaussian_blur_dispatch_v4x.
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn blur_mirrored_5x5_v4x(
+    token: archmage::X64V4xToken,
+    input: &ImageF,
+    weights: &[f32; 3],
+    pool: &BufferPool,
+) -> ImageF {
+    blur_mirrored_5x5_v4(token.v4(), input, weights, pool)
 }
 
 #[cfg(target_arch = "x86_64")]

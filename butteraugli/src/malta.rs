@@ -1284,14 +1284,14 @@ pub fn malta_diff_map(
 ) -> ImageF {
     archmage::incant!(
         malta_diff_map_dispatch(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool),
-        [v4, v3, neon, wasm128]
+        [v4x, v4, v3, neon, wasm128]
     )
 }
 
 /// First pass of Malta: compute branch-free scaled diffs between two images.
 ///
 /// Replaces 4-branch sign-dependent penalty with copysign + max clamping.
-#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
 fn malta_compute_scaled_diffs(
     _token: archmage::SimdToken,
     lum0: &ImageF,
@@ -1810,6 +1810,24 @@ fn malta_unit_lf_interior_16x_v4(
     }
 
     r
+}
+
+// V4x wrapper — reuses the v4 implementation via token downcast. Pure-f32
+// Malta math doesn't benefit from v4x extensions (VBMI/VNNI/IFMA/etc).
+#[allow(clippy::too_many_arguments)]
+#[cfg(target_arch = "x86_64")]
+#[archmage::arcane]
+fn malta_diff_map_dispatch_v4x(
+    token: archmage::X64V4xToken,
+    lum0: &ImageF,
+    lum1: &ImageF,
+    w_0gt1: f64,
+    w_0lt1: f64,
+    norm1: f64,
+    use_lf: bool,
+    pool: &BufferPool,
+) -> ImageF {
+    malta_diff_map_dispatch_v4(token.v4(), lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool)
 }
 
 /// AVX-512 dispatch variant: processes 16 interior pixels at a time.

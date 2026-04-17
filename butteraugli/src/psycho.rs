@@ -148,7 +148,7 @@ fn maximum_clamp(v: f32, max_val: f32) -> f32 {
 /// Converts low-frequency XYB to "vals" space for comparison.
 ///
 /// Vals space can be converted to L2-norm space through visual masking.
-#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
 fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
     let height = lf.height();
     let (p0, p1, p2) = lf.planes_mut();
@@ -175,7 +175,7 @@ fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
 /// Suppresses X channel based on Y channel values.
 ///
 /// High Y (luminance) values reduce sensitivity to X (chroma) differences.
-#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
 fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut ImageF) {
     let height = in_y.height();
     let s = SUPPRESS_S as f32;
@@ -196,7 +196,7 @@ fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut Ima
 /// Applies remove_range_around_zero: dst[x] = copysign(max(|src[x]| - range, 0), src[x]).
 ///
 /// Branch-free formulation for SIMD vectorization.
-#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
 fn apply_remove_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
     for y in 0..src.height() {
         let row_in = src.row(y);
@@ -214,7 +214,7 @@ fn apply_remove_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst
 /// Applies amplify_range_around_zero: dst[x] = src[x] + copysign(min(|src[x]|, range), src[x]).
 ///
 /// Branch-free formulation for SIMD vectorization.
-#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
 fn apply_amplify_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
     for y in 0..src.height() {
         let row_in = src.row(y);
@@ -229,7 +229,7 @@ fn apply_amplify_range(_token: archmage::SimdToken, src: &ImageF, range: f32, ds
 }
 
 /// Subtracts two images: dst[x] = a[x] - b[x].
-#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
 fn subtract_images(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
     for y in 0..a.height() {
         let ra = a.row(y);
@@ -250,7 +250,7 @@ fn subtract_images(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mu
 /// Computes:
 ///   uhf_x = remove_range(orig - blurred, UHF_RANGE)
 ///   hf_x  = remove_range(blurred, HF_RANGE)
-#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
 fn process_uhf_hf_x(
     _token: archmage::SimdToken,
     hf_x: &mut ImageF,
@@ -290,7 +290,7 @@ fn process_uhf_hf_x(
 ///   hf_clamped = maximum_clamp(blurred, MAXCLAMP_HF)
 ///   uhf_y = maximum_clamp(orig - hf_clamped, MAXCLAMP_UHF) * MUL_Y_UHF
 ///   hf_y  = amplify_range(hf_clamped * MUL_Y_HF, ADD_HF_RANGE)
-#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
 fn process_uhf_hf_y(
     _token: archmage::SimdToken,
     hf_y: &mut ImageF,
