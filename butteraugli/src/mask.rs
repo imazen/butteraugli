@@ -25,7 +25,7 @@ use crate::image::{BufferPool, ImageF};
 /// is considered less important in the high frequency area.
 ///
 /// Matches C++ CombineChannelsForMasking (butteraugli.cc lines 1108-1132).
-#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 pub fn combine_channels_for_masking(
     _token: archmage::SimdToken,
     hf: &[ImageF; 2],
@@ -60,7 +60,7 @@ pub fn combine_channels_for_masking(
 ///
 /// Applies sqrt-like transformation to make values more perceptually uniform.
 /// Matches C++ DiffPrecompute (butteraugli.cc lines 1134-1147).
-#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 pub fn diff_precompute(
     _token: archmage::SimdToken,
     xyb: &ImageF,
@@ -165,7 +165,7 @@ fn update_min3(v: f32, min0: f32, min1: f32, min2: f32) -> (f32, f32, f32) {
 ///
 /// Processes x in [K, width-K) where all 9 neighbors are guaranteed to exist.
 /// Uses branch-free min/max operations that compile to SIMD vminps/vmaxps.
-#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn fuzzy_erosion_interior_row(
     _token: archmage::SimdToken,
     row_c: &[f32],
@@ -309,7 +309,7 @@ pub fn mask_dc_y(delta: f64) -> f64 {
 ///
 /// Reads 4 input planes (hf[0], hf[1], uhf[0], uhf[1]), writes 1 output plane.
 /// Eliminates intermediate buffer and one full read+write pass per image.
-#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn combine_and_precompute(
     _token: archmage::SimdToken,
     hf: &[ImageF; 2],
@@ -385,7 +385,7 @@ pub fn compute_mask_from_hf_uhf(
 }
 
 /// Autoversioned mask-to-error accumulation: ac[x] += MUL * (b0[x] - b1[x])^2.
-#[archmage::autoversion(v4x, v4, v3, neon, wasm128, scalar)]
+#[archmage::autoversion(v4, v3, neon, wasm128, scalar)]
 fn accumulate_mask_to_error(
     _token: archmage::SimdToken,
     b0: &ImageF,

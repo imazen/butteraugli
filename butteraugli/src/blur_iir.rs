@@ -134,7 +134,7 @@ fn solve_3x3(a: [[f64; 3]; 3], b: [f64; 3]) -> [f64; 3] {
 // ---------------------------------------------------------------------------
 
 #[allow(unused_imports)] // autoversion fallback path triggers a false positive on i686
-#[autoversion(v4x, v4, v3, neon, wasm128, scalar)]
+#[autoversion(v4, v3, neon, wasm128, scalar)]
 fn horizontal_pass(input: &[f32], output: &mut [f32], width: usize, coeffs: &IirCoeffs) {
     debug_assert_eq!(input.len(), output.len());
     debug_assert_eq!(input.len() % width, 0);
@@ -263,23 +263,8 @@ fn vertical_pass(
 ) {
     incant!(
         vertical_pass_inner(input, output, width, height, coeffs),
-        [v4x, v4, v3, neon, wasm128, scalar]
+        [v4, v3, neon, wasm128, scalar]
     )
-}
-
-// V4x wrapper — pure-f32 IIR doesn't benefit from v4x extensions, so the
-// dispatcher just downcasts to v4 and reuses the same implementation.
-#[cfg(all(target_arch = "x86_64", feature = "avx512"))]
-#[archmage::arcane]
-fn vertical_pass_inner_v4x(
-    token: archmage::X64V4xToken,
-    input: &[f32],
-    output: &mut [f32],
-    width: usize,
-    height: usize,
-    coeffs: &IirCoeffs,
-) {
-    vertical_pass_inner_v4(token.v4(), input, output, width, height, coeffs)
 }
 
 // AVX-512 path: 16 columns at a time. On Zen 4 this is the same throughput as
@@ -470,7 +455,7 @@ fn vertical_pass_inner(
 }
 
 #[allow(unused_imports)]
-#[autoversion(v4x, v4, v3, neon, wasm128, scalar)]
+#[autoversion(v4, v3, neon, wasm128, scalar)]
 fn vertical_pass_scalar_columns(
     input: &[f32],
     output: &mut [f32],
