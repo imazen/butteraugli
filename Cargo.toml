@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["butteraugli", "butteraugli-cli"]
+members = ["butteraugli", "butteraugli-cli", "butteraugli-bench"]
 exclude = ["experiments"]
 
 [workspace.package]
