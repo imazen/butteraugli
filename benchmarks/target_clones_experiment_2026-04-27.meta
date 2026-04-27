@@ -1,0 +1,90 @@
+# target_clones experiment — 2026-04-27
+
+GCC 11.4 supports `__attribute__((target_clones("default,avx2,avx512f")))` —
+compiler emits an IFUNC resolver and N versions of the function, picks at load
+time via CPUID. Lower-friction than highway for "just give me runtime SIMD
+dispatch" since you don't need to write SIMD primitives.
+
+## Setup
+
+```cpp
+__attribute__((target_clones("default,avx2,avx512f")))
+Status ConvolutionHorizontal(...) { /* unchanged body */ }
+
+__attribute__((target_clones("default,avx2,avx512f")))
+Status ConvolutionVertical(...) { /* unchanged body */ }
+```
+
+The `arch=x86-64-v4` / `arch=x86-64-v3` syntax doesn't work in GCC 11.4
+("no dispatcher found for the versioning attributes") — must use feature
+names like `avx2`, `avx512f`. Newer GCC supports the arch= form.
+
+## Surprising result: auto-vec gets WORSE at higher SIMD widths
+
+Counted scalar (`*ss`) vs packed (`*ps`) FP ops in each variant:
+
+| function / variant | scalar | packed | scalar fraction |
+|--------------------|-------:|-------:|----------------:|
+| ConvolutionVertical default (SSE4) | 139 | 22 | 86% |
+| ConvolutionVertical avx2            | 185 | 22 | 89% |
+| ConvolutionVertical avx512f         | 228 | 19 | 92% |
+| ConvolutionHorizontal default       | 245 | 204 | 54% |
+| ConvolutionHorizontal avx2          | 487 | 206 | 70% |
+| ConvolutionHorizontal avx512f       | 439 | 180 | 71% |
+
+Higher target levels emit MORE scalar code. The auto-vectorizer's heuristics
+appear to break down on our case-N unrolled pattern (4 independent
+accumulators sum0/sum1/sum2/sum3 with kernel-symmetric pairs) when given
+wider SIMD lanes — probably because the 4-wide accumulator tree doesn't
+widen cleanly to 16-wide AVX-512 lanes, and the cost model falls back to
+scalar.
+
+## Wall-clock impact (cpp_libjxl, single-threaded, on top of iter1+2+3)
+
+| size       | iter3     | target_clones | direct AVX-512 attr |
+|------------|----------:|--------------:|--------------------:|
+| 512²       |   35.3 ms |       33.0 ms |             32.5 ms |
+| 1280×720   |    207 ms |        212 ms |              199 ms |
+| 1920×1080  |    501 ms |        551 ms |              461 ms |
+| 3840×2160  |  2,136 ms |     2,222 ms  |            2,066 ms |
+
+(target_clones run was noticeably noisier — MAD ±54 ms at 1080p vs ±20 ms
+typical. Some of the regression is likely noise; some is real, from the
+worse codegen at higher SIMD widths.)
+
+## Takeaway
+
+`target_clones` is an excellent tool for code that auto-vectorizes well, but
+our case-N convolution unrolls with multiple round-robin accumulators are
+exactly the shape GCC's auto-vec doesn't widen cleanly. So target_clones is
+not the right tool for these specific functions — explicit SIMD (highway,
+ARM intrinsics, etc.) controls the lane structure directly and would dodge
+the heuristic entirely.
+
+For libjxl's purposes the conclusion is the same as before: full highway
+dispatch on `ConvolutionHorizontal` and `ConvolutionVertical` is the right
+follow-up. `target_clones` doesn't help and isn't portable to MSVC anyway.
+
+For a contained Linux-only project with mostly-vectorizable code (no manual
+SIMD primitives needed), `target_clones` would still be the lowest-friction
+option — just not for code shaped like ours.
+
+## Reproducing
+
+```cpp
+__attribute__((target_clones("default,avx2,avx512f")))
+Status ConvolutionVertical(...) { ... }
+```
+
+```bash
+cmake --build experiments/libjxl-vendor/build --parallel -- jxl-internal
+nm libjxl-internal.a | grep ConvolutionVertical
+# .default.0  .avx2.1  .avx512f.2  .resolver
+```
+
+Disasm command for each variant:
+```bash
+objdump -d build/lib/libjxl-internal.a \
+  | sed -n '/^[0-9a-f]\+ <_ZN3jxl19ConvolutionVerticalE.*\.avx512f/,/^$/p' \
+  | grep -cE 'addss|mulss|fmadd[0-9]+ss'
+```
