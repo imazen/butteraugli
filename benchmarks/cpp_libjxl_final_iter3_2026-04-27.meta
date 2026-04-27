@@ -1,0 +1,82 @@
+# libjxl optimization session — cumulative iter1+2+3 — 2026-04-27
+
+Hardware: AMD Ryzen 9 7950X, 128 GB RAM (WSL2)
+libjxl: github.com/libjxl/libjxl@HEAD + libjxl_combined_iter1_2_3.patch
+Rust: this crate, default features (rayon + avx512), archmage runtime dispatch
+Highway: x86-64-v2 baseline + AVX2/AVX3/AVX3_ZEN4 runtime dispatch
+
+## Final numbers
+
+| size       | rust       | rust_st (1 thread) | cpp baseline | cpp iter3   | total Δ |
+|------------|-----------:|-------------------:|-------------:|------------:|--------:|
+| 512²       | 17.5 ms    |  21.5 ms           |  45.5 ms     |  35.3 ms    | -22%    |
+| 1280×720   | 58.8 ms    |  74.2 ms           |  256 ms      |  207 ms     | -19%    |
+| 1920×1080  | 180 ms     | 209 ms             |  590 ms      |  501 ms     | -15%    |
+| 3840×2160  | 972 ms     | 845 ms             | 2,629 ms     | 2,136 ms    | -19%    |
+
+Apples-to-apples (rust_st single-threaded vs cpp_libjxl single-threaded):
+- 512²:    21.5  vs  35   →  1.64× — closed from 2.0×
+- 720p:    74    vs 207   →  2.79× — slightly worse than baseline 2.6× (noise)
+- 1080p:  209    vs 501   →  2.40× — closed from 2.7×
+- 4K:     845    vs 2136  →  2.53× — closed from 3.1×
+
+## What's in this patch
+
+`libjxl_combined_iter1_2_3.patch` (589 lines, three logically independent changes):
+
+**Iter 1 — Drop transpose-based blur** (`Blur()` / `ConvolutionWithTranspose`)
+- New `ConvolutionHorizontal` + `ConvolutionVertical` that write contiguously
+  instead of striding across rows on output. Eliminates one cache-line miss
+  per inner iteration.
+- Biggest single win, parity-preserving.
+
+**Iter 2 — Drop redundant hf→uhf copy** (`SeparateHFAndUHF()`)
+- Blur into the uhf buffer instead of in-place on hf. Skips a full-image
+  read+write per call (16 MB at 1080p, 66 MB at 4K).
+- Small wins at 512²–720p.
+
+**Iter 3 — Malta zero-padding** (`MaltaDiffMapT()` and callers)
+- Allocate `diffs` with 4 px of zero border. Single SIMD loop replaces the
+  top/middle/bottom + `PaddedMaltaUnit` border path.
+- Win at 512² (−8%); neutral at 4K because the original SIMD already covered
+  ~99% of pixels there.
+
+All three are bit-identical to upstream — `score_parity` reports the same
+0.0016% Rust↔C++ FP rounding gap that existed before any patch.
+
+## What didn't pan out
+
+**Vectorizing the Malta diff precompute** (tried as iter4): the scalar
+sign-branched diff calc looked SIMD-able, but a hand-vectorized highway
+version with branch-free masks was neutral-to-slightly-worse at every size.
+Likely GCC was already auto-vectorizing it well, or the operation is memory-
+bound at large sizes and SIMD doesn't help.
+
+## Where the next 2.4–2.8× gap lives
+
+Without callgrind/perf data, candidates in priority order:
+
+1. **Memory bandwidth** at 1080p+ — the gap pattern (better at 512², worse at
+   1080p/4K) suggests we're compute-bound at small sizes and bandwidth-bound
+   at large. Tile-based processing or fusing more passes would help.
+2. **The 5x5 Separable5 path uses `WeightsSeparable5` + the libjxl `convolve`
+   library** — verify it's actually faster than highway-equivalent inline code.
+3. **DiffPrecompute / Mask compute** — these are scalar in the libjxl sources
+   and the Rust port has them autoversioned.
+
+## Reproducing
+
+```
+cargo bench -p butteraugli-bench
+# or directly:
+target/release/deps/bench_compare-*
+```
+
+Apply the combined patch to a fresh libjxl checkout:
+```
+cd path/to/libjxl
+git apply path/to/butteraugli/benchmarks/libjxl_combined_iter1_2_3.patch
+cmake --build build --parallel -- jxl-internal
+```
+
+`butteraugli-bench/examples/score_parity` confirms scores stay bit-identical.
