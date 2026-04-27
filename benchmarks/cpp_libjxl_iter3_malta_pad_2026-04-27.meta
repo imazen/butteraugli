@@ -1,0 +1,61 @@
+# libjxl iteration 3: Malta zero-padding — 2026-04-27
+
+Hardware: AMD Ryzen 9 7950X, 128 GB RAM (WSL2)
+Bench commit: 913b966 (post iter2)
+
+## What changed
+
+`lib/jxl/butteraugli/butteraugli.cc` `MaltaDiffMapT()`:
+
+- Allocate `diffs` as (xsize+8) × (ysize+8) instead of (xsize, ysize). Border
+  is 4 px on each side. Border stays zero across the lifetime of `diffs`
+  (one-time `ZeroMaltaBorder` call); only the interior is rewritten per call.
+- Diff precompute writes to `diffs.Row(y+4)[x+4]`.
+- Replaced the top/middle/bottom border + interior SIMD path with a single
+  flat loop. Every original pixel goes through `MaltaUnit`'s SIMD path; tail
+  pixels (x % Lanes != 0) use a 1-lane SIMD MaltaUnit, which is still much
+  cheaper than the previous `PaddedMaltaUnit` extract_window path.
+- `PaddedMaltaUnit` is now dead code (unused).
+
+`ZeroMaltaBorder` is critical: a naive `ZeroFillImage` of the padded buffer
+would zero ~133 MB at 4K and dominate the runtime. The helper zeros only the
+4-px border strips (~192 KB at 4K).
+
+## Parity
+
+Bit-identical scores vs unpatched libjxl (same 0.0016% pre-existing Rust↔C++
+gap, no new drift).
+
+## Performance (cpp_libjxl, single-threaded)
+
+| size       | iter2     | iter3     | Δ from iter2 | Δ from baseline |
+|------------|----------:|----------:|-------------:|----------------:|
+| 512²       | 39.5 ms   | 36.3 ms   | -8.1%        | -20.2%          |
+| 1280×720   | 215.9 ms  | 215.4 ms  | ~0%          | -15.9%          |
+| 1920×1080  | 508 ms    | 513 ms    | +1% (noise)  | -13.1%          |
+| 3840×2160  | 2,103 ms  | 2,119 ms  | +0.8%(noise) | -19.4%          |
+
+The win is concentrated at 512² where the border path was a larger fraction
+of total work. At 4K, the original SIMD already covered ~99% of pixels
+(`x0 + Lanes + 4 <= xsize_` guard), so eliminating the remaining 1% gives
+nothing measurable.
+
+The patch is still worth keeping: it's mechanically simpler than the old
+top/middle/bottom + PaddedMaltaUnit code, makes Malta a single flat loop,
+and gives a clean 8% on 512² where the original border path was painful.
+
+## Cumulative status (cpp baseline → cpp iter1+2+3, single-threaded)
+
+| size       | baseline   | iter1+2+3 | total Δ |
+|------------|-----------:|----------:|--------:|
+| 512²       | 45.5 ms    | 36.3 ms   | -20.2%  |
+| 1280×720   | 256 ms     | 215 ms    | -15.9%  |
+| 1920×1080  | 590 ms     | 513 ms    | -13.1%  |
+| 3840×2160  | 2,629 ms   | 2,119 ms  | -19.4%  |
+
+## Where the next gains likely live
+
+The Malta diff precompute (lines ~1334-1364 inside `MaltaDiffMapT`) is still
+fully scalar with branching on signs. Vectorizing that with copysign-style
+branch-free patterns (as in our Rust port) could close more of the gap at
+larger sizes — that's the bulk of the remaining 2-3× headroom.
