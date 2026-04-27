@@ -1,0 +1,85 @@
+# Highway-codegen upper-bound experiment — 2026-04-27
+
+## Question
+
+Are the new ConvolutionHorizontal / ConvolutionVertical functions in our
+iter1 patch SIMD-vectorized by GCC, or still mostly scalar? If scalar,
+how much additional gain would proper highway dispatch buy us?
+
+## Disassembly (iter3 .a, GCC 11.4, libjxl built `-march=x86-64-v2 -O3`)
+
+Counting FP ops by width inside each function body:
+
+| function              | scalar (`*ss`) | packed (`*ps`) | scalar fraction |
+|-----------------------|---------------:|---------------:|----------------:|
+| ConvolutionHorizontal |            260 |            205 |             56% |
+| ConvolutionVertical   |            139 |             22 |             86% |
+
+GCC partially auto-vectorized the H pass (it recognized the kernel-symmetric
+case-N unrolls). The V pass is mostly scalar — explicit row-pointer
+indexing across N input rows didn't auto-vec. So there's headroom.
+
+## Upper-bound: force AVX2/AVX-512 codegen with __attribute__((target(...)))
+
+(Not safe for upstream — no runtime CPU check, would crash on non-AVX-512
+CPUs. Pure measurement experiment to see the ceiling.)
+
+cpp_libjxl wall-clock, single-threaded, on top of iter1+iter2+iter3:
+
+| size       | iter3 baseline | +AVX2 attr  | +AVX-512 attr | best Δ vs iter3 |
+|------------|---------------:|------------:|--------------:|----------------:|
+| 512²       |       35.3 ms  |   33.4 ms   |     32.5 ms   |          -7.9%  |
+| 1280×720   |        207 ms  |    211 ms   |      199 ms   |          -3.7%  |
+| 1920×1080  |        501 ms  |    487 ms   |      461 ms   |          -8.0%  |
+| 3840×2160  |      2,136 ms  |  2,037 ms   |    2,066 ms   |          -4.6%  |
+
+So a proper highway-dispatched version of these two functions buys roughly
+another **4–8%** on top of iter1+iter2+iter3. Not transformative, but real.
+
+Cumulative if highway dispatch is added (vs unpatched libjxl baseline):
+
+| size       | unpatched | iter1+2+3 | + highway blur | total Δ |
+|------------|----------:|----------:|---------------:|--------:|
+| 512²       |   45.5 ms |   35.3 ms |       32.5 ms  |  -28.6% |
+| 1280×720   |    256 ms |    207 ms |        199 ms  |  -22.3% |
+| 1920×1080  |    590 ms |    501 ms |        461 ms  |  -21.9% |
+| 3840×2160  |  2,629 ms |  2,136 ms |      2,066 ms  |  -21.4% |
+
+## Recommendation for upstream
+
+The PR should mention this as a known follow-up. The full highway-dispatch
+refactor needs to:
+1. Move ConvolutionHorizontal / ConvolutionVertical definitions into
+   `HWY_NAMESPACE` (between HWY_BEFORE_NAMESPACE and HWY_AFTER_NAMESPACE).
+2. Emit `HWY_EXPORT(ConvolutionHorizontal)` etc. in the HWY_ONCE block.
+3. Either move `Blur()` to the HWY_ONCE block too, or forward-declare it in
+   JXL_BUTTERAUGLI_ONCE and define it after HWY_EXPORT — `Blur()` calls
+   `HWY_DYNAMIC_DISPATCH(ConvolutionVertical)(...)`.
+
+Probably cleaner as a follow-up PR after iter1+2+3 lands, because (a) it's
+a different concern (codegen, not algorithm) and (b) it requires moving
+function definitions across the file's macro-gated regions, which is more
+invasive review-wise than the current contained patch.
+
+## Cross-arch correctness
+
+The cache-pattern improvement (write contiguously instead of transposing)
+in iter1 is arch-independent — it should at minimum match the old transpose
+path on ARM/SVE/RVV/WASM. The SIMD efficiency is compiler-dependent:
+
+- x86-64-v2 + GCC 11: 14% packed in V pass (measured).
+- ARM Clang typically auto-vecs better than GCC for these structured kernels.
+- SVE/RVV: predicated vectors handle this naturally.
+- WASM: 4-wide SIMD, autovec depends on toolchain.
+
+So our iter1 patch will at minimum match upstream on every arch, but to
+unlock the V pass on lower-vec-quality toolchains, the highway-dispatched
+follow-up is the way.
+
+## Key disasm command for verification
+
+```
+objdump -d build/lib/libjxl-internal.a | sed -n \
+  '/^[0-9a-f]\+ <_ZN3jxl19ConvolutionVerticalE/,/^$/p' \
+  | grep -cE 'addss|mulss|fmadd[0-9]+ss'   # scalar count
+```
