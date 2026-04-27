@@ -1,0 +1,54 @@
+[zenbench] calibration: int=0.23ns/iter mem_bw=121.5GiB/s mem_lat=9.2ns
+[zenbench] timer resolution: 9ns, loop overhead: 0.18ns/iter, TSC: 4.642 ticks/ns (invariant)
+[zenbench] results → /tmp/zenbench/zenbench-1777274868-2a435.txt
+
+═══════════════════════════════════════════════════════════════
+  zenbench  1777274868-2a435
+  git: af27826fce784f3e8dbd41dd8faabd0218a9b0a6
+═══════════════════════════════════════════════════════════════
+
+  butteraugli_512x512  110 rounds × 1 calls
+                          mean ±mad ms  95% CI vs base     
+  ├─ rust_butteraugli      17.8 ±1.0ms  [17.3–18.4]ms      
+  ├─ rust_butteraugli_st   23.4 ±0.9ms  [+28.1%–+31.3%]     [1]
+  ╰─ cpp_libjxl            46.3 ±1.3ms  [+157.7%–+161.0%]  
+
+  rust_butteraugli     ███████████████████ 17.79ms
+  rust_butteraugli_st  █████████████████████████ 23.41ms
+  cpp_libjxl           █████████████████████████████████████████████████ 46.29ms
+  [1] CV=21%
+
+  butteraugli_1280x720  25 rounds × 1 calls
+                            mean ±mad ms  95% CI vs base     
+  ├─ rust_butteraugli        66.9 ±2.6ms  [65.4–68.4]ms      
+  ├─ rust_butteraugli_st     84.6 ±3.5ms  [+23.1%–+29.6%]    
+  ╰─ cpp_libjxl            255.8 ±12.3ms  [+276.9%–+288.7%]  
+
+  rust_butteraugli     █████████████ 66.85ms
+  rust_butteraugli_st  ████████████████ 84.65ms
+  cpp_libjxl           ████████████████████████████████████████████████ 255.84ms
+
+  butteraugli_1920x1080  10 rounds × 1 calls
+                            mean ±mad ms  95% CI vs base     
+  ├─ rust_butteraugli      197.1 ±20.5ms  [187.3–206.9]ms    
+  ├─ rust_butteraugli_st   228.9 ±30.0ms  [+6.7%–+25.7%]     
+  ╰─ cpp_libjxl            594.0 ±21.0ms  [+193.7%–+208.5%]  
+
+  rust_butteraugli     ████████████████ 197.13ms
+  rust_butteraugli_st  ██████████████████ 228.92ms
+  cpp_libjxl           ████████████████████████████████████████████████ 594.02ms
+
+  butteraugli_3840x2160  5 rounds × 1 calls ⚠ only 5 rounds
+                             mean ±mad ms  95% CI vs base     
+  ├─ rust_butteraugli       998.0 ±51.9ms  [967.9–1028.2]ms   
+  ├─ rust_butteraugli_st    845.4 ±37.0ms  [-20.4%–-10.2%]    
+  ╰─ cpp_libjxl            2629.2 ±70.9ms  [+159.8%–+167.5%]   [1]
+
+  rust_butteraugli_st  ███████████████ 845.43ms
+  rust_butteraugli     ██████████████████ 998.03ms
+  cpp_libjxl           ████████████████████████████████████████████████ 2.63s
+  [1] drift r=0.80 — later rounds slower
+
+  total: 76.2s  (149 noisy rounds)
+═══════════════════════════════════════════════════════════════
+  filter: cargo bench -- --group=NAME  format: --format=llm|csv|md|json

@@ -1,0 +1,24 @@
+# butteraugli A/B baseline — 2026-04-27
+
+Hardware: AMD Ryzen 9 7950X, 128 GB RAM (WSL2)
+Git commit: af27826  feat(butteraugli-bench): A/B harness vs libjxl C++ butteraugli
+libjxl: clone of github.com/libjxl/libjxl@HEAD (vendored, unmodified upstream)
+Build flags:
+  - libjxl: -march=x86-64-v2 -O3, highway runtime dispatch (SSE4|AVX2|AVX3|AVX3_ZEN4)
+  - rust:   default features (rayon + avx512), archmage runtime dispatch
+
+Command: target/release/deps/bench_compare-*
+Inputs:  synthetic gradient + saturating-add perturbation, pre-linearized planar f32
+
+Three-way per size:
+- rust_butteraugli     — out-of-the-box (rayon multi-threaded)
+- rust_butteraugli_st  — same crate, forced 1-thread rayon pool (apples-to-apples vs cpp)
+- cpp_libjxl           — libjxl::ButteraugliDiffmap via FFI, single-threaded internally
+
+Headline numbers (rust_st vs cpp):
+  512²       22.x  vs   45ms   →  ~2.0× headroom for libjxl
+  1280×720   76    vs  256ms   →  ~3.4× headroom for libjxl
+  1920×1080 229    vs  594ms   →  ~2.6× headroom for libjxl
+  3840×2160 845    vs 2629ms   →  ~3.1× headroom for libjxl
+
+The gap is what upstream libjxl improvements could close.
