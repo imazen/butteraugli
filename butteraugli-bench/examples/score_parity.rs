@@ -41,7 +41,21 @@ fn make_test_planes(w: usize, h: usize, seed: u32) -> ([Vec<f32>; 3], [Vec<f32>;
 }
 
 fn main() {
+    // Small-image cases (8 <= dim < 32) probe the V-border overlap region
+    // (ysize < kernel size = 2*offset+1). butteraugli's largest kernel is
+    // size 33 (offset 16), so anything with a dim < 32 stresses that path
+    // — matching what the in-tree ButteraugliBlurEquivalence test covers
+    // but at the score level, so future cross-implementation drift here
+    // won't go silent. Asymmetric shapes flush both H and V border code.
+    //
+    // libjxl short-circuits images smaller than 8×8 in DiffmapPsychoImage,
+    // so 8×8 is the smallest meaningful case.
     let cases: &[(usize, usize, u32)] = &[
+        (8, 8, 11),
+        (12, 12, 22),
+        (16, 24, 33),
+        (24, 16, 44),
+        (31, 31, 55),
         (256, 256, 42),
         (512, 512, 123),
         (1280, 720, 7),
