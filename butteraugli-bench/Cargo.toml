@@ -23,6 +23,9 @@ zenbench = "0.1.7"
 name = "bench_compare"
 harness = false
 
+[[example]]
+name = "score_parity"
+
 [lints.rust.unexpected_cfgs]
 level = "warn"
 check-cfg = ['cfg(has_cpp_butteraugli)']

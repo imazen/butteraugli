@@ -1,0 +1,56 @@
+# libjxl iteration 1: drop transpose-based blur — 2026-04-27
+
+Hardware: AMD Ryzen 9 7950X, 128 GB RAM (WSL2)
+Bench commit: af27826
+libjxl source: github.com/libjxl/libjxl@HEAD + diff in libjxl_h_v_blur.patch
+
+## What changed
+
+`lib/jxl/butteraugli/butteraugli.{h,cc}`:
+- Added `BlurTemp::GetSameSize()` (matches input dims, vs. existing `GetTransposed()`).
+- New `ConvolutionHorizontal()` — same as `ConvolutionWithTranspose` but writes
+  contiguously to `out->Row(y)[x]` instead of `out->Row(x)[y]`. Drops one cache
+  line miss per inner iteration on the transposed write.
+- New `ConvolutionVertical()` — pre-collects N row pointers per y, inner loop is
+  contiguous-load + contiguous-store across x. Auto-vectorizes cleanly.
+- `Blur()` for non-Separable5 path now calls H + V directly. The transposed
+  scratch buffer and both transpose passes are gone.
+
+`ConvolutionWithTranspose` is left in place (dead code now within butteraugli.cc;
+upstream may want to delete it).
+
+## Parity
+
+Bit-identical scores vs unpatched libjxl on the score_parity test (256², 512²,
+1280×720, 1920×1080) — same FP rounding order in both H and V cases (sum0 / sum1
+/ sum2 / sum3 accumulation pattern preserved from the original case-7/13/15/33).
+The 0.0016% Rust↔C++ gap that exists is pre-existing and unrelated to this patch.
+
+## Performance (cpp_libjxl wall-clock, single-threaded)
+
+| size       | baseline   | patched    | delta   |
+|------------|-----------:|-----------:|--------:|
+| 512²       | 45.5 ms    | 40.8 ms    | -10.3%  |
+| 1280×720   | 256 ms     | 255 ms     | -0.4%*  |
+| 1920×1080  | 590 ms     | 508 ms     | -13.9%  |
+| 3840×2160  | 2,629 ms   | 2,091 ms   | -20.5%  |
+
+(* 1280×720 was -13.3% in the first sample run — current run was noisier.
+The effect is cache-bound: bigger images = bigger gain, since transposed writes
+hit DRAM more often at sizes that don't fit in L2.)
+
+## Status vs Rust port (single-threaded)
+
+| size       | rust_st    | cpp baseline | cpp patched | remaining gap |
+|------------|-----------:|-------------:|------------:|--------------:|
+| 512²       | 22 ms      | 45 ms (2.0×) | 41 ms (1.9×) | 1.9× headroom |
+| 1280×720   | 100 ms     | 256 ms (2.6×) | 255 ms (2.6×) | 2.6× |
+| 1920×1080  | 220 ms     | 590 ms (2.7×) | 508 ms (2.3×) | 2.3× |
+| 3840×2160  | 799 ms     | 2,629 ms (3.3×) | 2,091 ms (2.6×) | 2.6× |
+
+Still substantial gap remaining. Next likely candidates:
+- Zero-pad Malta diff so all pixels use SIMD interior path (we measured -6.6%).
+- Fused UHF+HF single-pass (we measured -21.7%).
+- Branch-free patterns in malta (copysign trick).
+
+See ../CLAUDE.md "Optimization session" entries for the full list.
