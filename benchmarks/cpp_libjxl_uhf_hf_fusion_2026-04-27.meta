@@ -1,0 +1,60 @@
+# libjxl iteration 2: drop the redundant hf->uhf copy in SeparateHFAndUHF — 2026-04-27
+
+Hardware: AMD Ryzen 9 7950X, 128 GB RAM (WSL2)
+Bench commit: b6b7d2b (post iter1)
+libjxl source: github.com/libjxl/libjxl@HEAD + iter1 + iter2 (libjxl_iter2_uhf_hf_fusion.patch)
+
+## What changed
+
+`lib/jxl/butteraugli/butteraugli.cc` `SeparateHFAndUHF()`:
+
+- Removed the per-pixel `for (x) row_uhf[x] = row_hf[x];` copy loop that ran
+  before each blur.
+- Changed `Blur(hf[i], ..., &hf[i])` to `Blur(hf[i], ..., &uhf[i])`. The blur
+  output now lands in uhf, leaving hf with the original signal.
+- Swapped which buffer is loaded in the per-pixel transforms (`row_uhf` now
+  holds blur(hf), `row_hf` holds the original). Final stores go back to the
+  same destinations as before, so external state is unchanged.
+
+Net memory traffic saved: 2N reads + 2N writes per channel (where N = pixel
+count), i.e. ~16 MB at 1080p, ~66 MB at 4K.
+
+## Parity
+
+Bit-identical scores vs unpatched libjxl on the score_parity tests (same
+0.0016% pre-existing Rust↔C++ FP gap, no new drift).
+
+## Performance (cpp_libjxl wall-clock, single-threaded, on top of iter1)
+
+| size       | iter1     | iter1+iter2 | Δ from iter1 | Δ from baseline |
+|------------|----------:|------------:|-------------:|----------------:|
+| 512²       | 40.8 ms   | 39.5 ms     | -3.2%        | -13.2% (vs 45.5) |
+| 1280×720   | 222 ms*   | 216 ms      | -2.7%        | -15.7% (vs 256)  |
+| 1920×1080  | 508 ms    | 508 ms      | ~0%          | -13.9%           |
+| 3840×2160  | 2,091 ms  | 2,103 ms    | ~0% (noise)  | -20.0%           |
+
+(* iter1 1280×720 was 222 in first sample, 255 in second — noisy on this size.)
+
+The redundant copy turned out to be a small fraction of total work (Malta and
+the larger blurs dominate). The win is most visible at smaller resolutions
+where the per-call overhead is comparable to the main work; at 1080p+ the
+patch is mainly a "free" cleanup that removes 2 full-image passes per call.
+
+Worth submitting to libjxl alongside iter1 — strictly fewer memory operations,
+no algorithmic change.
+
+## Cumulative status (cpp baseline → cpp iter1+iter2, single-threaded)
+
+| size       | baseline   | iter1+iter2 | total Δ |
+|------------|-----------:|------------:|--------:|
+| 512²       | 45.5 ms    | 39.5 ms     | -13.2%  |
+| 1280×720   | 256 ms     | 216 ms      | -15.7%  |
+| 1920×1080  | 590 ms     | 508 ms      | -13.9%  |
+| 3840×2160  | 2,629 ms   | 2,103 ms    | -20.0%  |
+
+## Where the rest of the gap (still 2-3× to Rust) lives
+
+- Malta filters dominate at every size (was 18-30% of total in our profiling).
+  Zero-padding the Malta diff (we measured -6.6%) is the next clear win.
+- Branch-free Malta `copysign` patterns + 8-wide accumulators.
+- f32 mask instead of f64 (frees up vectorization that the f64 divide blocked).
