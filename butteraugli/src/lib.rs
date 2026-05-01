@@ -1128,7 +1128,8 @@ mod tests {
             pnorm_3: 0.0,
             diffmap: None,
         };
-        assert_eq!(res.max_norm(), 1.234);
+        // Bit-exact equality: max_norm() is just a getter, must round-trip.
+        assert_eq!(res.max_norm().to_bits(), 1.234_f64.to_bits());
     }
 
     #[test]

@@ -205,7 +205,7 @@ fn main() {
             #[cfg(not(has_cpp_butteraugli))]
             let cpp_score = f64::NAN;
 
-            let abs = (rust_score as f64 - cpp_score).abs();
+            let abs = (rust_score - cpp_score).abs();
             // Avoid div-by-zero on identical-image cases.
             let rel = if cpp_score.abs() > 1e-9 {
                 abs / cpp_score.abs() * 100.0
