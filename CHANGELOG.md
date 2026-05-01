@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `pnorm(diffmap: &[f32], p: f64) -> f64` free function and
+  `ButteraugliResult::pnorm(p) -> Option<f64>` method for libjxl-style p-norm
+  aggregation, matching `lib/extras/metrics.cc:ComputeDistanceP` (the average
+  of three p-norms at p, 2p, 4p). `p = 3.0` matches `butteraugli_main --pnorm`
+  and the Cloudinary CID22 paper. `ButteraugliResult::max_norm()` added as an
+  explicit alias for the existing `score` field. Closes #6.
 - `iir-blur` cargo feature — Charalampidis 2016 recursive Gaussian as an O(N)
   per-pixel alternative to the FIR separable convolution (a62453a, ef750a3).
   Off by default. Real-photo parity vs FIR: 0.1–5% relative score deviation
