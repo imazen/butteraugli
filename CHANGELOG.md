@@ -8,19 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `pnorm(diffmap: &[f32], p: f64) -> f64` free function and
-  `ButteraugliResult::pnorm(p) -> Option<f64>` method for libjxl-style p-norm
-  aggregation, matching `lib/extras/metrics.cc:ComputeDistanceP` (the average
-  of three p-norms at p, 2p, 4p). `p = 3.0` matches `butteraugli_main --pnorm`
-  and the Cloudinary CID22 paper. `ButteraugliResult::max_norm()` added as an
-  explicit alias for the existing `score` field. Closes #6.
-- `ButteraugliResult.pnorm_3` — libjxl 3-norm precomputed during the score
-  reduction pass. Always populated regardless of `compute_diffmap`, with no
-  extra allocation (the diffmap is freed before return when the user didn't
-  request it, exactly as before). Cost: +2.1M callgrind instructions on a
-  512×512 compare (~0.3% of total); scales linearly with pixel count, so
-  negligible at 4K/8K too. Avoids materializing a 33 MB / 132 MB diffmap
-  back to the caller just to compute a 3-norm.
+- `ButteraugliResult.pnorm_3` — libjxl 3-norm aggregation, matching
+  `lib/extras/metrics.cc:ComputeDistanceP` at p=3 (the value reported by
+  `butteraugli_main --pnorm` and used in the Cloudinary CID22 paper). The
+  average of three p-norms at exponents 3, 6, 12. Precomputed in the same
+  fused pass as the max-norm score; always populated regardless of
+  `compute_diffmap`, with no extra allocation (the transient internal
+  diffmap is freed before return when the user didn't request it). Cost:
+  +2.1M callgrind instructions on 512×512 (~0.3% of total); scales linearly,
+  so negligible at 4K/8K. Avoids materializing a 33 MB / 132 MB diffmap
+  back to the caller just to derive a 3-norm. Closes #6.
+- `ButteraugliResult::pnorm(p) -> Option<f64>` — short-circuits to
+  `pnorm_3` for `p ≈ 3.0`; for other `p` values requires
+  `compute_diffmap = true` (returns `None` otherwise).
+- `ButteraugliResult::max_norm()` — explicit alias for the `score` field
+  so call sites can be unambiguous when `pnorm_3` is in play.
+- `butteraugli --pnorm` CLI flag — adds `3-norm: X.XXXXXX` line to text
+  and quality output. JSON output always includes the `pnorm_3` field
+  regardless of the flag.
 - `iir-blur` cargo feature — Charalampidis 2016 recursive Gaussian as an O(N)
   per-pixel alternative to the FIR separable convolution (a62453a, ef750a3).
   Off by default. Real-photo parity vs FIR: 0.1–5% relative score deviation

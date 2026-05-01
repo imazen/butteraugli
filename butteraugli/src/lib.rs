@@ -443,62 +443,22 @@ pub const BUTTERAUGLI_GOOD: f64 = 1.0;
 /// Quality threshold for "bad" (visible difference).
 pub const BUTTERAUGLI_BAD: f64 = 2.0;
 
-/// libjxl-style p-norm aggregation of a butteraugli diffmap.
-///
-/// Defined as the average of three p-norms at exponents `p`, `2p`, and `4p`:
-/// `((Σdᵖ/n)^(1/p) + (Σd^(2p)/n)^(1/(2p)) + (Σd^(4p)/n)^(1/(4p))) / 3`.
-///
-/// `p = 3.0` matches the value printed by libjxl's `butteraugli_main --pnorm`
-/// (the default), and is the form reported in the Cloudinary CID22 paper. It
-/// blends bulk distribution behavior (low exponent) with tail/peak behavior
-/// (high exponent), giving a more robust scalar than either max-norm or a
-/// plain p-norm.
-///
-/// This is *not* the canonical `(Σdᵖ/n)^(1/p)` p-norm — see the libjxl source
-/// at `lib/extras/metrics.cc:ComputeDistanceP` for the original.
-///
-/// # Returns
-///
-/// - `f64::NAN` if `diffmap` is empty.
-/// - For a uniform diffmap of value `v`, returns `v` regardless of `p`.
-///
-/// # Example
-///
-/// ```rust
-/// use butteraugli::pnorm;
-///
-/// let diffmap = vec![1.0_f32; 100];
-/// assert!((pnorm(&diffmap, 3.0) - 1.0).abs() < 1e-9);
-/// ```
-#[must_use]
-pub fn pnorm(diffmap: &[f32], p: f64) -> f64 {
+/// libjxl-style p-norm of a slice — the average of three p-norms at
+/// exponents `p`, `2p`, `4p`. Used by [`ButteraugliResult::pnorm`] for
+/// `p ≠ 3` (the `p == 3` case is precomputed during scoring).
+fn pnorm_slice(diffmap: &[f32], p: f64) -> f64 {
     if diffmap.is_empty() {
         return f64::NAN;
     }
-    // Three running sums: Σ d^p, Σ d^(2p), Σ d^(4p).
     let mut sum = [0.0_f64; 3];
-    if (p - 3.0).abs() < 1e-6 {
-        // Fast path matching libjxl's HWY_CAP_FLOAT64 branch in metrics.cc.
-        // For p=3, d^p = d*d*d (no transcendental), then square twice.
-        for &v in diffmap {
-            let d = v as f64;
-            let mut acc = d * d * d;
-            sum[0] += acc;
-            acc *= acc;
-            sum[1] += acc;
-            acc *= acc;
-            sum[2] += acc;
-        }
-    } else {
-        for &v in diffmap {
-            let d = v as f64;
-            let mut acc = d.powf(p);
-            sum[0] += acc;
-            acc *= acc;
-            sum[1] += acc;
-            acc *= acc;
-            sum[2] += acc;
-        }
+    for &v in diffmap {
+        let d = v as f64;
+        let mut acc = d.powf(p);
+        sum[0] += acc;
+        acc *= acc;
+        sum[1] += acc;
+        acc *= acc;
+        sum[2] += acc;
     }
     let one_per_pixels = 1.0_f64 / diffmap.len() as f64;
     let mut v = 0.0_f64;
@@ -511,41 +471,36 @@ pub fn pnorm(diffmap: &[f32], p: f64) -> f64 {
 
 /// Butteraugli image comparison result.
 ///
-/// The [`score`](Self::score) field is the global max-norm distance — the
-/// historical "butteraugli score" with `<1.0 = good`, `>2.0 = bad` thresholds
-/// suitable for pass/fail gating. The [`pnorm_3`](Self::pnorm_3) field is the
-/// libjxl-style 3-norm aggregation reported by `butteraugli_main --pnorm` and
-/// used in the Cloudinary CID22 paper — useful for rate-distortion sweeps
-/// where averaging tail and bulk distortion is more informative than max
-/// alone. Both are precomputed in a single pass during the comparison and
-/// available regardless of whether `compute_diffmap` was enabled.
-///
-/// For arbitrary p-norms, see [`ButteraugliResult::pnorm`] and the free
-/// function [`pnorm`] — those require `compute_diffmap = true`.
+/// [`score`](Self::score) is the global max-norm — the historical
+/// butteraugli score, with `<1.0 = good`, `>2.0 = bad` for pass/fail gating.
+/// [`pnorm_3`](Self::pnorm_3) is the libjxl-style 3-norm aggregation reported
+/// by `butteraugli_main --pnorm` and used in the Cloudinary CID22 paper —
+/// useful for rate-distortion sweeps where averaging tail and bulk distortion
+/// is more informative than max alone. Both are produced in a single fused
+/// reduction pass during the comparison and available regardless of whether
+/// `compute_diffmap` was enabled.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ButteraugliResult {
-    /// Max-norm difference score. < 1.0 is "good", > 2.0 is "bad".
-    ///
+    /// Max-norm difference score. `<1.0` is "good", `>2.0` is "bad".
     /// Equivalent to libjxl's `ButteraugliScoreFromDiffmap`.
     pub score: f64,
-    /// libjxl-style 3-norm aggregation, matching `butteraugli_main --pnorm`
-    /// (the default). The average of three p-norms at p=3, 6, 12; see the
-    /// free [`pnorm`] function for the formula. Always populated — no
-    /// allocation cost beyond the existing internal diffmap (which is freed
-    /// before return when `compute_diffmap` is false).
+    /// libjxl 3-norm aggregation — average of three p-norms at exponents
+    /// 3, 6, 12, matching `lib/extras/metrics.cc:ComputeDistanceP` at p=3.
+    /// Always populated; no extra allocation beyond the transient internal
+    /// diffmap (which is freed before return when `compute_diffmap` is false).
     pub pnorm_3: f64,
     /// Per-pixel difference map (only present if `compute_diffmap` was true).
     pub diffmap: Option<ImgVec<f32>>,
 }
 
 impl ButteraugliResult {
-    /// libjxl-style p-norm of the diffmap. See the free function [`pnorm`]
-    /// for the formula.
+    /// libjxl-style p-norm of the diffmap (average of three p-norms at
+    /// `p`, `2p`, `4p`, matching `lib/extras/metrics.cc:ComputeDistanceP`).
     ///
-    /// For `p ≈ 3.0` returns the precomputed [`Self::pnorm_3`] without
-    /// touching the diffmap. For other values of `p`, returns `None` if
-    /// `compute_diffmap` was not enabled on [`ButteraugliParams`].
+    /// `p = 3.0` returns the precomputed [`Self::pnorm_3`] without touching
+    /// the diffmap. Other `p` values require `compute_diffmap = true`;
+    /// returns `None` if the diffmap isn't present.
     #[must_use]
     pub fn pnorm(&self, p: f64) -> Option<f64> {
         if (p - 3.0).abs() < 1e-6 {
@@ -554,11 +509,12 @@ impl ButteraugliResult {
         let dm = self.diffmap.as_ref()?;
         // ImgVec built via our diff path is always contiguous (stride == width).
         debug_assert_eq!(dm.buf().len(), dm.width() * dm.height());
-        Some(pnorm(dm.buf(), p))
+        Some(pnorm_slice(dm.buf(), p))
     }
 
-    /// Max-norm of the diffmap (same value as [`Self::score`]; provided so
-    /// call sites can be explicit about which norm they want).
+    /// Max-norm of the diffmap — the same value as [`Self::score`], named
+    /// explicitly so call sites can be unambiguous about which aggregation
+    /// they want when [`Self::pnorm_3`] is also in play.
     #[must_use]
     pub fn max_norm(&self) -> f64 {
         self.score
@@ -1087,51 +1043,28 @@ mod tests {
     // ================================================================
 
     #[test]
-    fn test_pnorm_empty_returns_nan() {
-        assert!(pnorm(&[], 3.0).is_nan());
+    fn test_pnorm_slice_empty_returns_nan() {
+        assert!(pnorm_slice(&[], 3.0).is_nan());
     }
 
     #[test]
-    fn test_pnorm_uniform_returns_value() {
+    fn test_pnorm_slice_uniform_returns_value() {
         // A uniform diffmap of value v should give pnorm == v for any p.
-        // Each of the three p-norms equals v (since (n*v^kp / n)^(1/kp) = v),
-        // and their average is v.
         for &v in &[0.5_f32, 1.0, 2.5, 7.3] {
             let dm = vec![v; 64];
             for &p in &[1.5_f64, 2.0, 3.0, 4.0] {
-                let got = pnorm(&dm, p);
+                let got = pnorm_slice(&dm, p);
                 assert!(
                     (got - v as f64).abs() < 1e-6,
-                    "uniform pnorm(v={v}, p={p}) = {got}, want {v}"
+                    "uniform pnorm_slice(v={v}, p={p}) = {got}, want {v}"
                 );
             }
         }
     }
 
     #[test]
-    fn test_pnorm_zero_is_zero() {
-        let dm = vec![0.0_f32; 100];
-        assert!(pnorm(&dm, 3.0).abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_pnorm_fast_path_matches_general_path() {
-        // p=3 exact and p=3+epsilon should agree to fp tolerance, since the
-        // fast-path branch is just an optimization for d.powf(3.0) = d*d*d.
-        let dm: Vec<f32> = (0..512).map(|i| (i as f32) * 0.001).collect();
-        let fast = pnorm(&dm, 3.0);
-        let general = pnorm(&dm, 3.0 + 1e-9); // forces general d.powf(p) branch
-        let rel_err = (fast - general).abs() / fast.max(1e-12);
-        assert!(
-            rel_err < 1e-6,
-            "fast (p=3) {fast} vs general (p≈3) {general}, rel_err {rel_err}"
-        );
-    }
-
-    #[test]
-    fn test_pnorm_matches_libjxl_reference_formula() {
-        // Reference computation using the slow-path libjxl formula directly,
-        // mirroring lib/extras/metrics.cc:ComputeDistanceP (the `else` branch).
+    fn test_pnorm_slice_matches_libjxl_reference_formula() {
+        // Mirrors lib/extras/metrics.cc:ComputeDistanceP (slow-path branch).
         let dm: Vec<f32> = (1..=20).map(|i| (i as f32) * 0.13).collect();
         let p = 3.0_f64;
 
@@ -1151,11 +1084,11 @@ mod tests {
         }
         want /= 3.0;
 
-        let got = pnorm(&dm, p);
+        let got = pnorm_slice(&dm, p);
         let rel_err = (got - want).abs() / want;
         assert!(
             rel_err < 1e-12,
-            "pnorm {got} vs reference formula {want}, rel_err {rel_err}"
+            "pnorm_slice {got} vs reference formula {want}, rel_err {rel_err}"
         );
     }
 
@@ -1199,9 +1132,9 @@ mod tests {
     }
 
     #[test]
-    fn test_pnorm_3_field_matches_free_function_on_diffmap() {
-        // The precomputed pnorm_3 field must agree with computing pnorm(3.0)
-        // over the returned diffmap, otherwise the fused reduction has drifted.
+    fn test_pnorm_3_field_matches_slice_helper_on_diffmap() {
+        // The precomputed pnorm_3 field must agree with reducing the returned
+        // diffmap directly, otherwise the fused reduction has drifted.
         let width = 32;
         let height = 32;
         let pixels1: Vec<RGB8> = (0..width * height)
@@ -1217,12 +1150,12 @@ mod tests {
         let result = butteraugli(img1.as_ref(), img2.as_ref(), &params).expect("valid");
 
         let dm = result.diffmap.as_ref().expect("diffmap requested");
-        let recomputed = pnorm(dm.buf(), 3.0);
+        let recomputed = pnorm_slice(dm.buf(), 3.0);
 
         let rel_err = (result.pnorm_3 - recomputed).abs() / recomputed.max(1e-12);
         assert!(
             rel_err < 1e-9,
-            "fused pnorm_3 = {} vs free pnorm(diffmap, 3) = {}, rel_err {rel_err}",
+            "fused pnorm_3 = {} vs slice helper pnorm(diffmap, 3) = {}, rel_err {rel_err}",
             result.pnorm_3,
             recomputed
         );
@@ -1260,36 +1193,6 @@ mod tests {
         let result = butteraugli(img.as_ref(), img.as_ref(), &params).expect("valid");
         assert!(result.pnorm_3.abs() < 1e-9);
         assert!(result.score < 0.001);
-    }
-
-    #[test]
-    fn test_pnorm_end_to_end_via_butteraugli() {
-        // pnorm computed via the public API should agree with calling the free
-        // pnorm function on the result's diffmap directly.
-        let width = 16;
-        let height = 16;
-        let pixels1: Vec<RGB8> = (0..width * height)
-            .map(|i| RGB8::new((i % 256) as u8, 0, 0))
-            .collect();
-        let pixels2: Vec<RGB8> = (0..width * height)
-            .map(|i| RGB8::new(((i + 30) % 256) as u8, 0, 0))
-            .collect();
-        let img1 = Img::new(pixels1, width, height);
-        let img2 = Img::new(pixels2, width, height);
-
-        let params = ButteraugliParams::default().with_compute_diffmap(true);
-        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params).expect("valid");
-
-        let via_method = result.pnorm(3.0).expect("diffmap requested");
-        let dm = result.diffmap.as_ref().expect("diffmap requested");
-        let via_free = pnorm(dm.buf(), 3.0);
-
-        assert!(
-            (via_method - via_free).abs() < 1e-12,
-            "method {via_method} vs free {via_free}"
-        );
-        // pnorm should be finite and non-negative for non-trivially-different images.
-        assert!(via_method.is_finite() && via_method >= 0.0);
     }
 
     #[test]

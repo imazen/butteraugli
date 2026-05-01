@@ -131,6 +131,14 @@ struct Cli {
     /// Show summary statistics in batch mode
     #[arg(long)]
     summary: bool,
+
+    /// Also report the libjxl 3-norm aggregation alongside the score.
+    ///
+    /// Matches `butteraugli_main --pnorm` from libjxl: the average of three
+    /// p-norms at p=3, p=6, p=12. More informative than max-norm for codec
+    /// rate-distortion sweeps. Always available — no extra cost.
+    #[arg(long)]
+    pnorm: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -148,6 +156,8 @@ enum OutputFormat {
 #[derive(Serialize)]
 struct JsonOutput {
     score: f64,
+    /// libjxl 3-norm (average of p-norms at p=3, 6, 12). Always populated.
+    pnorm_3: f64,
     quality_rating: String,
     quality_description: String,
     reference: String,
@@ -551,6 +561,9 @@ fn output_single_result(
             } else {
                 println!("Butteraugli score: {}", score_str.color(color));
             }
+            if cli.pnorm {
+                println!("3-norm: {:.6}", result.pnorm_3);
+            }
         }
         OutputFormat::Quality => {
             let score_str = format!("{:.4}", result.score);
@@ -561,6 +574,9 @@ fn output_single_result(
                 rating_colored
             );
             println!("Quality: {}", description);
+            if cli.pnorm {
+                println!("3-norm: {:.6}", result.pnorm_3);
+            }
 
             if let Some(max_score) = cli.max_score {
                 if result.score > max_score {
@@ -582,6 +598,7 @@ fn output_single_result(
             let threshold_exceeded = cli.max_score.map(|max| result.score > max);
             let output = JsonOutput {
                 score: result.score,
+                pnorm_3: result.pnorm_3,
                 quality_rating: rating.to_string(),
                 quality_description: description.to_string(),
                 reference: cli.reference.display().to_string(),
@@ -651,6 +668,7 @@ fn output_batch_results(cli: &Cli, results: &[ComparisonResult]) -> Result<(), S
                         let threshold_exceeded = cli.max_score.map(|max| result.score > max);
                         json_results.push(JsonOutput {
                             score: result.score,
+                            pnorm_3: result.pnorm_3,
                             quality_rating: rating.to_string(),
                             quality_description: desc.to_string(),
                             reference: cr.reference.display().to_string(),
