@@ -181,10 +181,9 @@ fn main() {
             let (src, dst) = make_test_planes(w, h, seed, pattern);
 
             let params = ButteraugliParams::default();
-            let reference = ButteraugliReference::new_linear_planar(
-                &src[0], &src[1], &src[2], w, h, w, params,
-            )
-            .unwrap();
+            let reference =
+                ButteraugliReference::new_linear_planar(&src[0], &src[1], &src[2], w, h, w, params)
+                    .unwrap();
             let rust_score = reference
                 .compare_linear_planar(&dst[0], &dst[1], &dst[2], w)
                 .unwrap()
