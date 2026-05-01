@@ -598,10 +598,11 @@ impl ButteraugliReference {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
         }
 
-        let score = compute_score_from_diffmap(&diffmap);
+        let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
 
         ButteraugliResult {
             score,
+            pnorm_3,
             diffmap: Some(diffmap.into_imgvec()),
         }
     }
@@ -676,10 +677,11 @@ impl ButteraugliReference {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
         }
 
-        let score = compute_score_from_diffmap(&diffmap);
+        let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
 
         ButteraugliResult {
             score,
+            pnorm_3,
             diffmap: Some(diffmap.into_imgvec()),
         }
     }
@@ -1055,45 +1057,69 @@ fn l2_diff_asymmetric(
     }
 }
 
-/// Computes global score from diffmap - autoversioned for autovectorization.
-///
-/// Uses 8 independent max accumulators to break the loop-carried dependency,
-/// enabling LLVM to vectorize with vmaxps (8-wide packed max).
-/// Diffmap values are guaranteed non-NaN (output of sqrt of validated inputs).
+/// Computes max-norm score AND libjxl 3-norm aggregation from a diffmap in
+/// a single pass. See `diff.rs::compute_score_from_diffmap` for the full
+/// rationale; both implementations are kept in sync.
 #[archmage::autoversion]
-fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> f64 {
+fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> (f64, f64) {
     let width = diffmap.width();
     let height = diffmap.height();
 
     if width * height == 0 {
-        return 0.0;
+        return (0.0, 0.0);
     }
 
-    let mut lanes = [0.0f32; 8];
+    let mut max_lanes = [0.0f32; 8];
+    let mut sum_p3 = [0.0f64; 8];
+    let mut sum_p6 = [0.0f64; 8];
+    let mut sum_p12 = [0.0f64; 8];
+
     for y in 0..height {
         let row = diffmap.row(y);
         for chunk in row.chunks_exact(8) {
-            for (m, &v) in lanes.iter_mut().zip(chunk.iter()) {
-                if v > *m {
-                    *m = v;
+            for i in 0..8 {
+                let v = chunk[i];
+                if v > max_lanes[i] {
+                    max_lanes[i] = v;
                 }
+                let d = v as f64;
+                let d3 = d * d * d;
+                sum_p3[i] += d3;
+                let d6 = d3 * d3;
+                sum_p6[i] += d6;
+                sum_p12[i] += d6 * d6;
             }
         }
         for &v in row.chunks_exact(8).remainder() {
-            if v > lanes[0] {
-                lanes[0] = v;
+            if v > max_lanes[0] {
+                max_lanes[0] = v;
             }
+            let d = v as f64;
+            let d3 = d * d * d;
+            sum_p3[0] += d3;
+            let d6 = d3 * d3;
+            sum_p6[0] += d6;
+            sum_p12[0] += d6 * d6;
         }
     }
 
-    // Horizontal reduction of 8 lanes
-    let mut max_val = lanes[0];
-    for &m in &lanes[1..] {
+    let mut max_val = max_lanes[0];
+    for &m in &max_lanes[1..] {
         if m > max_val {
             max_val = m;
         }
     }
-    max_val as f64
+
+    let total_p3: f64 = sum_p3.iter().sum();
+    let total_p6: f64 = sum_p6.iter().sum();
+    let total_p12: f64 = sum_p12.iter().sum();
+    let one_per_pixels = 1.0_f64 / ((width * height) as f64);
+    let v0 = (one_per_pixels * total_p3).powf(1.0 / 3.0);
+    let v1 = (one_per_pixels * total_p6).powf(1.0 / 6.0);
+    let v2 = (one_per_pixels * total_p12).powf(1.0 / 12.0);
+    let pnorm_3 = (v0 + v1 + v2) / 3.0;
+
+    (max_val as f64, pnorm_3)
 }
 
 /// Adds supersampled diffmap contribution (2× upsampling with blending).

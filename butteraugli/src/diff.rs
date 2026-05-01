@@ -41,6 +41,9 @@ where
 /// Internal result type for diff module (uses ImageF, not ImgVec).
 pub(crate) struct InternalResult {
     pub score: f64,
+    /// libjxl-style 3-norm precomputed during the score reduction pass.
+    /// Always available regardless of whether the diffmap is returned.
+    pub pnorm_3: f64,
     pub diffmap: Option<ImageF>,
 }
 
@@ -467,46 +470,80 @@ fn combine_channels_to_diffmap_fused(
     diffmap
 }
 
-/// Computes the global score from a difference map.
+/// Computes the global max-norm score AND the libjxl 3-norm aggregation
+/// from a difference map in a single pass.
 ///
-/// C++ ButteraugliScoreFromDiffmap (butteraugli.cc lines 1952-1962)
-/// returns the maximum value in the diffmap. The diffmap already has
-/// the global scaling applied via MaskY/MaskDcY.
+/// The max equals C++ `ButteraugliScoreFromDiffmap` (butteraugli.cc lines
+/// 1952-1962). The 3-norm matches `lib/extras/metrics.cc:ComputeDistanceP`
+/// at p=3 — the average of three p-norms at p, 2p, 4p.
+///
+/// Both reductions are folded into the same single-pass read of the diffmap,
+/// so computing the 3-norm is essentially free relative to the existing max
+/// reduction (memory-bound load is already paid).
 #[archmage::autoversion]
-fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> f64 {
+fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> (f64, f64) {
     let width = diffmap.width();
     let height = diffmap.height();
 
     if width * height == 0 {
-        return 0.0;
+        return (0.0, 0.0);
     }
 
-    // Use 8 independent max accumulators to break the loop-carried dependency,
-    // enabling LLVM to vectorize with vmaxps (packed max).
-    let mut lanes = [0.0f32; 8];
+    // 8 independent accumulators per reduction break the loop-carried
+    // dependency, letting LLVM vectorize with vmaxps and parallel adds.
+    // f64 sums avoid catastrophic precision loss when summing 33 MP (8K)
+    // diffmaps at d^12 (libjxl's HWY_CAP_FLOAT64 path does the same).
+    let mut max_lanes = [0.0f32; 8];
+    let mut sum_p3 = [0.0f64; 8];
+    let mut sum_p6 = [0.0f64; 8];
+    let mut sum_p12 = [0.0f64; 8];
+
     for y in 0..height {
         let row = diffmap.row(y);
         for chunk in row.chunks_exact(8) {
-            for (m, &v) in lanes.iter_mut().zip(chunk.iter()) {
-                if v > *m {
-                    *m = v;
+            for i in 0..8 {
+                let v = chunk[i];
+                if v > max_lanes[i] {
+                    max_lanes[i] = v;
                 }
+                let d = v as f64;
+                let d3 = d * d * d;
+                sum_p3[i] += d3;
+                let d6 = d3 * d3;
+                sum_p6[i] += d6;
+                sum_p12[i] += d6 * d6;
             }
         }
         for &v in row.chunks_exact(8).remainder() {
-            if v > lanes[0] {
-                lanes[0] = v;
+            if v > max_lanes[0] {
+                max_lanes[0] = v;
             }
+            let d = v as f64;
+            let d3 = d * d * d;
+            sum_p3[0] += d3;
+            let d6 = d3 * d3;
+            sum_p6[0] += d6;
+            sum_p12[0] += d6 * d6;
         }
     }
 
-    let mut max_val = lanes[0];
-    for &m in &lanes[1..] {
+    let mut max_val = max_lanes[0];
+    for &m in &max_lanes[1..] {
         if m > max_val {
             max_val = m;
         }
     }
-    max_val as f64
+
+    let total_p3: f64 = sum_p3.iter().sum();
+    let total_p6: f64 = sum_p6.iter().sum();
+    let total_p12: f64 = sum_p12.iter().sum();
+    let one_per_pixels = 1.0_f64 / ((width * height) as f64);
+    let v0 = (one_per_pixels * total_p3).powf(1.0 / 3.0);
+    let v1 = (one_per_pixels * total_p6).powf(1.0 / 6.0);
+    let v2 = (one_per_pixels * total_p12).powf(1.0 / 12.0);
+    let pnorm_3 = (v0 + v1 + v2) / 3.0;
+
+    (max_val as f64, pnorm_3)
 }
 
 /// Subsamples linear RGB f32 buffer by 2x for multi-resolution processing.
@@ -675,6 +712,7 @@ pub fn compute_butteraugli_impl(
     if rgb1 == rgb2 {
         return InternalResult {
             score: 0.0,
+            pnorm_3: 0.0,
             diffmap: Some(ImageF::new(width, height)),
         };
     }
@@ -704,6 +742,7 @@ pub fn compute_butteraugli_linear_impl(
     if rgb1 == rgb2 {
         return InternalResult {
             score: 0.0,
+            pnorm_3: 0.0,
             diffmap: Some(ImageF::new(width, height)),
         };
     }
@@ -715,11 +754,12 @@ pub fn compute_butteraugli_linear_impl(
         compute_diffmap_multiresolution_linear(rgb1, rgb2, width, height, params)
     };
 
-    // Compute global score
-    let score = compute_score_from_diffmap(&diffmap);
+    // Single-pass reduction: max-norm score AND libjxl 3-norm
+    let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
 
     InternalResult {
         score,
+        pnorm_3,
         diffmap: Some(diffmap),
     }
 }

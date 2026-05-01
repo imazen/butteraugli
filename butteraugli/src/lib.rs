@@ -513,18 +513,28 @@ pub fn pnorm(diffmap: &[f32], p: f64) -> f64 {
 ///
 /// The [`score`](Self::score) field is the global max-norm distance — the
 /// historical "butteraugli score" with `<1.0 = good`, `>2.0 = bad` thresholds
-/// suitable for pass/fail gating. For codec rate-distortion comparisons,
-/// libjxl's `butteraugli_main` additionally reports a 3-norm aggregation
-/// (averaged with 6-norm and 12-norm); see [`ButteraugliResult::pnorm`] and
-/// the free function [`pnorm`].
+/// suitable for pass/fail gating. The [`pnorm_3`](Self::pnorm_3) field is the
+/// libjxl-style 3-norm aggregation reported by `butteraugli_main --pnorm` and
+/// used in the Cloudinary CID22 paper — useful for rate-distortion sweeps
+/// where averaging tail and bulk distortion is more informative than max
+/// alone. Both are precomputed in a single pass during the comparison and
+/// available regardless of whether `compute_diffmap` was enabled.
+///
+/// For arbitrary p-norms, see [`ButteraugliResult::pnorm`] and the free
+/// function [`pnorm`] — those require `compute_diffmap = true`.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ButteraugliResult {
     /// Max-norm difference score. < 1.0 is "good", > 2.0 is "bad".
     ///
-    /// Equivalent to libjxl's `ButteraugliScoreFromDiffmap`. For a different
-    /// aggregation, see [`ButteraugliResult::pnorm`].
+    /// Equivalent to libjxl's `ButteraugliScoreFromDiffmap`.
     pub score: f64,
+    /// libjxl-style 3-norm aggregation, matching `butteraugli_main --pnorm`
+    /// (the default). The average of three p-norms at p=3, 6, 12; see the
+    /// free [`pnorm`] function for the formula. Always populated — no
+    /// allocation cost beyond the existing internal diffmap (which is freed
+    /// before return when `compute_diffmap` is false).
+    pub pnorm_3: f64,
     /// Per-pixel difference map (only present if `compute_diffmap` was true).
     pub diffmap: Option<ImgVec<f32>>,
 }
@@ -533,13 +543,14 @@ impl ButteraugliResult {
     /// libjxl-style p-norm of the diffmap. See the free function [`pnorm`]
     /// for the formula.
     ///
-    /// `p = 3.0` matches the default output of `butteraugli_main --pnorm`.
-    ///
-    /// Returns `None` if `compute_diffmap` was not enabled on
-    /// [`ButteraugliParams`] (the diffmap is required to compute any norm
-    /// other than the max-norm already in [`Self::score`]).
+    /// For `p ≈ 3.0` returns the precomputed [`Self::pnorm_3`] without
+    /// touching the diffmap. For other values of `p`, returns `None` if
+    /// `compute_diffmap` was not enabled on [`ButteraugliParams`].
     #[must_use]
     pub fn pnorm(&self, p: f64) -> Option<f64> {
+        if (p - 3.0).abs() < 1e-6 {
+            return Some(self.pnorm_3);
+        }
         let dm = self.diffmap.as_ref()?;
         // ImgVec built via our diff path is always contiguous (stride == width).
         debug_assert_eq!(dm.buf().len(), dm.width() * dm.height());
@@ -614,6 +625,7 @@ pub fn butteraugli(
 
     Ok(ButteraugliResult {
         score: result.score,
+        pnorm_3: result.pnorm_3,
         diffmap: result.diffmap.map(image::ImageF::into_imgvec),
     })
 }
@@ -668,6 +680,7 @@ pub fn butteraugli_linear(
 
     Ok(ButteraugliResult {
         score: result.score,
+        pnorm_3: result.pnorm_3,
         diffmap: result.diffmap.map(image::ImageF::into_imgvec),
     })
 }
@@ -1147,32 +1160,106 @@ mod tests {
     }
 
     #[test]
-    fn test_pnorm_method_returns_none_without_diffmap() {
+    fn test_pnorm_method_returns_precomputed_for_p3_without_diffmap() {
         let res = ButteraugliResult {
             score: 0.5,
+            pnorm_3: 0.42,
             diffmap: None,
         };
-        assert!(res.pnorm(3.0).is_none());
+        // p=3 is precomputed and always available, even without diffmap.
+        assert_eq!(res.pnorm(3.0), Some(0.42));
+        // Other p values still require the diffmap.
+        assert!(res.pnorm(2.5).is_none());
+        assert!(res.pnorm(4.0).is_none());
     }
 
     #[test]
-    fn test_pnorm_method_uses_diffmap() {
+    fn test_pnorm_method_uses_diffmap_for_arbitrary_p() {
         let dm = ImgVec::new(vec![2.0_f32; 16 * 16], 16, 16);
         let res = ButteraugliResult {
             score: 2.0,
+            pnorm_3: 99.0, // sentinel — should NOT be returned for p=4
             diffmap: Some(dm),
         };
-        let got = res.pnorm(3.0).expect("diffmap is present");
+        // p ≠ 3: must be computed from diffmap, not the sentinel.
+        let got = res.pnorm(4.0).expect("diffmap is present");
         assert!((got - 2.0).abs() < 1e-9, "got {got}");
+        // p = 3: must return the precomputed sentinel, not recompute.
+        assert_eq!(res.pnorm(3.0), Some(99.0));
     }
 
     #[test]
     fn test_max_norm_alias() {
         let res = ButteraugliResult {
             score: 1.234,
+            pnorm_3: 0.0,
             diffmap: None,
         };
         assert_eq!(res.max_norm(), 1.234);
+    }
+
+    #[test]
+    fn test_pnorm_3_field_matches_free_function_on_diffmap() {
+        // The precomputed pnorm_3 field must agree with computing pnorm(3.0)
+        // over the returned diffmap, otherwise the fused reduction has drifted.
+        let width = 32;
+        let height = 32;
+        let pixels1: Vec<RGB8> = (0..width * height)
+            .map(|i| RGB8::new((i % 256) as u8, ((i * 3) % 256) as u8, 0))
+            .collect();
+        let pixels2: Vec<RGB8> = (0..width * height)
+            .map(|i| RGB8::new(((i + 50) % 256) as u8, ((i * 3 + 30) % 256) as u8, 0))
+            .collect();
+        let img1 = Img::new(pixels1, width, height);
+        let img2 = Img::new(pixels2, width, height);
+
+        let params = ButteraugliParams::default().with_compute_diffmap(true);
+        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params).expect("valid");
+
+        let dm = result.diffmap.as_ref().expect("diffmap requested");
+        let recomputed = pnorm(dm.buf(), 3.0);
+
+        let rel_err = (result.pnorm_3 - recomputed).abs() / recomputed.max(1e-12);
+        assert!(
+            rel_err < 1e-9,
+            "fused pnorm_3 = {} vs free pnorm(diffmap, 3) = {}, rel_err {rel_err}",
+            result.pnorm_3,
+            recomputed
+        );
+    }
+
+    #[test]
+    fn test_pnorm_3_available_without_diffmap() {
+        // The whole point of fused reduction: pnorm_3 is populated even when
+        // compute_diffmap=false (no allocation cost for the result).
+        let width = 32;
+        let height = 32;
+        let pixels1: Vec<RGB8> = vec![RGB8::new(40, 40, 40); width * height];
+        let pixels2: Vec<RGB8> = vec![RGB8::new(80, 80, 80); width * height];
+        let img1 = Img::new(pixels1, width, height);
+        let img2 = Img::new(pixels2, width, height);
+
+        let params = ButteraugliParams::default(); // compute_diffmap = false
+        let result = butteraugli(img1.as_ref(), img2.as_ref(), &params).expect("valid");
+
+        assert!(result.diffmap.is_none(), "diffmap should not be returned");
+        assert!(result.pnorm_3.is_finite(), "pnorm_3 must be populated");
+        assert!(result.pnorm_3 >= 0.0);
+        // pnorm method also works (precomputed path).
+        assert_eq!(result.pnorm(3.0), Some(result.pnorm_3));
+    }
+
+    #[test]
+    fn test_pnorm_3_zero_for_identical_images() {
+        let width = 16;
+        let height = 16;
+        let pixels: Vec<RGB8> = vec![RGB8::new(128, 128, 128); width * height];
+        let img = Img::new(pixels, width, height);
+
+        let params = ButteraugliParams::default();
+        let result = butteraugli(img.as_ref(), img.as_ref(), &params).expect("valid");
+        assert!(result.pnorm_3.abs() < 1e-9);
+        assert!(result.score < 0.001);
     }
 
     #[test]
