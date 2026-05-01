@@ -103,6 +103,25 @@ if let Some(diffmap) = result.diffmap {
 }
 ```
 
+### Aggregations
+
+`result.score` is the **max-norm** distance — the historical butteraugli score
+used for `<1.0 = good`, `>2.0 = bad` thresholds. `result.pnorm_3` is the
+libjxl 3-norm aggregation reported by `butteraugli_main --pnorm` and used in
+the Cloudinary CID22 paper — useful for codec rate-distortion sweeps where
+averaging tail and bulk distortion is more informative than max alone. Both
+are produced in a single fused reduction pass and available regardless of
+whether `compute_diffmap` was enabled (no extra allocation).
+
+```rust
+println!("max-norm:  {:.4}", result.score);     // or result.max_norm()
+println!("3-norm:    {:.4}", result.pnorm_3);
+println!("p=4 norm:  {:?}", result.pnorm(4.0)); // requires compute_diffmap=true
+```
+
+The CLI exposes the 3-norm via `butteraugli --pnorm`; JSON output always
+includes a `pnorm_3` field.
+
 ### Custom Parameters
 
 ```rust
