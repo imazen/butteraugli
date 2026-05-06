@@ -578,12 +578,12 @@ pub fn butteraugli(
     // benign-looking sizes; on 64-bit it can be reached when `imgref::Img` was
     // built from a stride that truncated. Matches the check in
     // `ButteraugliReference::new`.
-    w1.checked_mul(h1)
-        .and_then(|wh| wh.checked_mul(3))
-        .ok_or(ButteraugliError::DimensionOverflow {
+    w1.checked_mul(h1).and_then(|wh| wh.checked_mul(3)).ok_or(
+        ButteraugliError::DimensionOverflow {
             width: w1,
             height: h1,
-        })?;
+        },
+    )?;
 
     let result = diff::compute_butteraugli_imgref(img1, img2, params, params.compute_diffmap);
 
@@ -638,12 +638,12 @@ pub fn butteraugli_linear(
 
     // Reject dimensions that would overflow `width * height * 3`. See the
     // matching check in `butteraugli` above.
-    w1.checked_mul(h1)
-        .and_then(|wh| wh.checked_mul(3))
-        .ok_or(ButteraugliError::DimensionOverflow {
+    w1.checked_mul(h1).and_then(|wh| wh.checked_mul(3)).ok_or(
+        ButteraugliError::DimensionOverflow {
             width: w1,
             height: h1,
-        })?;
+        },
+    )?;
 
     check_finite_rgb_imgref(img1)?;
     check_finite_rgb_imgref(img2)?;
