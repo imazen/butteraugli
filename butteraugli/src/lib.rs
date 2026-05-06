@@ -1043,6 +1043,38 @@ mod tests {
         ));
     }
 
+    /// `compare_linear_planar` previously used unchecked `stride * self.height`
+    /// while its sibling `new_linear_planar` used `checked_mul`. An adversarial
+    /// stride can panic on the multiplication on 32-bit targets before the
+    /// buffer length check fires. The fix returns `DimensionOverflow` instead.
+    #[test]
+    fn test_compare_linear_planar_rejects_stride_overflow() {
+        let width = 16;
+        let height = 16;
+        let channel: Vec<f32> = vec![0.5; width * height];
+        let reference = ButteraugliReference::new_linear_planar(
+            &channel,
+            &channel,
+            &channel,
+            width,
+            height,
+            width,
+            ButteraugliParams::default(),
+        )
+        .expect("valid reference");
+
+        // `stride * self.height` overflows usize: usize::MAX / height + 1.
+        let bad_stride = usize::MAX / height + 1;
+        let dummy: Vec<f32> = vec![0.0; 1];
+        let err = reference
+            .compare_linear_planar(&dummy, &dummy, &dummy, bad_stride)
+            .expect_err("stride overflow must be rejected");
+        assert!(
+            matches!(err, ButteraugliError::DimensionOverflow { .. }),
+            "expected DimensionOverflow, got {err:?}",
+        );
+    }
+
     #[test]
     fn test_validation_on_precompute_planar_api() {
         let width = 32;
