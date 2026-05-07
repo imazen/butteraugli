@@ -573,6 +573,18 @@ pub fn butteraugli(
         return Err(ButteraugliError::DimensionMismatch { w1, h1, w2, h2 });
     }
 
+    // Reject dimensions that would overflow `width * height * 3` (the
+    // interleaved RGB element count). On 32-bit targets this is reachable with
+    // benign-looking sizes; on 64-bit it can be reached when `imgref::Img` was
+    // built from a stride that truncated. Matches the check in
+    // `ButteraugliReference::new`.
+    w1.checked_mul(h1).and_then(|wh| wh.checked_mul(3)).ok_or(
+        ButteraugliError::DimensionOverflow {
+            width: w1,
+            height: h1,
+        },
+    )?;
+
     let result = diff::compute_butteraugli_imgref(img1, img2, params, params.compute_diffmap);
 
     if !result.score.is_finite() {
@@ -623,6 +635,15 @@ pub fn butteraugli_linear(
     if w1 != w2 || h1 != h2 {
         return Err(ButteraugliError::DimensionMismatch { w1, h1, w2, h2 });
     }
+
+    // Reject dimensions that would overflow `width * height * 3`. See the
+    // matching check in `butteraugli` above.
+    w1.checked_mul(h1).and_then(|wh| wh.checked_mul(3)).ok_or(
+        ButteraugliError::DimensionOverflow {
+            width: w1,
+            height: h1,
+        },
+    )?;
 
     check_finite_rgb_imgref(img1)?;
     check_finite_rgb_imgref(img2)?;
@@ -1022,6 +1043,38 @@ mod tests {
         ));
     }
 
+    /// `compare_linear_planar` previously used unchecked `stride * self.height`
+    /// while its sibling `new_linear_planar` used `checked_mul`. An adversarial
+    /// stride can panic on the multiplication on 32-bit targets before the
+    /// buffer length check fires. The fix returns `DimensionOverflow` instead.
+    #[test]
+    fn test_compare_linear_planar_rejects_stride_overflow() {
+        let width = 16;
+        let height = 16;
+        let channel: Vec<f32> = vec![0.5; width * height];
+        let reference = ButteraugliReference::new_linear_planar(
+            &channel,
+            &channel,
+            &channel,
+            width,
+            height,
+            width,
+            ButteraugliParams::default(),
+        )
+        .expect("valid reference");
+
+        // `stride * self.height` overflows usize: usize::MAX / height + 1.
+        let bad_stride = usize::MAX / height + 1;
+        let dummy: Vec<f32> = vec![0.0; 1];
+        let err = reference
+            .compare_linear_planar(&dummy, &dummy, &dummy, bad_stride)
+            .expect_err("stride overflow must be rejected");
+        assert!(
+            matches!(err, ButteraugliError::DimensionOverflow { .. }),
+            "expected DimensionOverflow, got {err:?}",
+        );
+    }
+
     #[test]
     fn test_validation_on_precompute_planar_api() {
         let width = 32;
@@ -1216,5 +1269,47 @@ mod tests {
 
         let err = ButteraugliError::NonFiniteResult;
         assert!(err.to_string().contains("NaN"));
+    }
+
+    /// Adversarial dimensions where `width * height * 3` overflows `usize`.
+    ///
+    /// Reachable on 32-bit targets with benign-looking sizes, and on 64-bit
+    /// when an `imgref::Img` is constructed via `new_stride` (which stores
+    /// width/height internally as `u32` but exposes them as `usize`, so a
+    /// caller-supplied `u32::MAX - 1` survives construction).
+    ///
+    /// The standalone `butteraugli` and `butteraugli_linear` entry points
+    /// must reject these with `DimensionOverflow` instead of panicking on
+    /// the multiplication or down-stream allocation.
+    #[test]
+    fn test_butteraugli_rejects_dimension_overflow() {
+        // u32::MAX-1 squared * 3 overflows usize on 64-bit. The buffer is
+        // never read because the overflow check fires first; we just need
+        // an `ImgRef` with these dimensions.
+        let huge: usize = (u32::MAX - 1) as usize;
+        let buf: Vec<RGB8> = Vec::new();
+        // SAFETY: imgref's `new_stride` does not access the buffer, only
+        // stores it. The overflow check in `butteraugli` returns Err before
+        // any iteration. We use stride==width to satisfy `stride >= width`.
+        let img = imgref::ImgRef::new_stride(&buf[..], huge, huge, huge);
+        let err = butteraugli(img, img, &ButteraugliParams::default())
+            .expect_err("dimension overflow must be rejected");
+        assert!(
+            matches!(err, ButteraugliError::DimensionOverflow { .. }),
+            "expected DimensionOverflow, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn test_butteraugli_linear_rejects_dimension_overflow() {
+        let huge: usize = (u32::MAX - 1) as usize;
+        let buf: Vec<RGB<f32>> = Vec::new();
+        let img = imgref::ImgRef::new_stride(&buf[..], huge, huge, huge);
+        let err = butteraugli_linear(img, img, &ButteraugliParams::default())
+            .expect_err("dimension overflow must be rejected");
+        assert!(
+            matches!(err, ButteraugliError::DimensionOverflow { .. }),
+            "expected DimensionOverflow, got {err:?}",
+        );
     }
 }

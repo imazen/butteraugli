@@ -434,7 +434,16 @@ impl ButteraugliReference {
         b: &[f32],
         stride: usize,
     ) -> Result<ButteraugliResult, ButteraugliError> {
-        let min_size = stride * self.height;
+        // Mirror the checked_mul in `new_linear_planar` — a stride coming from
+        // an adversarial caller can otherwise overflow the per-channel buffer
+        // size on 32-bit targets, panicking before the buffer length check.
+        let min_size =
+            stride
+                .checked_mul(self.height)
+                .ok_or(ButteraugliError::DimensionOverflow {
+                    width: self.width,
+                    height: self.height,
+                })?;
         if r.len() < min_size || g.len() < min_size || b.len() < min_size {
             return Err(ButteraugliError::InvalidBufferSize {
                 expected: min_size,
