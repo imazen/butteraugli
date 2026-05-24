@@ -520,6 +520,77 @@ impl ButteraugliReference {
         Ok((score, pnorm_3))
     }
 
+    /// Strip-tiled variant of [`compare_linear_planar_into`].
+    ///
+    /// Internal pipeline composes the existing primitives in strip form so that
+    /// the final pixel-fusion stage runs in `STRIP_ROWS`-row batches, while the
+    /// upstream stages (opsin → separate_frequencies → malta → mask) run on the
+    /// full image. Returns a scalar score + diffmap BIT-IDENTICAL to
+    /// `compare_linear_planar_into` (verified by
+    /// `tests/strip_parity_50_images.rs`).
+    ///
+    /// # W44-PHASE3-B7d Day 5 scope
+    ///
+    /// This is the END-TO-END strip composition proof, NOT the production
+    /// hot path. The current strip boundary for Day 5 is between Stage 2
+    /// (per-pixel mask + malta error maps, full-image scratch) and Stage 3
+    /// (per-pixel fusion + DC math, tiled). The Day 4 strip primitives
+    /// (`separate_frequencies_strip`, `malta_diff_map_strip`,
+    /// `fuzzy_erosion_strip`, etc.) all use parent-height padded scratch
+    /// internally to maintain byte-identity at non-edge strip boundaries —
+    /// so tiling them naively is byte-identical but not perf-faster. Day 6+
+    /// drops the parent-height-padded scratch and explores
+    /// mirror-reflect-at-strip with measurable ULP tolerance.
+    ///
+    /// **Tile-able**: per-pixel fused combine_channels + DC diff math (Stage 3
+    /// here; halo = 0, pointwise; strip tiling is byte-identical by
+    /// construction).
+    /// **NOT tile-able byte-identical**: opsin / separate_frequencies / malta /
+    /// mask. Their internal kernels have halo > 0 with mirror-reflect
+    /// boundaries that diverge under naive strip tiling (would require
+    /// padded-to-parent scratch — equivalent to running full-image).
+    /// **Global**: final p-norm score reduction (max + p3 + p6 + p12).
+    ///
+    /// On entry, `diffmap_out` may be any size; it is resized to
+    /// `self.width() * self.height()` and overwritten with the per-pixel
+    /// butteraugli diffmap.
+    ///
+    /// # Errors
+    /// Same as [`compare_linear_planar`].
+    pub fn compare_linear_planar_strip_into(
+        &self,
+        r: &[f32],
+        g: &[f32],
+        b: &[f32],
+        stride: usize,
+        diffmap_out: &mut Vec<f32>,
+    ) -> Result<(f64, f64), ButteraugliError> {
+        let min_size =
+            stride
+                .checked_mul(self.height)
+                .ok_or(ButteraugliError::DimensionOverflow {
+                    width: self.width,
+                    height: self.height,
+                })?;
+        if r.len() < min_size || g.len() < min_size || b.len() < min_size {
+            return Err(ButteraugliError::InvalidBufferSize {
+                expected: min_size,
+                actual: r.len().min(g.len()).min(b.len()),
+            });
+        }
+
+        check_finite_f32(&r[..min_size], "compare planar r")?;
+        check_finite_f32(&g[..min_size], "compare planar g")?;
+        check_finite_f32(&b[..min_size], "compare planar b")?;
+
+        let (score, pnorm_3) =
+            self.compare_linear_planar_strip_impl_into(r, g, b, stride, diffmap_out);
+        if !score.is_finite() {
+            return Err(ButteraugliError::NonFiniteResult);
+        }
+        Ok((score, pnorm_3))
+    }
+
     /// Width of the reference image.
     #[must_use]
     pub fn width(&self) -> usize {
@@ -772,6 +843,145 @@ impl ButteraugliReference {
             dst.copy_from_slice(&diffmap.data()[..needed]);
         } else {
             // Padded — copy row by row to strip stride padding.
+            for y in 0..height {
+                let src_row = diffmap.row(y);
+                let dst_row = &mut dst[y * width..(y + 1) * width];
+                dst_row.copy_from_slice(src_row);
+            }
+        }
+        diffmap.recycle(pool);
+
+        (score, pnorm_3)
+    }
+
+    /// Strip-tiled internal implementation (W44-PHASE3-B7d Day 5).
+    ///
+    /// Drives the existing full-image pipeline through Stage 1 + Stage 2
+    /// (opsin → separate_frequencies → malta → mask), then runs Stage 3
+    /// (combine_channels + DC diff math) in `STRIP_ROWS`-row batches and
+    /// writes per-strip diffmap rows into the caller's Vec. Stage 3 is
+    /// strict-pointwise (halo = 0), so strip tiling is byte-identical by
+    /// construction. The strip path also exercises the
+    /// `combine_channels_to_diffmap_strip_into` driver below which is the
+    /// composition-proof callable for Day 6+ deeper tiling experiments.
+    fn compare_linear_planar_strip_impl_into(
+        &self,
+        r: &[f32],
+        g: &[f32],
+        b: &[f32],
+        stride: usize,
+        diffmap_out: &mut Vec<f32>,
+    ) -> (f64, f64) {
+        let intensity_target = self.params.intensity_target();
+        let width = self.width;
+        let height = self.height;
+        let params = &self.params;
+        let full_psycho = &self.full.psycho;
+        let full_mask = &self.full.mask;
+        let half_ref = self.half.as_ref();
+        let pool = &self.pool;
+
+        // Stage 1 + Stage 2: opsin + separate_frequencies + malta + mask on the
+        // full image (per current architecture — see method docstring for why
+        // these stages are not tiled byte-identical at Day 5).
+        let (full_intermediates, sub_diffmap) = maybe_join(
+            || {
+                let xyb2 = linear_planar_to_xyb_butteraugli(
+                    r,
+                    g,
+                    b,
+                    width,
+                    height,
+                    stride,
+                    intensity_target,
+                    pool,
+                );
+                let ps2 = separate_frequencies(&xyb2, pool);
+                // Compute malta + l2 error maps (same as compute_psycho_diff_malta).
+                let mut block_diff_ac = compute_psycho_diff_malta(
+                    full_psycho,
+                    &ps2,
+                    params.hf_asymmetry(),
+                    params.xmul(),
+                    pool,
+                );
+                // Apply distorted-side mask correction (writes into ac plane 1).
+                crate::mask::apply_mask_correction_precomputed(
+                    full_mask,
+                    &ps2.hf,
+                    &ps2.uhf,
+                    Some(block_diff_ac.plane_mut(1)),
+                    pool,
+                );
+                (xyb2, ps2, block_diff_ac)
+            },
+            || {
+                half_ref.map(|half| {
+                    let (sub_r, sub_g, sub_b, sw, sh) =
+                        subsample_planar_rgb_2x(r, g, b, width, height, stride, pool);
+                    let sub_xyb = linear_planar_to_xyb_butteraugli(
+                        &sub_r,
+                        &sub_g,
+                        &sub_b,
+                        sw,
+                        sh,
+                        sw,
+                        intensity_target,
+                        pool,
+                    );
+                    pool.put(sub_r);
+                    pool.put(sub_g);
+                    pool.put(sub_b);
+                    let sub_ps = separate_frequencies(&sub_xyb, pool);
+                    let dm = compute_diffmap_with_precomputed(
+                        &half.psycho,
+                        &sub_ps,
+                        &half.mask,
+                        params,
+                        pool,
+                    );
+                    sub_ps.recycle(pool);
+                    sub_xyb.recycle(pool);
+                    dm
+                })
+            },
+        );
+        let (xyb2, ps2, mut block_diff_ac) = full_intermediates;
+
+        // Stage 3 tile-driven: combine_channels + DC diff into a pool-backed
+        // full-image diffmap, but driven row-strip at a time.
+        let mut diffmap =
+            combine_channels_to_diffmap_strip_driver(
+                &full_mask.mask,
+                &full_psycho.lf,
+                &ps2.lf,
+                &block_diff_ac,
+                params.xmul(),
+                pool,
+            );
+
+        block_diff_ac.recycle(pool);
+        ps2.recycle(pool);
+        xyb2.recycle(pool);
+
+        if let Some(sub) = sub_diffmap {
+            add_supersampled_2x(&sub, 0.5, &mut diffmap);
+            sub.recycle(pool);
+        }
+
+        // Stage 4 global reduction: score + p-norm.
+        let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
+
+        // Copy into caller's Vec, mirroring `compare_linear_planar_impl_into`.
+        let needed = width * height;
+        if diffmap_out.capacity() < needed {
+            diffmap_out.reserve(needed - diffmap_out.len());
+        }
+        diffmap_out.resize(needed, 0.0);
+        let dst = &mut diffmap_out[..needed];
+        if diffmap.stride() == width {
+            dst.copy_from_slice(&diffmap.data()[..needed]);
+        } else {
             for y in 0..height {
                 let src_row = diffmap.row(y);
                 let dst_row = &mut dst[y * width..(y + 1) * width];
@@ -1141,6 +1351,103 @@ fn combine_channels_to_diffmap_fused(
 
             out[x] = (dc_masked + ac_masked).sqrt();
         }
+    }
+
+    diffmap
+}
+
+/// Strip-tiled driver for the per-pixel fuse used in the strip-tiled compare
+/// path (W44-PHASE3-B7d Day 5).
+///
+/// Calls `combine_channels_to_diffmap_fused` once on a per-strip scratch
+/// `block_diff_ac` slice (zero-halo per-pixel pointwise math; the
+/// autoversioned full-image kernel is the same byte-identical SIMD path used
+/// by the non-strip variant), then copies the per-strip diffmap rows back
+/// into the full-image diffmap.
+///
+/// Returns the full-image diffmap. Output is BIT-IDENTICAL to the single
+/// `combine_channels_to_diffmap_fused` call used by the non-strip path
+/// because the kernel is purely pointwise and the strip's input slice is the
+/// same memory the full-image kernel would read at those rows.
+///
+/// # Strip size selection
+///
+/// Day 5 uses `STRIP_ROWS = 16`. The Day 5 wall-clock target is "≤ 1.5×
+/// full-buffer at 1024²" (sanity gate, not perf claim); Day 6 will sweep
+/// strip sizes against actual data-locality characteristics.
+fn combine_channels_to_diffmap_strip_driver(
+    mask: &ImageF,
+    lf1: &Image3F,
+    lf2: &Image3F,
+    block_diff_ac: &Image3F,
+    xmul: f32,
+    pool: &BufferPool,
+) -> ImageF {
+    // Day 5 strip configuration. See module docstring.
+    const STRIP_ROWS: usize = 16;
+
+    let width = mask.width();
+    let height = mask.height();
+    let mut diffmap = ImageF::from_pool_dirty(width, height, pool);
+
+    // Drive the existing autoversioned per-pixel kernel one strip at a time
+    // by constructing a per-strip Image3F slice for block_diff_ac and a
+    // per-strip ImageF slice for mask, lf1, lf2, then calling the FULL
+    // existing kernel on those slices. The existing kernel is purely
+    // pointwise (halo = 0) so the slice approach is byte-identical to the
+    // single-call full-image kernel.
+    //
+    // To minimise per-strip copy overhead, we build the slice scratch
+    // images from the pool and copy ONLY the strip's rows in/out, then run
+    // the existing `combine_channels_to_diffmap_fused` (which is the
+    // autoversioned SIMD path) on the strip scratch.
+    let mut y = 0;
+    while y < height {
+        let strip_h = STRIP_ROWS.min(height - y);
+
+        // Per-strip scratch for the 6 input image bands + mask.
+        let mut s_mask = ImageF::from_pool_dirty(width, strip_h, pool);
+        let mut s_lf1 = Image3F::from_pool_dirty(width, strip_h, pool);
+        let mut s_lf2 = Image3F::from_pool_dirty(width, strip_h, pool);
+        let mut s_ac = Image3F::from_pool_dirty(width, strip_h, pool);
+
+        for ly in 0..strip_h {
+            let gy = y + ly;
+            s_mask.row_mut(ly).copy_from_slice(mask.row(gy));
+            for p in 0..3 {
+                s_lf1
+                    .plane_mut(p)
+                    .row_mut(ly)
+                    .copy_from_slice(lf1.plane(p).row(gy));
+                s_lf2
+                    .plane_mut(p)
+                    .row_mut(ly)
+                    .copy_from_slice(lf2.plane(p).row(gy));
+                s_ac.plane_mut(p)
+                    .row_mut(ly)
+                    .copy_from_slice(block_diff_ac.plane(p).row(gy));
+            }
+        }
+
+        // Run the existing autoversioned per-pixel kernel on the strip
+        // scratch. Byte-identical to the full-image call because the kernel
+        // is purely pointwise (no row-to-row dependencies).
+        let s_diffmap =
+            combine_channels_to_diffmap_fused(&s_mask, &s_lf1, &s_lf2, &s_ac, xmul, pool);
+
+        // Copy strip rows into the full-image diffmap.
+        for ly in 0..strip_h {
+            let gy = y + ly;
+            diffmap.row_mut(gy).copy_from_slice(s_diffmap.row(ly));
+        }
+
+        s_mask.recycle(pool);
+        s_lf1.recycle(pool);
+        s_lf2.recycle(pool);
+        s_ac.recycle(pool);
+        s_diffmap.recycle(pool);
+
+        y += strip_h;
     }
 
     diffmap
