@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `ImageF::strip_view(top_row, bottom_row) -> StripView<'_>` +
+  `ImageF::strip_view_mut(top_row, bottom_row) -> StripViewMut<'_>` —
+  zero-allocation borrow-window views over an `ImageF`'s row range
+  `[top_row, bottom_row)`. Exposes the same row-access API as `ImageF`
+  (`row`/`row_mut`/`row_full`/`get`/`set`/`as_ptr`/`width`/`height`/`stride`)
+  bounded to the strip's local `0..height` range plus a
+  `start_row_in_parent()` accessor for halo-edge detection.
+  Preserves the parent's `stride` verbatim (SIMD padding intact).
+  Foundation primitive for the W44-PHASE3-B7d strip-tile CPU butteraugli
+  pipeline restructuring (see jxl-encoder
+  `docs/RFC_W44_PHASE3_B7D_STRIP_TILE.md`). 10 new unit tests cover
+  identity / partial / edge / iteration / mutable / bounds / stride
+  preservation cases.
+
 ## [0.9.2] - 2026-05-01
 
 ### Added
