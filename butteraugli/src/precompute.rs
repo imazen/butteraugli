@@ -216,9 +216,10 @@ impl ButteraugliReference {
             || {
                 if need_half {
                     let pool = BufferPool::new();
-                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
+                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, &pool);
                     let sub_xyb =
                         linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
+                    pool.put(sub_rgb); // B7b: return subsample buffer to pool
                     let sub_psycho = separate_frequencies(&sub_xyb, &pool);
                     let sub_mask = crate::mask::precompute_reference_mask(
                         &sub_psycho.hf,
@@ -323,7 +324,7 @@ impl ButteraugliReference {
                 if need_half {
                     let pool = BufferPool::new();
                     let (sub_r, sub_g, sub_b, sw, sh) =
-                        subsample_planar_rgb_2x(r, g, b, width, height, stride);
+                        subsample_planar_rgb_2x(r, g, b, width, height, stride, &pool);
                     let sub_xyb = linear_planar_to_xyb_butteraugli(
                         &sub_r,
                         &sub_g,
@@ -334,6 +335,10 @@ impl ButteraugliReference {
                         intensity_target,
                         &pool,
                     );
+                    // B7b: return subsample buffers to pool for reuse
+                    pool.put(sub_r);
+                    pool.put(sub_g);
+                    pool.put(sub_b);
                     let sub_psycho = separate_frequencies(&sub_xyb, &pool);
                     let sub_mask = crate::mask::precompute_reference_mask(
                         &sub_psycho.hf,
@@ -462,6 +467,59 @@ impl ButteraugliReference {
         Ok(result)
     }
 
+    /// Compare a distorted planar linear RGB image, writing the diffmap
+    /// into a caller-owned `Vec<f32>`.
+    ///
+    /// This is the buffer-recycling variant of [`compare_linear_planar`] —
+    /// the caller passes a persistent `Vec<f32>` that is reused across
+    /// successive compares (e.g. across butteraugli-loop iterations in an
+    /// encoder), avoiding the per-call fresh `width * height * 4 B`
+    /// allocation that the [`ButteraugliResult::diffmap`] return path
+    /// produces.
+    ///
+    /// On entry, `diffmap_out` may be any size; it is resized to
+    /// `self.width() * self.height()` and overwritten with the diffmap.
+    /// Returns the score + p-norm components; the diffmap lives in
+    /// `diffmap_out` after the call.
+    ///
+    /// Bit-identical to `compare_linear_planar` modulo the buffer
+    /// management (B7a, 2026-05-23).
+    ///
+    /// # Errors
+    /// Same as [`compare_linear_planar`].
+    pub fn compare_linear_planar_into(
+        &self,
+        r: &[f32],
+        g: &[f32],
+        b: &[f32],
+        stride: usize,
+        diffmap_out: &mut Vec<f32>,
+    ) -> Result<(f64, f64), ButteraugliError> {
+        let min_size =
+            stride
+                .checked_mul(self.height)
+                .ok_or(ButteraugliError::DimensionOverflow {
+                    width: self.width,
+                    height: self.height,
+                })?;
+        if r.len() < min_size || g.len() < min_size || b.len() < min_size {
+            return Err(ButteraugliError::InvalidBufferSize {
+                expected: min_size,
+                actual: r.len().min(g.len()).min(b.len()),
+            });
+        }
+
+        check_finite_f32(&r[..min_size], "compare planar r")?;
+        check_finite_f32(&g[..min_size], "compare planar g")?;
+        check_finite_f32(&b[..min_size], "compare planar b")?;
+
+        let (score, pnorm_3) = self.compare_linear_planar_impl_into(r, g, b, stride, diffmap_out);
+        if !score.is_finite() {
+            return Err(ButteraugliError::NonFiniteResult);
+        }
+        Ok((score, pnorm_3))
+    }
+
     /// Width of the reference image.
     #[must_use]
     pub fn width(&self) -> usize {
@@ -585,9 +643,10 @@ impl ButteraugliReference {
             },
             || {
                 half_ref.map(|half| {
-                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height);
+                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, pool);
                     let sub_xyb =
                         linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, pool);
+                    pool.put(sub_rgb); // B7b: return subsample buffer to pool
                     let sub_ps = separate_frequencies(&sub_xyb, pool);
                     let dm = compute_diffmap_with_precomputed(
                         &half.psycho,
@@ -605,6 +664,7 @@ impl ButteraugliReference {
 
         if let Some(sub) = sub_diffmap {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
+            sub.recycle(pool); // B7a: sub_diffmap buffer back to pool
         }
 
         let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
@@ -614,6 +674,113 @@ impl ButteraugliReference {
             pnorm_3,
             diffmap: Some(diffmap.into_imgvec()),
         }
+    }
+
+    /// Internal comparison implementation for planar linear RGB input,
+    /// writing the diffmap into a caller-owned `Vec<f32>` (B7a, 2026-05-23).
+    ///
+    /// Mirrors `compare_linear_planar_impl` but recycles the final diffmap
+    /// buffer via the persistent `BufferPool` and copies the result into the
+    /// caller's Vec. The caller's Vec is resized to `width * height`.
+    fn compare_linear_planar_impl_into(
+        &self,
+        r: &[f32],
+        g: &[f32],
+        b: &[f32],
+        stride: usize,
+        diffmap_out: &mut Vec<f32>,
+    ) -> (f64, f64) {
+        let intensity_target = self.params.intensity_target();
+        let width = self.width;
+        let height = self.height;
+        let params = &self.params;
+        let full_psycho = &self.full.psycho;
+        let full_mask = &self.full.mask;
+        let half_ref = self.half.as_ref();
+        let pool = &self.pool;
+
+        let (mut diffmap, sub_diffmap) = maybe_join(
+            || {
+                let xyb2 = linear_planar_to_xyb_butteraugli(
+                    r,
+                    g,
+                    b,
+                    width,
+                    height,
+                    stride,
+                    intensity_target,
+                    pool,
+                );
+                let ps2 = separate_frequencies(&xyb2, pool);
+                let dm =
+                    compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
+                ps2.recycle(pool);
+                xyb2.recycle(pool);
+                dm
+            },
+            || {
+                half_ref.map(|half| {
+                    let (sub_r, sub_g, sub_b, sw, sh) =
+                        subsample_planar_rgb_2x(r, g, b, width, height, stride, pool);
+                    let sub_xyb = linear_planar_to_xyb_butteraugli(
+                        &sub_r,
+                        &sub_g,
+                        &sub_b,
+                        sw,
+                        sh,
+                        sw,
+                        intensity_target,
+                        pool,
+                    );
+                    pool.put(sub_r);
+                    pool.put(sub_g);
+                    pool.put(sub_b);
+                    let sub_ps = separate_frequencies(&sub_xyb, pool);
+                    let dm = compute_diffmap_with_precomputed(
+                        &half.psycho,
+                        &sub_ps,
+                        &half.mask,
+                        params,
+                        pool,
+                    );
+                    sub_ps.recycle(pool);
+                    sub_xyb.recycle(pool);
+                    dm
+                })
+            },
+        );
+
+        if let Some(sub) = sub_diffmap {
+            add_supersampled_2x(&sub, 0.5, &mut diffmap);
+            sub.recycle(pool);
+        }
+
+        let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
+
+        // B7a: copy into caller's Vec (or move via owned buf if tight-stride)
+        // then recycle the internal ImageF.data back to the pool. The caller's
+        // Vec retains its existing capacity for next-iter reuse.
+        let needed = width * height;
+        if diffmap_out.capacity() < needed {
+            diffmap_out.reserve(needed - diffmap_out.len());
+        }
+        // Resize so element write via index/slicing is valid.
+        diffmap_out.resize(needed, 0.0);
+        let dst = &mut diffmap_out[..needed];
+        if diffmap.stride() == width {
+            // No padding — straight memcpy from packed data.
+            dst.copy_from_slice(&diffmap.data()[..needed]);
+        } else {
+            // Padded — copy row by row to strip stride padding.
+            for y in 0..height {
+                let src_row = diffmap.row(y);
+                let dst_row = &mut dst[y * width..(y + 1) * width];
+                dst_row.copy_from_slice(src_row);
+            }
+        }
+        diffmap.recycle(pool);
+
+        (score, pnorm_3)
     }
 
     /// Internal comparison implementation for planar linear RGB input.
@@ -656,7 +823,7 @@ impl ButteraugliReference {
             || {
                 half_ref.map(|half| {
                     let (sub_r, sub_g, sub_b, sw, sh) =
-                        subsample_planar_rgb_2x(r, g, b, width, height, stride);
+                        subsample_planar_rgb_2x(r, g, b, width, height, stride, pool);
                     let sub_xyb = linear_planar_to_xyb_butteraugli(
                         &sub_r,
                         &sub_g,
@@ -667,6 +834,10 @@ impl ButteraugliReference {
                         intensity_target,
                         pool,
                     );
+                    // B7b: return subsample buffers to pool for reuse
+                    pool.put(sub_r);
+                    pool.put(sub_g);
+                    pool.put(sub_b);
                     let sub_ps = separate_frequencies(&sub_xyb, pool);
                     let dm = compute_diffmap_with_precomputed(
                         &half.psycho,
@@ -684,6 +855,7 @@ impl ButteraugliReference {
 
         if let Some(sub) = sub_diffmap {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
+            sub.recycle(pool); // B7a: sub_diffmap buffer back to pool
         }
 
         let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
@@ -727,13 +899,16 @@ fn compute_diffmap_with_precomputed(
         pool,
     );
 
-    // Use precomputed mask directly (no copy needed — read-only reference)
+    // Use precomputed mask directly (no copy needed — read-only reference).
+    // B7a (2026-05-23): diffmap output now sourced from BufferPool so the
+    // ~4 MB/call allocation at 1024² is recycled across buttloop iters.
     let diffmap = combine_channels_to_diffmap_fused(
         &precomputed_mask.mask,
         &ps1.lf,
         &ps2.lf,
         &block_diff_ac,
         params.xmul(),
+        pool,
     );
 
     // Recycle temporaries back to pool
@@ -902,6 +1077,7 @@ fn combine_channels_to_diffmap_fused(
     lf2: &Image3F,
     block_diff_ac: &Image3F,
     xmul: f32,
+    pool: &BufferPool,
 ) -> ImageF {
     use crate::consts::{
         MASK_DC_Y_MUL, MASK_DC_Y_OFFSET, MASK_DC_Y_SCALER, MASK_Y_MUL, MASK_Y_OFFSET, MASK_Y_SCALER,
@@ -909,7 +1085,9 @@ fn combine_channels_to_diffmap_fused(
 
     let width = mask.width();
     let height = mask.height();
-    let mut diffmap = ImageF::new_uninit(width, height);
+    // B7a: pool-backed allocation, recycled on subsequent compare calls.
+    // Every pixel is written before being read so dirty is safe.
+    let mut diffmap = ImageF::from_pool_dirty(width, height, pool);
     let dc_w0 = WMUL[6] as f32;
     let dc_w1 = WMUL[7] as f32;
     let dc_w2 = WMUL[8] as f32;
@@ -1170,11 +1348,22 @@ fn add_supersampled_2x(_token: archmage::SimdToken, src: &ImageF, weight: f32, d
 }
 
 /// Subsamples linear RGB buffer by 2x.
-fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32>, usize, usize) {
+///
+/// B7b (2026-05-23): output buffer is sourced from the caller's `BufferPool`
+/// — the ~3 MB allocation per call at 1024² is recycled across buttloop
+/// iters. The interior loop + right/bottom edge handlers together write
+/// every cell of the output (even for odd dimensions), so no zero-fill is
+/// required even though `pool.take` returns potentially-stale data.
+fn subsample_linear_rgb_2x(
+    rgb: &[f32],
+    width: usize,
+    height: usize,
+    pool: &BufferPool,
+) -> (Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
     let out_size = out_width * out_height * 3;
-    let mut output = vec![0.0f32; out_size];
+    let mut output = pool.take(out_size);
 
     // Fast interior: all 2x2 blocks fully within bounds
     let interior_w = width / 2;
@@ -1273,6 +1462,13 @@ fn subsample_channel_2x_interior(
 }
 
 /// Subsamples planar linear RGB by 2x for multi-resolution processing.
+///
+/// B7b (2026-05-23): output buffers are sourced from the caller's
+/// `BufferPool` so the 3× ~1 MB allocations per call at 1024² are recycled
+/// across buttloop iters. Caller is responsible for `pool.put`-ing the
+/// returned Vecs after consumption. The interior loop + right/bottom edge
+/// handlers together write every cell, so no zero-fill is needed even for
+/// odd dimensions where `pool.take` may return stale data.
 fn subsample_planar_rgb_2x(
     r: &[f32],
     g: &[f32],
@@ -1280,13 +1476,15 @@ fn subsample_planar_rgb_2x(
     width: usize,
     height: usize,
     stride: usize,
+    pool: &BufferPool,
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
     let out_size = out_width * out_height;
-    let mut out_r = vec![0.0f32; out_size];
-    let mut out_g = vec![0.0f32; out_size];
-    let mut out_b = vec![0.0f32; out_size];
+    let out_r = pool.take(out_size);
+    let out_g = pool.take(out_size);
+    let out_b = pool.take(out_size);
+    let (mut out_r, mut out_g, mut out_b) = (out_r, out_g, out_b);
 
     let interior_w = width / 2;
     let interior_h = height / 2;
@@ -1624,5 +1822,152 @@ mod tests {
             precomputed_result.score,
             full_result.score
         );
+    }
+
+    // B7a: verify `compare_linear_planar_into` produces byte-identical score
+    // and diffmap to `compare_linear_planar`, AND correctly reuses the
+    // caller's Vec across iters.
+    //
+    // Gated to FIR (non-iir-blur) only: the iir-blur feature has a
+    // pre-existing pool-reuse non-determinism (consecutive calls on the
+    // same reference return wildly different scores; verified on main pre-
+    // B7) — see B7a memo. Calling consistency under iir-blur is a separate
+    // bug to track.
+    #[cfg(not(feature = "iir-blur"))]
+    #[test]
+    fn test_compare_linear_planar_into_matches_owned() {
+        let width = 48;
+        let height = 48;
+
+        let r1: Vec<f32> = (0..width * height)
+            .map(|i| ((i % 32) as f32) / 32.0)
+            .collect();
+        let g1: Vec<f32> = (0..width * height)
+            .map(|i| ((i % 16) as f32) / 16.0)
+            .collect();
+        let b1: Vec<f32> = (0..width * height)
+            .map(|i| ((i % 8) as f32) / 8.0)
+            .collect();
+        let r2: Vec<f32> = r1.iter().map(|&v| (v * 0.97).min(1.0)).collect();
+        let g2: Vec<f32> = g1.iter().map(|&v| (v * 0.97).min(1.0)).collect();
+        let b2: Vec<f32> = b1.iter().map(|&v| (v * 0.97).min(1.0)).collect();
+
+        let reference = ButteraugliReference::new_linear_planar(
+            &r1,
+            &g1,
+            &b1,
+            width,
+            height,
+            width,
+            ButteraugliParams::default().with_compute_diffmap(true),
+        )
+        .expect("should create reference");
+
+        // Owned variant
+        let owned = reference
+            .compare_linear_planar(&r2, &g2, &b2, width)
+            .expect("compare_linear_planar");
+        let owned_diffmap = owned.diffmap.as_ref().expect("diffmap present");
+
+        // Into variant — first call with empty Vec
+        let mut diffmap_out: Vec<f32> = Vec::new();
+        let (score_into, pnorm_into) = reference
+            .compare_linear_planar_into(&r2, &g2, &b2, width, &mut diffmap_out)
+            .expect("compare_linear_planar_into");
+
+        assert_eq!(diffmap_out.len(), width * height);
+        assert!(
+            (owned.score - score_into).abs() < 1e-12,
+            "score mismatch owned={} into={}",
+            owned.score,
+            score_into
+        );
+        assert!(
+            (owned.pnorm_3 - pnorm_into).abs() < 1e-12,
+            "pnorm3 mismatch owned={} into={}",
+            owned.pnorm_3,
+            pnorm_into
+        );
+        for (i, (&a, &b)) in owned_diffmap
+            .buf()
+            .iter()
+            .zip(diffmap_out.iter())
+            .enumerate()
+        {
+            assert!(
+                (a - b).abs() < 1e-7,
+                "diffmap[{i}]: owned={a}, into={b}"
+            );
+        }
+
+        // Second call should reuse the existing Vec capacity (no allocation
+        // observed externally, but check that the contents update correctly).
+        let cap_before = diffmap_out.capacity();
+        let (score_into_2, _) = reference
+            .compare_linear_planar_into(&r2, &g2, &b2, width, &mut diffmap_out)
+            .expect("compare_linear_planar_into second call");
+        let cap_after = diffmap_out.capacity();
+        assert_eq!(
+            cap_before, cap_after,
+            "capacity should not grow across reuse"
+        );
+        assert!(
+            (score_into - score_into_2).abs() < 1e-12,
+            "deterministic across reuse"
+        );
+    }
+
+    #[test]
+    fn test_compare_linear_planar_into_resizes_undersized() {
+        let width = 16;
+        let height = 16;
+        let r = vec![0.5f32; width * height];
+        let g = vec![0.5f32; width * height];
+        let b = vec![0.5f32; width * height];
+
+        let reference = ButteraugliReference::new_linear_planar(
+            &r,
+            &g,
+            &b,
+            width,
+            height,
+            width,
+            ButteraugliParams::default().with_compute_diffmap(true),
+        )
+        .expect("create");
+
+        let mut diffmap_out: Vec<f32> = vec![999.0; 7];
+        let _ = reference
+            .compare_linear_planar_into(&r, &g, &b, width, &mut diffmap_out)
+            .expect("into");
+        assert_eq!(diffmap_out.len(), width * height);
+    }
+
+    #[test]
+    fn test_compare_linear_planar_into_rejects_short_buffers() {
+        let width = 16;
+        let height = 16;
+        let r = vec![0.5f32; width * height];
+        let g = vec![0.5f32; width * height];
+        let b = vec![0.5f32; width * height];
+        let reference = ButteraugliReference::new_linear_planar(
+            &r,
+            &g,
+            &b,
+            width,
+            height,
+            width,
+            ButteraugliParams::default(),
+        )
+        .expect("create");
+
+        let mut diffmap_out: Vec<f32> = Vec::new();
+        let short = vec![0.5f32; 4];
+        let result =
+            reference.compare_linear_planar_into(&short, &g, &b, width, &mut diffmap_out);
+        assert!(matches!(
+            result,
+            Err(ButteraugliError::InvalidBufferSize { .. })
+        ));
     }
 }
