@@ -1824,16 +1824,55 @@ mod tests {
         );
     }
 
-    // B7a: verify `compare_linear_planar_into` produces byte-identical score
-    // and diffmap to `compare_linear_planar`, AND correctly reuses the
-    // caller's Vec across iters.
+    // W44-phase3-B8 (2026-05-23): regression test for the iir-blur
+    // gaussian_blur_iir stride bug discovered in B7a+b. Two consecutive
+    // compare_linear_planar calls on the same reference must produce
+    // byte-identical scores under BOTH the FIR and IIR blur backends.
     //
-    // Gated to FIR (non-iir-blur) only: the iir-blur feature has a
-    // pre-existing pool-reuse non-determinism (consecutive calls on the
-    // same reference return wildly different scores; verified on main pre-
-    // B7) — see B7a memo. Calling consistency under iir-blur is a separate
-    // bug to track.
-    #[cfg(not(feature = "iir-blur"))]
+    // Pre-fix repro on `cargo test --features iir-blur`: 3 calls yielded
+    // wildly different scores (e.g. 40137 → 1264 → 119212) because
+    // `gaussian_blur_iir` used `chunks_exact(width)` to walk the input
+    // buffer instead of stride-aware row addressing. With `from_pool_dirty`
+    // returning buffers with stale padding bytes between width and stride,
+    // the misaligned IIR result depended on whatever previous call had
+    // left in the padding columns. See blur_iir.rs for the fix.
+    #[test]
+    fn test_compare_linear_planar_iir_determinism_repro() {
+        let width = 48;
+        let height = 48;
+        let r1: Vec<f32> = (0..width * height).map(|i| ((i % 32) as f32) / 32.0).collect();
+        let g1: Vec<f32> = (0..width * height).map(|i| ((i % 16) as f32) / 16.0).collect();
+        let b1: Vec<f32> = (0..width * height).map(|i| ((i % 8) as f32) / 8.0).collect();
+        let r2: Vec<f32> = r1.iter().map(|&v| (v * 0.97).min(1.0)).collect();
+        let g2: Vec<f32> = g1.iter().map(|&v| (v * 0.97).min(1.0)).collect();
+        let b2: Vec<f32> = b1.iter().map(|&v| (v * 0.97).min(1.0)).collect();
+
+        let reference = ButteraugliReference::new_linear_planar(
+            &r1, &g1, &b1, width, height, width,
+            ButteraugliParams::default().with_compute_diffmap(true),
+        )
+        .expect("new reference");
+
+        let mut scores = Vec::new();
+        for _ in 0..3 {
+            let res = reference
+                .compare_linear_planar(&r2, &g2, &b2, width)
+                .expect("compare_linear_planar");
+            scores.push(res.score);
+        }
+        eprintln!("scores across 3 calls: {scores:?}");
+        for w in scores.windows(2) {
+            let delta = (w[0] - w[1]).abs();
+            assert!(
+                delta < 1e-6,
+                "consecutive scores must be deterministic: {} vs {} (delta {})",
+                w[0],
+                w[1],
+                delta
+            );
+        }
+    }
+
     #[test]
     fn test_compare_linear_planar_into_matches_owned() {
         let width = 48;

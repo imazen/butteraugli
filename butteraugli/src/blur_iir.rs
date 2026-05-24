@@ -135,13 +135,26 @@ fn solve_3x3(a: [[f64; 3]; 3], b: [f64; 3]) -> [f64; 3] {
 
 #[allow(unused_imports)] // autoversion fallback path triggers a false positive on i686
 #[autoversion]
-fn horizontal_pass(input: &[f32], output: &mut [f32], width: usize, coeffs: &IirCoeffs) {
-    debug_assert_eq!(input.len(), output.len());
-    debug_assert_eq!(input.len() % width, 0);
-    for (in_row, out_row) in input
-        .chunks_exact(width)
-        .zip(output.chunks_exact_mut(width))
-    {
+fn horizontal_pass(
+    input: &[f32],
+    output: &mut [f32],
+    width: usize,
+    height: usize,
+    stride: usize,
+    coeffs: &IirCoeffs,
+) {
+    debug_assert!(stride >= width);
+    debug_assert!(input.len() >= stride * height);
+    debug_assert!(output.len() >= stride * height);
+    // W44-phase3-B8: walk per-row using `stride`, not `chunks_exact(width)`.
+    // The previous code assumed stride == width and produced misaligned rows
+    // (with stale `from_pool_dirty` padding leaking into the visible region)
+    // whenever the input had non-trivial stride padding — the iir-blur
+    // pool-reuse non-determinism bug.
+    for y in 0..height {
+        let row_start = y * stride;
+        let in_row = &input[row_start..row_start + width];
+        let out_row = &mut output[row_start..row_start + width];
         horizontal_row(in_row, out_row, coeffs);
     }
 }
@@ -212,10 +225,14 @@ fn vertical_pass(
     output: &mut [f32],
     width: usize,
     height: usize,
+    stride: usize,
     coeffs: &IirCoeffs,
 ) {
+    debug_assert!(stride >= width);
+    debug_assert!(input.len() >= stride * height);
+    debug_assert!(output.len() >= stride * height);
     incant!(
-        vertical_pass_inner(input, output, width, height, coeffs),
+        vertical_pass_inner(input, output, width, height, stride, coeffs),
         [v4, v3, neon, wasm128, scalar]
     )
 }
@@ -231,6 +248,7 @@ fn vertical_pass_inner_v4(
     output: &mut [f32],
     width: usize,
     height: usize,
+    stride: usize,
     coeffs: &IirCoeffs,
 ) {
     const LANES: usize = 16;
@@ -263,7 +281,7 @@ fn vertical_pass_inner_v4(
             let top_v = if top >= 0 && top < height_i {
                 MtF32x16::from_array(
                     token,
-                    input[top as usize * width + col..][..LANES]
+                    input[top as usize * stride + col..][..LANES]
                         .try_into()
                         .unwrap(),
                 )
@@ -273,7 +291,7 @@ fn vertical_pass_inner_v4(
             let bot_v = if bottom >= 0 && bottom < height_i {
                 MtF32x16::from_array(
                     token,
-                    input[bottom as usize * width + col..][..LANES]
+                    input[bottom as usize * stride + col..][..LANES]
                         .try_into()
                         .unwrap(),
                 )
@@ -298,7 +316,7 @@ fn vertical_pass_inner_v4(
 
             if n >= 0 {
                 let result = out1 + out3 + out5;
-                let dst = n as usize * width + col;
+                let dst = n as usize * stride + col;
                 output[dst..dst + LANES].copy_from_slice(&result.to_array());
             }
             n += 1;
@@ -308,7 +326,7 @@ fn vertical_pass_inner_v4(
     // Scalar remainder for columns past the last full LANES group.
     let scalar_start = groups * LANES;
     if scalar_start < width {
-        vertical_pass_scalar_columns(input, output, width, height, scalar_start, coeffs);
+        vertical_pass_scalar_columns(input, output, width, height, stride, scalar_start, coeffs);
     }
 }
 
@@ -319,6 +337,7 @@ fn vertical_pass_inner(
     output: &mut [f32],
     width: usize,
     height: usize,
+    stride: usize,
     coeffs: &IirCoeffs,
 ) {
     #[allow(non_camel_case_types)]
@@ -357,7 +376,7 @@ fn vertical_pass_inner(
             let top_v = if top >= 0 && top < height_i {
                 f32x8::from_array(
                     token,
-                    input[top as usize * width + col..][..LANES]
+                    input[top as usize * stride + col..][..LANES]
                         .try_into()
                         .unwrap(),
                 )
@@ -367,7 +386,7 @@ fn vertical_pass_inner(
             let bot_v = if bottom >= 0 && bottom < height_i {
                 f32x8::from_array(
                     token,
-                    input[bottom as usize * width + col..][..LANES]
+                    input[bottom as usize * stride + col..][..LANES]
                         .try_into()
                         .unwrap(),
                 )
@@ -393,7 +412,7 @@ fn vertical_pass_inner(
 
             if n >= 0 {
                 let result = out1 + out3 + out5;
-                let dst = n as usize * width + col;
+                let dst = n as usize * stride + col;
                 output[dst..dst + LANES].copy_from_slice(&result.to_array());
             }
             n += 1;
@@ -403,7 +422,7 @@ fn vertical_pass_inner(
     // Scalar remainder for columns past the last full LANES group.
     let scalar_start = groups * LANES;
     if scalar_start < width {
-        vertical_pass_scalar_columns(input, output, width, height, scalar_start, coeffs);
+        vertical_pass_scalar_columns(input, output, width, height, stride, scalar_start, coeffs);
     }
 }
 
@@ -414,9 +433,11 @@ fn vertical_pass_scalar_columns(
     output: &mut [f32],
     width: usize,
     height: usize,
+    stride: usize,
     start_x: usize,
     coeffs: &IirCoeffs,
 ) {
+    debug_assert!(stride >= width);
     let big_n = coeffs.radius as isize;
     let height_i = height as isize;
 
@@ -440,12 +461,12 @@ fn vertical_pass_scalar_columns(
             let top = n - big_n - 1;
             let bottom = n + big_n - 1;
             let top_v = if top >= 0 && top < height_i {
-                input[top as usize * width + x]
+                input[top as usize * stride + x]
             } else {
                 0f32
             };
             let bot_v = if bottom >= 0 && bottom < height_i {
-                input[bottom as usize * width + x]
+                input[bottom as usize * stride + x]
             } else {
                 0f32
             };
@@ -463,7 +484,7 @@ fn vertical_pass_scalar_columns(
             prev_5 = out_5;
 
             if n >= 0 {
-                output[n as usize * width + x] = out_1 + out_3 + out_5;
+                output[n as usize * stride + x] = out_1 + out_3 + out_5;
             }
             n += 1;
         }
@@ -482,12 +503,31 @@ pub fn gaussian_blur_iir(input: &ImageF, sigma: f32, pool: &BufferPool) -> Image
     let coeffs = IirCoeffs::for_sigma(sigma);
     let width = input.width();
     let height = input.height();
+    let stride = input.stride();
 
+    // W44-phase3-B8: ImageF buffers are allocated with `stride * height`
+    // floats where `stride = (width + 15) & !15` ≥ width. Both temp and
+    // output share the input's stride (same width/height → same stride
+    // formula). The horizontal/vertical passes take `stride` so per-row
+    // addressing skips the padding columns, otherwise the IIR walks
+    // misaligned "rows" and stale `from_pool_dirty` padding bytes leak
+    // into the visible region, producing wildly different scores on
+    // consecutive calls against the same input (pre-fix repro: 3.34 →
+    // 1095 → 342388 on a 48×48 synthetic).
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    horizontal_pass(input.data(), temp.data_mut(), width, &coeffs);
+    debug_assert_eq!(temp.stride(), stride);
+    horizontal_pass(input.data(), temp.data_mut(), width, height, stride, &coeffs);
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    vertical_pass(temp.data(), output.data_mut(), width, height, &coeffs);
+    debug_assert_eq!(output.stride(), stride);
+    vertical_pass(
+        temp.data(),
+        output.data_mut(),
+        width,
+        height,
+        stride,
+        &coeffs,
+    );
     temp.recycle(pool);
     output
 }
@@ -531,6 +571,32 @@ mod tests {
                 (sum - 1.0).abs() < 0.02,
                 "sigma={sigma}: 2D impulse sum {sum}, expected ~1.0",
             );
+        }
+    }
+
+    #[test]
+    fn iir_stride_vs_width_repro() {
+        // W44-phase3-B8: when stride != width, consecutive blurs on the
+        // same input return different results because:
+        // (a) from_pool_dirty buffers contain stale padding bytes from prior calls
+        // (b) horizontal_pass/vertical_pass walk data() as `chunks_exact(width)`
+        //     instead of respecting the stride
+        // → "rows" misalign and stale padding leaks into the visible region.
+        let pool = BufferPool::new();
+        // width 24 → stride = (24+15) & !15 = 32, so stride != width
+        let mut img = ImageF::filled(24, 24, 0.0);
+        img.set(12, 12, 1.0);
+        let b1 = gaussian_blur_iir(&img, 2.7, &pool);
+        let b2 = gaussian_blur_iir(&img, 2.7, &pool);
+        for y in 0..24 {
+            for x in 0..24 {
+                let a = b1.get(x, y);
+                let b = b2.get(x, y);
+                assert!(
+                    (a - b).abs() < 1e-6,
+                    "iir blur non-deterministic at ({x},{y}): {a} vs {b}",
+                );
+            }
         }
     }
 
