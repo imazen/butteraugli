@@ -109,7 +109,16 @@ impl PsychoImage {
     ///
     /// Same conditions as [`crate::image::ImageF::strip_view`] — `top_row >
     /// bottom_row` or `bottom_row > self.height()` panics.
+    ///
+    /// W44-PHASE3-B7d Day 7: framework primitive retained as scaffolding
+    /// for any future true-tile refactor. The CLOSED B7d arc's only
+    /// production caller (`compare_linear_planar_strip_impl_into`) is gated
+    /// behind `strip-tile-butteraugli` (default OFF); when that feature is
+    /// off this method has no in-crate caller, so `#[allow(dead_code)]`
+    /// silences the warning. Externally still reachable via the `internals`
+    /// feature.
     #[must_use]
+    #[allow(dead_code)]
     pub fn strip_view(&self, top_row: usize, bottom_row: usize) -> PsychoImageStripView<'_> {
         PsychoImageStripView {
             uhf: [
@@ -133,7 +142,11 @@ impl PsychoImage {
 /// [`crate::image::Image3FStripView`] (LF/MF: 3-channel) over the same
 /// parent-row range. Used by Day 5's pipeline driver for per-strip mask
 /// and diff computation.
+///
+/// W44-PHASE3-B7d Day 7: framework type retained as scaffolding. Same
+/// `#[allow(dead_code)]` rationale as [`PsychoImage::strip_view`].
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct PsychoImageStripView<'a> {
     /// UHF strip-views (X, Y channels).
     pub uhf: [crate::image::StripView<'a>; 2],
@@ -145,6 +158,7 @@ pub struct PsychoImageStripView<'a> {
     pub lf: crate::image::Image3FStripView<'a>,
 }
 
+#[allow(dead_code)]
 impl PsychoImageStripView<'_> {
     /// Width of every plane (all 4 bands share width).
     #[inline]

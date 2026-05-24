@@ -13,9 +13,25 @@
 //! the lib also emits per-stage timing lines on stderr (one line per stage
 //! per call); parse those after the run to get Phase 2 attribution.
 //!
-//! Run:
-//!   cargo run --release --example w44_phase3_b7d_day6_ab
-//!   JXL_B7D_STAGE_TIMING=1 cargo run --release --example w44_phase3_b7d_day6_ab 2>stage.log
+//! Day 7: gated behind `strip-tile-butteraugli` (default OFF). Run:
+//!   cargo run --release --features strip-tile-butteraugli --example w44_phase3_b7d_day6_ab
+//!   JXL_B7D_STAGE_TIMING=1 cargo run --release --features strip-tile-butteraugli --example w44_phase3_b7d_day6_ab 2>stage.log
+
+fn main() {
+    #[cfg(not(feature = "strip-tile-butteraugli"))]
+    {
+        eprintln!(
+            "w44_phase3_b7d_day6_ab: skipped — rebuild with --features strip-tile-butteraugli."
+        );
+    }
+    #[cfg(feature = "strip-tile-butteraugli")]
+    {
+        strip_bench::run();
+    }
+}
+
+#[cfg(feature = "strip-tile-butteraugli")]
+mod strip_bench {
 
 use butteraugli::{ButteraugliParams, ButteraugliReference};
 use std::time::Instant;
@@ -213,7 +229,7 @@ fn bench_cell(
     )
 }
 
-fn main() {
+pub fn run() {
     let cells = [
         // (label, w, h, fixture, warm, iters)
         ("256_smooth", 256, 256, "smooth", 5, 30),
@@ -248,3 +264,5 @@ fn main() {
         );
     }
 }
+
+} // mod strip_bench

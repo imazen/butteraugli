@@ -5,11 +5,21 @@
 //! stage-timing line per stage per call. This binary uses 1 warmup + 8 iters
 //! per mode, interleaved, and prints the raw timing output to stderr.
 //!
-//! Pipe stderr to a file and post-process:
-//!   cargo run --release --example w44_phase3_b7d_day6_stage_probe 2>stages.tsv
+//! Day 7: gated behind `strip-tile-butteraugli` (default OFF). Pipe stderr to
+//! a file and post-process:
+//!   cargo run --release --features strip-tile-butteraugli --example w44_phase3_b7d_day6_stage_probe 2>stages.tsv
 
+#[cfg(not(feature = "strip-tile-butteraugli"))]
+fn main() {
+    eprintln!(
+        "w44_phase3_b7d_day6_stage_probe: skipped — rebuild with --features strip-tile-butteraugli."
+    );
+}
+
+#[cfg(feature = "strip-tile-butteraugli")]
 use butteraugli::{ButteraugliParams, ButteraugliReference};
 
+#[cfg(feature = "strip-tile-butteraugli")]
 fn make_smooth(w: usize, h: usize, seed: u32) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     let n = w * h;
     let mut r = vec![0.0f32; n];
@@ -33,6 +43,7 @@ fn make_smooth(w: usize, h: usize, seed: u32) -> (Vec<f32>, Vec<f32>, Vec<f32>) 
     (r, g, b)
 }
 
+#[cfg(feature = "strip-tile-butteraugli")]
 fn perturb(r: &[f32], g: &[f32], b: &[f32], w: usize, h: usize, delta: f32) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     let n = w * h;
     let mut dr = vec![0.0f32; n];
@@ -49,6 +60,7 @@ fn perturb(r: &[f32], g: &[f32], b: &[f32], w: usize, h: usize, delta: f32) -> (
     (dr, dg, db)
 }
 
+#[cfg(feature = "strip-tile-butteraugli")]
 fn main() {
     // FORCE stage timing on so this binary always emits per-stage data even
     // if the caller forgot the env var.

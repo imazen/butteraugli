@@ -537,25 +537,35 @@ impl ButteraugliReference {
 
     /// Strip-tiled variant of [`compare_linear_planar_into`].
     ///
+    /// **Framework-only, feature-gated, default OFF.** This path is gated
+    /// behind `feature = "strip-tile-butteraugli"` because the Day 6 honest
+    /// bench measured it 1.4-9.6% SLOWER than the full path at every tested
+    /// size on AMD Zen 4 — the RFC's projected -35 to -47% wall reduction did
+    /// NOT materialize. See `benchmarks/w44_phase3_b7d_day6_2026-05-24.meta`
+    /// and the closing CLAUDE.md Investigation Note for the negative-result
+    /// analysis. Production jxl-encoder buttloop must NEVER route through
+    /// this path; it stays available as scaffolding for any future true-tile
+    /// refactor that replaces Days 2-4's padded-scratch delegation with
+    /// mirror-reflect row-window reads.
+    ///
     /// Internal pipeline composes the existing primitives in strip form so that
     /// the final pixel-fusion stage runs in `STRIP_ROWS`-row batches, while the
     /// upstream stages (opsin → separate_frequencies → malta → mask) run on the
     /// full image. Returns a scalar score + diffmap BIT-IDENTICAL to
     /// `compare_linear_planar_into` (verified by
-    /// `tests/strip_parity_50_images.rs`).
+    /// `tests/strip_parity_50_images.rs`, also gated behind this feature).
     ///
-    /// # W44-PHASE3-B7d Day 5 scope
+    /// # W44-PHASE3-B7d arc disposition
     ///
-    /// This is the END-TO-END strip composition proof, NOT the production
-    /// hot path. The current strip boundary for Day 5 is between Stage 2
-    /// (per-pixel mask + malta error maps, full-image scratch) and Stage 3
-    /// (per-pixel fusion + DC math, tiled). The Day 4 strip primitives
-    /// (`separate_frequencies_strip`, `malta_diff_map_strip`,
+    /// The CLOSED B7d arc shipped Days 1-5 framework + tests, Day 6 honest
+    /// negative bench, Day 7 feature-gate framework-only. The Days 2-4 strip
+    /// primitives (`separate_frequencies_strip`, `malta_diff_map_strip`,
     /// `fuzzy_erosion_strip`, etc.) all use parent-height padded scratch
     /// internally to maintain byte-identity at non-edge strip boundaries —
-    /// so tiling them naively is byte-identical but not perf-faster. Day 6+
-    /// drops the parent-height-padded scratch and explores
-    /// mirror-reflect-at-strip with measurable ULP tolerance.
+    /// so tiling them is byte-identical but not perf-faster, because the
+    /// padded-scratch delegation defeats the cache-locality benefit that
+    /// motivated the RFC. Only Stage 3 (combine_channels, halo=0, pointwise)
+    /// actually tiles, and it accounts for only ~3.3% of total wall.
     ///
     /// **Tile-able**: per-pixel fused combine_channels + DC diff math (Stage 3
     /// here; halo = 0, pointwise; strip tiling is byte-identical by
@@ -572,6 +582,7 @@ impl ButteraugliReference {
     ///
     /// # Errors
     /// Same as [`compare_linear_planar`].
+    #[cfg(feature = "strip-tile-butteraugli")]
     pub fn compare_linear_planar_strip_into(
         &self,
         r: &[f32],
@@ -887,6 +898,10 @@ impl ButteraugliReference {
     /// construction. The strip path also exercises the
     /// `combine_channels_to_diffmap_strip_into` driver below which is the
     /// composition-proof callable for Day 6+ deeper tiling experiments.
+    ///
+    /// **Feature-gated** (`strip-tile-butteraugli`, default OFF) per Day 7
+    /// arc-close — see public-API docstring on `compare_linear_planar_strip_into`.
+    #[cfg(feature = "strip-tile-butteraugli")]
     fn compare_linear_planar_strip_impl_into(
         &self,
         r: &[f32],
@@ -1406,8 +1421,12 @@ fn combine_channels_to_diffmap_fused(
 /// # Strip size selection
 ///
 /// Day 5 uses `STRIP_ROWS = 16`. The Day 5 wall-clock target is "≤ 1.5×
-/// full-buffer at 1024²" (sanity gate, not perf claim); Day 6 will sweep
-/// strip sizes against actual data-locality characteristics.
+/// full-buffer at 1024²" (sanity gate, not perf claim); Day 6 measured the
+/// strip driver runs ~3.3× SLOWER than the single full-image kernel call
+/// because of per-strip pool ops + copy-in + copy-out (see Day 6 bench
+/// meta). Day 7 disposition: framework-only, gated behind
+/// `strip-tile-butteraugli`.
+#[cfg(feature = "strip-tile-butteraugli")]
 fn combine_channels_to_diffmap_strip_driver(
     mask: &ImageF,
     lf1: &Image3F,

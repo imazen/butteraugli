@@ -23,6 +23,11 @@
 
 #![cfg(not(target_arch = "wasm32"))]
 #![cfg(not(feature = "iir-blur"))]
+// W44-PHASE3-B7d Day 7: gated under `strip-tile-butteraugli` because the
+// public API it exercises (`compare_linear_planar_strip_into`) is gated under
+// the same feature. The 50-image parity test remains a useful regression
+// gate for any future true-tile refactor that re-enables the feature.
+#![cfg(feature = "strip-tile-butteraugli")]
 
 use butteraugli::{ButteraugliParams, ButteraugliReference};
 

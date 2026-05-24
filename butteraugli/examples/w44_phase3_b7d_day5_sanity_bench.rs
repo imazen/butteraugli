@@ -5,11 +5,22 @@
 //! do a proper paired interleaved A/B sweep across content classes and
 //! sizes; this is a single-shot sanity gate.
 //!
-//! Run with: cargo run --release --example w44_phase3_b7d_day5_sanity_bench
+//! Day 7: gated behind `strip-tile-butteraugli` (default OFF). Run with:
+//! `cargo run --release --features strip-tile-butteraugli --example w44_phase3_b7d_day5_sanity_bench`
 
+#[cfg(not(feature = "strip-tile-butteraugli"))]
+fn main() {
+    eprintln!(
+        "w44_phase3_b7d_day5_sanity_bench: skipped — rebuild with --features strip-tile-butteraugli."
+    );
+}
+
+#[cfg(feature = "strip-tile-butteraugli")]
 use butteraugli::{ButteraugliParams, ButteraugliReference};
+#[cfg(feature = "strip-tile-butteraugli")]
 use std::time::Instant;
 
+#[cfg(feature = "strip-tile-butteraugli")]
 fn make_pattern(w: usize, h: usize, seed: u32) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     let n = w * h;
     let mut r = vec![0.0f32; n];
@@ -42,6 +53,7 @@ fn make_pattern(w: usize, h: usize, seed: u32) -> (Vec<f32>, Vec<f32>, Vec<f32>)
     (r, g, b)
 }
 
+#[cfg(feature = "strip-tile-butteraugli")]
 fn main() {
     let w = 1024;
     let h = 1024;
