@@ -157,6 +157,15 @@ pub mod psycho;
 #[cfg(not(feature = "internals"))]
 pub(crate) mod psycho;
 
+// W44-PHASE3-B7d Day 4 — strip-tiled variants of the psycho + mask kernels
+// plus the separate_frequencies cascade orchestrator. Same `internals` gating
+// as `psycho` / `mask` so external tests can drive parity.
+#[cfg(feature = "internals")]
+pub mod psycho_strip;
+#[cfg(not(feature = "internals"))]
+#[allow(dead_code)]
+pub(crate) mod psycho_strip;
+
 // Used by cpp-parity tests (excluded from published crate)
 #[allow(dead_code)]
 pub(crate) mod xyb;

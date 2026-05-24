@@ -949,6 +949,229 @@ impl Image3F {
         let [p0, p1, p2] = &mut self.planes;
         (p0, p1, p2)
     }
+
+    /// Borrows a zero-allocation row-slice view of all three planes.
+    ///
+    /// Mirrors [`ImageF::strip_view`] but exposes all 3 channels via
+    /// 3 [`StripView`]s held by an [`Image3FStripView`]. Every plane
+    /// is borrowed for the SAME row range `[top_row, bottom_row)`.
+    ///
+    /// # Panics
+    ///
+    /// Same conditions as [`ImageF::strip_view`].
+    ///
+    /// # W44-PHASE3-B7d Day 4 — 3-channel strip-tile primitive
+    ///
+    /// Used by `separate_frequencies_strip` and the strip-tiled psycho
+    /// kernels to drive Image3F-shaped strip work without per-plane
+    /// indirection. Each plane's `start_row_in_parent` matches the
+    /// borrowing call.
+    #[must_use]
+    pub fn strip_view(&self, top_row: usize, bottom_row: usize) -> Image3FStripView<'_> {
+        Image3FStripView {
+            planes: [
+                self.planes[0].strip_view(top_row, bottom_row),
+                self.planes[1].strip_view(top_row, bottom_row),
+                self.planes[2].strip_view(top_row, bottom_row),
+            ],
+        }
+    }
+
+    /// Borrows a zero-allocation mutable row-slice view of all three planes.
+    ///
+    /// Mutable counterpart to [`Image3F::strip_view`].
+    ///
+    /// # Panics
+    ///
+    /// Same conditions as [`ImageF::strip_view_mut`].
+    pub fn strip_view_mut(
+        &mut self,
+        top_row: usize,
+        bottom_row: usize,
+    ) -> Image3FStripViewMut<'_> {
+        let [p0, p1, p2] = &mut self.planes;
+        Image3FStripViewMut {
+            planes: [
+                p0.strip_view_mut(top_row, bottom_row),
+                p1.strip_view_mut(top_row, bottom_row),
+                p2.strip_view_mut(top_row, bottom_row),
+            ],
+        }
+    }
+}
+
+/// Borrowed read-only view of a row-range of an [`Image3F`].
+///
+/// Returned from [`Image3F::strip_view`]. Holds three [`StripView`]s,
+/// one per plane (X, Y, B for XYB images). All three share the same
+/// `start_row_in_parent`, `height`, and per-plane `width`/`stride`.
+///
+/// # W44-PHASE3-B7d Day 4
+///
+/// 3-channel mirror of [`StripView`]. Strip-tiled `separate_frequencies`
+/// and Image3F-shaped psycho passes drive Image3F work through this view
+/// without needing to construct three separate `StripView`s by hand.
+#[derive(Debug)]
+pub struct Image3FStripView<'a> {
+    planes: [StripView<'a>; 3],
+}
+
+impl<'a> Image3FStripView<'a> {
+    /// Constructs an `Image3FStripView` from three pre-built `StripView`s.
+    ///
+    /// All three views MUST share identical `start_row_in_parent`,
+    /// `height`, `width`, and `stride`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the three views disagree on shape or
+    /// `start_row_in_parent`.
+    #[must_use]
+    pub fn from_planes(p0: StripView<'a>, p1: StripView<'a>, p2: StripView<'a>) -> Self {
+        assert_eq!(p0.width(), p1.width(), "Image3FStripView: plane 1 width mismatch");
+        assert_eq!(p0.width(), p2.width(), "Image3FStripView: plane 2 width mismatch");
+        assert_eq!(p0.height(), p1.height(), "Image3FStripView: plane 1 height mismatch");
+        assert_eq!(p0.height(), p2.height(), "Image3FStripView: plane 2 height mismatch");
+        assert_eq!(p0.stride(), p1.stride(), "Image3FStripView: plane 1 stride mismatch");
+        assert_eq!(p0.stride(), p2.stride(), "Image3FStripView: plane 2 stride mismatch");
+        assert_eq!(
+            p0.start_row_in_parent(),
+            p1.start_row_in_parent(),
+            "Image3FStripView: plane 1 start_row_in_parent mismatch"
+        );
+        assert_eq!(
+            p0.start_row_in_parent(),
+            p2.start_row_in_parent(),
+            "Image3FStripView: plane 2 start_row_in_parent mismatch"
+        );
+        Self {
+            planes: [p0, p1, p2],
+        }
+    }
+
+    /// Width of every plane (planes share width).
+    #[inline]
+    #[must_use]
+    pub fn width(&self) -> usize {
+        self.planes[0].width()
+    }
+
+    /// Strip height (planes share height).
+    #[inline]
+    #[must_use]
+    pub fn height(&self) -> usize {
+        self.planes[0].height()
+    }
+
+    /// Strip stride (planes share stride).
+    #[inline]
+    #[must_use]
+    pub fn stride(&self) -> usize {
+        self.planes[0].stride()
+    }
+
+    /// Parent row index corresponding to strip-local row `0`. Same for all planes.
+    #[inline]
+    #[must_use]
+    pub fn start_row_in_parent(&self) -> usize {
+        self.planes[0].start_row_in_parent()
+    }
+
+    /// Returns a [`StripView`] over a specific plane.
+    #[inline]
+    #[must_use]
+    pub fn plane(&self, index: usize) -> &StripView<'a> {
+        &self.planes[index]
+    }
+
+    /// Returns a row of a specific plane.
+    #[inline]
+    #[must_use]
+    pub fn plane_row(&self, plane: usize, y: usize) -> &[f32] {
+        self.planes[plane].row(y)
+    }
+}
+
+/// Borrowed mutable view of a row-range of an [`Image3F`].
+///
+/// Mutable counterpart to [`Image3FStripView`]. Writes via the held
+/// [`StripViewMut`]s propagate directly into the parent [`Image3F`]'s
+/// backing buffers.
+#[derive(Debug)]
+pub struct Image3FStripViewMut<'a> {
+    planes: [StripViewMut<'a>; 3],
+}
+
+impl<'a> Image3FStripViewMut<'a> {
+    /// Width of every plane.
+    #[inline]
+    #[must_use]
+    pub fn width(&self) -> usize {
+        self.planes[0].width()
+    }
+
+    /// Strip height.
+    #[inline]
+    #[must_use]
+    pub fn height(&self) -> usize {
+        self.planes[0].height()
+    }
+
+    /// Strip stride.
+    #[inline]
+    #[must_use]
+    pub fn stride(&self) -> usize {
+        self.planes[0].stride()
+    }
+
+    /// Parent row index corresponding to strip-local row `0`.
+    #[inline]
+    #[must_use]
+    pub fn start_row_in_parent(&self) -> usize {
+        self.planes[0].start_row_in_parent()
+    }
+
+    /// Returns a mutable [`StripViewMut`] over a specific plane.
+    #[inline]
+    pub fn plane_mut(&mut self, index: usize) -> &mut StripViewMut<'a> {
+        &mut self.planes[index]
+    }
+
+    /// Returns an immutable [`StripViewMut`] over a specific plane.
+    #[inline]
+    #[must_use]
+    pub fn plane(&self, index: usize) -> &StripViewMut<'a> {
+        &self.planes[index]
+    }
+
+    /// Returns mutable references to all three planes simultaneously.
+    ///
+    /// Mirrors [`Image3F::planes_mut`] — uses array destructuring to
+    /// allow safe split borrows.
+    #[inline]
+    pub fn planes_mut(
+        &mut self,
+    ) -> (
+        &mut StripViewMut<'a>,
+        &mut StripViewMut<'a>,
+        &mut StripViewMut<'a>,
+    ) {
+        let [p0, p1, p2] = &mut self.planes;
+        (p0, p1, p2)
+    }
+
+    /// Returns an immutable slice of strip-local row `y` of `plane`.
+    #[inline]
+    #[must_use]
+    pub fn plane_row(&self, plane: usize, y: usize) -> &[f32] {
+        self.planes[plane].row(y)
+    }
+
+    /// Returns a mutable slice of strip-local row `y` of `plane`.
+    #[inline]
+    pub fn plane_row_mut(&mut self, plane: usize, y: usize) -> &mut [f32] {
+        self.planes[plane].row_mut(y)
+    }
 }
 
 impl Index<usize> for Image3F {
@@ -1255,5 +1478,241 @@ mod tests {
 
         // Same proof via as_ptr on the strip itself.
         assert_eq!(strip.as_ptr(), parent_row4_ptr);
+    }
+
+    // ------- W44-PHASE3-B7d Day 4: Image3F strip_view primitive parity tests -------
+    //
+    // Mirrors the Day 1 ImageF tests on the 3-channel Image3F type. Same 7
+    // coverage points (identity / partial / edges / iteration / mut writes /
+    // bounds / stride). Each test exercises all 3 planes.
+
+    /// Helper: fill all 3 planes with unique per-pixel patterns.
+    /// plane 0 = y*1000 + x + 1
+    /// plane 1 = y*1000 + x + 100_001
+    /// plane 2 = y*1000 + x + 200_001
+    fn fill_unique_3(img: &mut Image3F) {
+        let h = img.height();
+        let w = img.width();
+        for p in 0..3 {
+            let off = (p * 100_000 + 1) as f32;
+            for y in 0..h {
+                for x in 0..w {
+                    img.plane_mut(p).set(x, y, (y * 1000 + x) as f32 + off);
+                }
+            }
+        }
+    }
+
+    /// Test #1 — identity: strip_view over the full image height returns
+    /// byte-identical row data on every plane.
+    #[test]
+    fn test_image3f_strip_view_identity_matches_parent() {
+        for size in [32usize, 256, 1024] {
+            let mut img = Image3F::new(size, size);
+            fill_unique_3(&mut img);
+            let strip = img.strip_view(0, size);
+            assert_eq!(strip.width(), size);
+            assert_eq!(strip.height(), size);
+            assert_eq!(strip.stride(), img.plane(0).stride());
+            assert_eq!(strip.start_row_in_parent(), 0);
+            for p in 0..3 {
+                for y in 0..size {
+                    let want = img.plane(p).row(y);
+                    let got = strip.plane_row(p, y);
+                    for x in 0..size {
+                        assert_eq!(
+                            got[x].to_bits(),
+                            want[x].to_bits(),
+                            "plane {p} row {y} col {x} (size={size})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Test #2 — partial strip in the middle: strip_view(8, 24) on a 32×32
+    /// Image3F exposes rows 8..24 of each plane.
+    #[test]
+    fn test_image3f_strip_view_partial_middle() {
+        let mut img = Image3F::new(32, 32);
+        fill_unique_3(&mut img);
+        let strip = img.strip_view(8, 24);
+        assert_eq!(strip.height(), 16);
+        assert_eq!(strip.start_row_in_parent(), 8);
+        for p in 0..3 {
+            for y in 0..16 {
+                let want = img.plane(p).row(8 + y);
+                let got = strip.plane_row(p, y);
+                for x in 0..32 {
+                    assert_eq!(got[x].to_bits(), want[x].to_bits());
+                }
+            }
+        }
+    }
+
+    /// Test #3 — edges: top-aligned (0, K) and bottom-aligned (H-K, H) strips.
+    #[test]
+    fn test_image3f_strip_view_edges() {
+        let mut img = Image3F::new(48, 64);
+        fill_unique_3(&mut img);
+        let top = img.strip_view(0, 16);
+        assert_eq!(top.start_row_in_parent(), 0);
+        for p in 0..3 {
+            for y in 0..16 {
+                let want = img.plane(p).row(y);
+                let got = top.plane_row(p, y);
+                for x in 0..48 {
+                    assert_eq!(got[x].to_bits(), want[x].to_bits());
+                }
+            }
+        }
+        let bottom = img.strip_view(48, 64);
+        assert_eq!(bottom.start_row_in_parent(), 48);
+        for p in 0..3 {
+            for y in 0..16 {
+                let want = img.plane(p).row(48 + y);
+                let got = bottom.plane_row(p, y);
+                for x in 0..48 {
+                    assert_eq!(got[x].to_bits(), want[x].to_bits());
+                }
+            }
+        }
+    }
+
+    /// Test #4 — iteration: split a 64×64 Image3F into 8-row chunks via
+    /// strip_view and concat; result must equal the full Image3F byte-for-byte.
+    #[test]
+    fn test_image3f_strip_view_iteration_concat() {
+        let mut img = Image3F::new(32, 64);
+        fill_unique_3(&mut img);
+        for chunk in [4usize, 8, 16] {
+            let mut acc: Vec<Vec<f32>> = vec![Vec::with_capacity(32 * 64); 3];
+            let mut y = 0;
+            while y < 64 {
+                let top = y;
+                let bottom = (y + chunk).min(64);
+                let strip = img.strip_view(top, bottom);
+                for p in 0..3 {
+                    for yy in 0..strip.height() {
+                        acc[p].extend_from_slice(strip.plane_row(p, yy));
+                    }
+                }
+                y = bottom;
+            }
+            for p in 0..3 {
+                for y in 0..64 {
+                    let want = img.plane(p).row(y);
+                    let got = &acc[p][y * 32..(y + 1) * 32];
+                    for x in 0..32 {
+                        assert_eq!(
+                            got[x].to_bits(),
+                            want[x].to_bits(),
+                            "chunk={chunk} plane={p} y={y} x={x}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Test #5 — strip_view_mut writes propagate to parent on every plane.
+    #[test]
+    fn test_image3f_strip_view_mut_writes_propagate_to_parent() {
+        let mut img = Image3F::new(32, 48);
+        fill_unique_3(&mut img);
+        {
+            let mut strip = img.strip_view_mut(8, 40);
+            for p in 0..3 {
+                for y in 0..strip.height() {
+                    let row = strip.plane_row_mut(p, y);
+                    for x in 0..row.len() {
+                        row[x] = -((p * 1_000_000 + y * 100 + x) as f32);
+                    }
+                }
+            }
+        }
+        // Inside strip range: every plane reflects the write.
+        for p in 0..3 {
+            for y in 0..32 {
+                let want = -((p * 1_000_000 + y * 100) as f32);
+                assert_eq!(
+                    img.plane(p).get(0, 8 + y).to_bits(),
+                    want.to_bits(),
+                    "plane {p} row {} col 0 mut write didn't propagate",
+                    8 + y
+                );
+            }
+        }
+        // Rows BEFORE the strip — unmodified.
+        for p in 0..3 {
+            for y in 0..8 {
+                let off = (p * 100_000 + 1) as f32;
+                let want = (y * 1000) as f32 + off;
+                assert_eq!(
+                    img.plane(p).get(0, y).to_bits(),
+                    want.to_bits(),
+                    "plane {p} row {y} col 0 was modified outside strip"
+                );
+            }
+        }
+        // Rows AFTER the strip — unmodified.
+        for p in 0..3 {
+            for y in 40..48 {
+                let off = (p * 100_000 + 1) as f32;
+                let want = (y * 1000) as f32 + off;
+                assert_eq!(
+                    img.plane(p).get(0, y).to_bits(),
+                    want.to_bits(),
+                    "plane {p} row {y} col 0 was modified outside strip"
+                );
+            }
+        }
+    }
+
+    /// Test #6 — bounds: inverted range / over-height / empty. Empty is valid.
+    #[test]
+    #[should_panic(expected = "strip_view: top_row (10) > bottom_row (5)")]
+    fn test_image3f_strip_view_inverted_range_panics() {
+        let img = Image3F::new(16, 16);
+        let _ = img.strip_view(10, 5);
+    }
+
+    #[test]
+    #[should_panic(expected = "strip_view: bottom_row (17) > height (16)")]
+    fn test_image3f_strip_view_over_height_panics() {
+        let img = Image3F::new(16, 16);
+        let _ = img.strip_view(0, 17);
+    }
+
+    #[test]
+    fn test_image3f_strip_view_empty_is_valid() {
+        let img = Image3F::new(16, 16);
+        let empty = img.strip_view(8, 8);
+        assert_eq!(empty.height(), 0);
+        assert_eq!(empty.width(), 16);
+        assert_eq!(empty.start_row_in_parent(), 8);
+        for p in 0..3 {
+            // No row access — height is 0.
+            let _ = empty.plane(p);
+        }
+    }
+
+    /// Test #7 — stride preservation: all 3 planes report the parent stride
+    /// and the row data lives inside the parent's backing buffer (zero-copy).
+    #[test]
+    fn test_image3f_strip_view_preserves_stride() {
+        let mut img = Image3F::new(13, 17);
+        fill_unique_3(&mut img);
+        let strip = img.strip_view(4, 12);
+        for p in 0..3 {
+            let parent_stride = img.plane(p).stride();
+            assert!(parent_stride >= 13);
+            assert_eq!(strip.plane(p).stride(), parent_stride);
+            // Zero-copy proof: strip's plane row 0 aliases parent's plane row 4.
+            let strip_row0 = strip.plane_row(p, 0).as_ptr();
+            let parent_row4 = img.plane(p).row(4).as_ptr();
+            assert_eq!(strip_row0, parent_row4, "plane {p} alias check");
+        }
     }
 }

@@ -386,7 +386,7 @@ pub fn compute_mask_from_hf_uhf(
 
 /// Autoversioned mask-to-error accumulation: ac[x] += MUL * (b0[x] - b1[x])^2.
 #[archmage::autoversion]
-fn accumulate_mask_to_error(
+pub(crate) fn accumulate_mask_to_error(
     _token: archmage::SimdToken,
     b0: &ImageF,
     b1: &ImageF,

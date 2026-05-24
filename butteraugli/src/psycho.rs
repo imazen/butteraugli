@@ -97,6 +97,75 @@ impl PsychoImage {
     pub fn height(&self) -> usize {
         self.lf.height()
     }
+
+    /// Borrow a strip-view over the LF + MF + HF + UHF bands.
+    ///
+    /// Returns a [`PsychoImageStripView`] that exposes all 4 bands over the
+    /// same parent-row range `[top_row, bottom_row)`. Used by Day 5's
+    /// pipeline driver to drive strip-tiled mask + diff computation on a
+    /// per-strip basis after the full PsychoImage has been built.
+    ///
+    /// # Panics
+    ///
+    /// Same conditions as [`crate::image::ImageF::strip_view`] — `top_row >
+    /// bottom_row` or `bottom_row > self.height()` panics.
+    #[must_use]
+    pub fn strip_view(&self, top_row: usize, bottom_row: usize) -> PsychoImageStripView<'_> {
+        PsychoImageStripView {
+            uhf: [
+                self.uhf[0].strip_view(top_row, bottom_row),
+                self.uhf[1].strip_view(top_row, bottom_row),
+            ],
+            hf: [
+                self.hf[0].strip_view(top_row, bottom_row),
+                self.hf[1].strip_view(top_row, bottom_row),
+            ],
+            mf: self.mf.strip_view(top_row, bottom_row),
+            lf: self.lf.strip_view(top_row, bottom_row),
+        }
+    }
+}
+
+/// Strip-view of a [`PsychoImage`]'s LF + MF + HF + UHF bands.
+///
+/// Mirrors [`PsychoImage`]'s shape but every plane is borrowed as a
+/// [`crate::image::StripView`] (HF/UHF: 2-channel) or
+/// [`crate::image::Image3FStripView`] (LF/MF: 3-channel) over the same
+/// parent-row range. Used by Day 5's pipeline driver for per-strip mask
+/// and diff computation.
+#[derive(Debug)]
+pub struct PsychoImageStripView<'a> {
+    /// UHF strip-views (X, Y channels).
+    pub uhf: [crate::image::StripView<'a>; 2],
+    /// HF strip-views (X, Y channels).
+    pub hf: [crate::image::StripView<'a>; 2],
+    /// MF 3-channel strip-view (X, Y, B).
+    pub mf: crate::image::Image3FStripView<'a>,
+    /// LF 3-channel strip-view (X, Y, B).
+    pub lf: crate::image::Image3FStripView<'a>,
+}
+
+impl PsychoImageStripView<'_> {
+    /// Width of every plane (all 4 bands share width).
+    #[inline]
+    #[must_use]
+    pub fn width(&self) -> usize {
+        self.lf.width()
+    }
+
+    /// Strip height (all 4 bands share height).
+    #[inline]
+    #[must_use]
+    pub fn height(&self) -> usize {
+        self.lf.height()
+    }
+
+    /// Parent row index corresponding to strip-local row `0`.
+    #[inline]
+    #[must_use]
+    pub fn start_row_in_parent(&self) -> usize {
+        self.lf.start_row_in_parent()
+    }
 }
 
 /// Removes values in a small range around zero.
@@ -149,7 +218,7 @@ fn maximum_clamp(v: f32, max_val: f32) -> f32 {
 ///
 /// Vals space can be converted to L2-norm space through visual masking.
 #[archmage::autoversion]
-fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
+pub(crate) fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
     let height = lf.height();
     let (p0, p1, p2) = lf.planes_mut();
     let y_to_b = Y_TO_B_MUL_LF_TO_VALS as f32;
@@ -176,7 +245,7 @@ fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
 ///
 /// High Y (luminance) values reduce sensitivity to X (chroma) differences.
 #[archmage::autoversion]
-fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut ImageF) {
+pub(crate) fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut ImageF) {
     let height = in_y.height();
     let s = SUPPRESS_S as f32;
     let one_minus_s = 1.0 - s;
@@ -197,7 +266,7 @@ fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut Ima
 ///
 /// Branch-free formulation for SIMD vectorization.
 #[archmage::autoversion]
-fn apply_remove_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
+pub(crate) fn apply_remove_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
     for y in 0..src.height() {
         let row_in = src.row(y);
         let row_out = dst.row_mut(y);
@@ -215,7 +284,7 @@ fn apply_remove_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst
 ///
 /// Branch-free formulation for SIMD vectorization.
 #[archmage::autoversion]
-fn apply_amplify_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
+pub(crate) fn apply_amplify_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
     for y in 0..src.height() {
         let row_in = src.row(y);
         let row_out = dst.row_mut(y);
@@ -230,7 +299,7 @@ fn apply_amplify_range(_token: archmage::SimdToken, src: &ImageF, range: f32, ds
 
 /// Subtracts two images: dst[x] = a[x] - b[x].
 #[archmage::autoversion]
-fn subtract_images(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
+pub(crate) fn subtract_images(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
     for y in 0..a.height() {
         let ra = a.row(y);
         let rb = b.row(y);
@@ -251,7 +320,7 @@ fn subtract_images(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mu
 ///   uhf_x = remove_range(orig - blurred, UHF_RANGE)
 ///   hf_x  = remove_range(blurred, HF_RANGE)
 #[archmage::autoversion]
-fn process_uhf_hf_x(
+pub(crate) fn process_uhf_hf_x(
     _token: archmage::SimdToken,
     hf_x: &mut ImageF,
     blurred: &ImageF,
@@ -291,7 +360,7 @@ fn process_uhf_hf_x(
 ///   uhf_y = maximum_clamp(orig - hf_clamped, MAXCLAMP_UHF) * MUL_Y_UHF
 ///   hf_y  = amplify_range(hf_clamped * MUL_Y_HF, ADD_HF_RANGE)
 #[archmage::autoversion]
-fn process_uhf_hf_y(
+pub(crate) fn process_uhf_hf_y(
     _token: archmage::SimdToken,
     hf_y: &mut ImageF,
     blurred: &ImageF,
@@ -552,6 +621,74 @@ mod tests {
         let ps = PsychoImage::new(100, 50);
         assert_eq!(ps.width(), 100);
         assert_eq!(ps.height(), 50);
+    }
+
+    #[test]
+    fn test_psycho_image_strip_view_partial() {
+        // W44-PHASE3-B7d Day 4 — PsychoImage::strip_view exposes all 4 bands
+        // over the same parent-row range as a PsychoImageStripView.
+        let pool = BufferPool::new();
+        let mut xyb = Image3F::new(32, 64);
+        for y in 0..64 {
+            for x in 0..32 {
+                let val = (x + y) as f32 / 96.0;
+                xyb.plane_mut(0).set(x, y, val * 0.1);
+                xyb.plane_mut(1).set(x, y, val);
+                xyb.plane_mut(2).set(x, y, val * 0.5);
+            }
+        }
+        let ps = separate_frequencies(&xyb, &pool);
+        let strip = ps.strip_view(16, 48);
+        assert_eq!(strip.width(), 32);
+        assert_eq!(strip.height(), 32);
+        assert_eq!(strip.start_row_in_parent(), 16);
+        // Each band's rows must alias the parent's rows byte-for-byte.
+        for c in 0..2 {
+            for y in 0..32 {
+                let want = ps.uhf[c].row(16 + y);
+                let got = strip.uhf[c].row(y);
+                for x in 0..32 {
+                    assert_eq!(got[x].to_bits(), want[x].to_bits(), "uhf{c} ({x},{y})");
+                }
+                let want_hf = ps.hf[c].row(16 + y);
+                let got_hf = strip.hf[c].row(y);
+                for x in 0..32 {
+                    assert_eq!(got_hf[x].to_bits(), want_hf[x].to_bits(), "hf{c} ({x},{y})");
+                }
+            }
+        }
+        for p in 0..3 {
+            for y in 0..32 {
+                let want_mf = ps.mf.plane(p).row(16 + y);
+                let got_mf = strip.mf.plane_row(p, y);
+                for x in 0..32 {
+                    assert_eq!(got_mf[x].to_bits(), want_mf[x].to_bits(), "mf{p} ({x},{y})");
+                }
+                let want_lf = ps.lf.plane(p).row(16 + y);
+                let got_lf = strip.lf.plane_row(p, y);
+                for x in 0..32 {
+                    assert_eq!(got_lf[x].to_bits(), want_lf[x].to_bits(), "lf{p} ({x},{y})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_psycho_image_strip_view_identity() {
+        let pool = BufferPool::new();
+        let mut xyb = Image3F::new(32, 32);
+        for y in 0..32 {
+            for x in 0..32 {
+                let val = (x * y) as f32 / 1024.0;
+                xyb.plane_mut(0).set(x, y, val * 0.07);
+                xyb.plane_mut(1).set(x, y, val * 0.3);
+                xyb.plane_mut(2).set(x, y, val * 0.5);
+            }
+        }
+        let ps = separate_frequencies(&xyb, &pool);
+        let strip = ps.strip_view(0, 32);
+        assert_eq!(strip.height(), 32);
+        assert_eq!(strip.start_row_in_parent(), 0);
     }
 
     #[test]
