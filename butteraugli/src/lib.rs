@@ -129,6 +129,14 @@ pub mod malta;
 #[cfg(not(feature = "internals"))]
 pub(crate) mod malta;
 
+// W44-PHASE3-B7d Day 3 — strip-tiled variants of malta_diff_map and the
+// pointwise l2_diff family. Same `internals` gating as `malta` / `blur_strip`.
+#[cfg(feature = "internals")]
+pub mod malta_strip;
+#[cfg(not(feature = "internals"))]
+#[allow(dead_code)]
+pub(crate) mod malta_strip;
+
 #[cfg(feature = "internals")]
 pub mod mask;
 #[cfg(not(feature = "internals"))]

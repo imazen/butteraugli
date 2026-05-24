@@ -847,6 +847,33 @@ pub(crate) fn imgref_rgbf32_to_f32_vec(img: ImgRef<RGB<f32>>) -> Vec<f32> {
     out
 }
 
+/// Test-only re-exports of the private `accumulate_two` / `l2_diff*`
+/// functions so the W44-PHASE3-B7d Day 3 `crate::malta_strip` parity tests can
+/// compare strip output against the full-buffer reference.
+#[cfg(test)]
+pub(crate) mod tests_support {
+    use super::{ImageF, accumulate_two, l2_diff, l2_diff_asymmetric, l2_diff_write};
+
+    pub(crate) fn accumulate_two_full(a: &ImageF, b: &ImageF, dst: &mut ImageF) {
+        accumulate_two(a, b, dst);
+    }
+    pub(crate) fn l2_diff_full(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
+        l2_diff(i0, i1, w, diffmap);
+    }
+    pub(crate) fn l2_diff_write_full(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
+        l2_diff_write(i0, i1, w, diffmap);
+    }
+    pub(crate) fn l2_diff_asymmetric_full(
+        i0: &ImageF,
+        i1: &ImageF,
+        w_0gt1: f32,
+        w_0lt1: f32,
+        diffmap: &mut ImageF,
+    ) {
+        l2_diff_asymmetric(i0, i1, w_0gt1, w_0lt1, diffmap);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
