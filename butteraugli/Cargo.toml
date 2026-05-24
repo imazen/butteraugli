@@ -56,6 +56,12 @@ magetypes.workspace = true
 imgref.workspace = true
 rgb.workspace = true
 rayon = { workspace = true, optional = true }
+# W44-phase3-B7c (2026-05-23): per-instance thread-local pool slots to kill
+# the BufferPool Mutex bottleneck under parallel rayon::join branches.
+# Pulled in unconditionally because the pool is on the hot path for every
+# compare; the no-rayon single-thread case still benefits from skipping
+# Mutex acquire/release.
+thread_local = "1.1.9"
 
 # C++ butteraugli bindings for parity testing (not on crates.io)
 # For local C++ parity testing, add jpegli-internals-sys to .cargo/config.toml

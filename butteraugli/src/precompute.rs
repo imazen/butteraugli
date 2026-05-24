@@ -1894,10 +1894,7 @@ mod tests {
             .zip(diffmap_out.iter())
             .enumerate()
         {
-            assert!(
-                (a - b).abs() < 1e-7,
-                "diffmap[{i}]: owned={a}, into={b}"
-            );
+            assert!((a - b).abs() < 1e-7, "diffmap[{i}]: owned={a}, into={b}");
         }
 
         // Second call should reuse the existing Vec capacity (no allocation
@@ -1963,8 +1960,7 @@ mod tests {
 
         let mut diffmap_out: Vec<f32> = Vec::new();
         let short = vec![0.5f32; 4];
-        let result =
-            reference.compare_linear_planar_into(&short, &g, &b, width, &mut diffmap_out);
+        let result = reference.compare_linear_planar_into(&short, &g, &b, width, &mut diffmap_out);
         assert!(matches!(
             result,
             Err(ButteraugliError::InvalidBufferSize { .. })
