@@ -4,63 +4,24 @@
 //! with row-stride support for cache-friendly access patterns.
 
 use imgref::ImgVec;
-use std::cell::RefCell;
 use std::ops::{Index, IndexMut};
 use std::sync::Mutex;
-use thread_local::ThreadLocal;
-
-/// TLS cap per thread per pool instance.
-///
-/// The full-res + half-res buttloop allocates ~51 pool ops per `compare`
-/// call (B6 audit). With 8 worker threads in `maybe_join`, each thread
-/// owns a slice of those ops — 16 per thread is plenty to keep the TLS
-/// fast path warm across multiple iters without spilling to overflow.
-const TLS_BUFFERS_PER_THREAD: usize = 16;
-
-/// Overflow cap (shared across all threads for one pool instance).
-///
-/// Mirrors the original global pool cap so storage bound is unchanged.
-/// The overflow is only touched when a thread's TLS is empty AND we
-/// need to put a buffer back — almost never on the steady-state warm
-/// path. Best-fit search inside `take_overflow` is O(N_overflow).
-const OVERFLOW_BUFFERS: usize = 48;
 
 /// Reusable buffer pool for `ImageF` allocations.
 ///
-/// **W44-phase3-B7c (2026-05-23)**: TLS-cached fast path with shared
-/// `Mutex` overflow. Most `take` / `put` calls hit the per-thread cache
-/// (lock-free), eliminating the Mutex contention that ate the B7a+b
-/// alloc-count savings on parallel `maybe_join` branches.
-///
-/// Per-instance, per-thread cache via `thread_local` crate. Each
-/// `BufferPool` instance has its own `ThreadLocal<RefCell<Vec<Vec<f32>>>>`
-/// so two different pools sharing a thread don't mix buffers.
-///
-/// `Sync` + `Send`: TLS slots use `RefCell` (only touched by their owning
-/// thread); overflow uses `Mutex`.
-///
-/// Avoids repeated mmap/munmap for large temporary buffers. Owned by
-/// the caller (typically `ButteraugliReference` or a local in
-/// standalone API functions). When the pool is dropped, all cached
-/// buffers are freed.
+/// Avoids repeated mmap/munmap for large temporary buffers. Thread-safe via
+/// `Mutex`, so it can be shared across rayon tasks. Owned by the caller
+/// (typically `ButteraugliReference` or a local in standalone API functions).
+/// When the pool is dropped, all cached buffers are freed.
 pub struct BufferPool {
-    /// Per-(thread, instance) buffer cache. Fast path: no lock.
-    tls: ThreadLocal<RefCell<Vec<Vec<f32>>>>,
-    /// Shared overflow when a thread's TLS is full. Slow path: locked.
-    overflow: Mutex<Vec<Vec<f32>>>,
+    buffers: Mutex<Vec<Vec<f32>>>,
 }
 
 impl core::fmt::Debug for BufferPool {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let overflow_count = self.overflow.lock().unwrap().len();
-        // We can't iterate `tls` from &self because `ThreadLocal::iter`
-        // requires `T: Sync` and `RefCell` is not `Sync`. The per-thread
-        // counts are only visible via `iter_mut(&mut self)`. Debug
-        // reports overflow only — TLS counts are best surfaced via
-        // dedicated stats hooks if needed.
+        let count = self.buffers.lock().unwrap().len();
         f.debug_struct("BufferPool")
-            .field("overflow_buffers", &overflow_count)
-            .field("tls", &"<per-thread slots; see iter_mut for counts>")
+            .field("cached_buffers", &count)
             .finish()
     }
 }
@@ -68,8 +29,7 @@ impl core::fmt::Debug for BufferPool {
 impl Default for BufferPool {
     fn default() -> Self {
         Self {
-            tls: ThreadLocal::new(),
-            overflow: Mutex::new(Vec::new()),
+            buffers: Mutex::new(Vec::new()),
         }
     }
 }
@@ -81,119 +41,62 @@ impl BufferPool {
         Self::default()
     }
 
-    /// Best-fit selection from a slice of buffers (returns the index with
-    /// the smallest excess capacity ≥ `needed`, if any).
-    #[inline]
-    fn best_fit_index(buffers: &[Vec<f32>], needed: usize) -> Option<usize> {
+    /// Takes a buffer of at least `needed` elements from the pool (best-fit).
+    /// Returns stale data — caller must zero-fill if needed.
+    ///
+    /// With `unsafe-performance`, new allocations skip zero-fill entirely.
+    pub(crate) fn take(&self, needed: usize) -> Vec<f32> {
+        let mut pool = self.buffers.lock().unwrap();
         let mut best_idx = None;
         let mut best_excess = usize::MAX;
-        for (i, buf) in buffers.iter().enumerate() {
+        for (i, buf) in pool.iter().enumerate() {
             let cap = buf.len();
             if cap >= needed && cap - needed < best_excess {
                 best_idx = Some(i);
                 best_excess = cap - needed;
-                if best_excess == 0 {
-                    // Perfect fit; stop early.
-                    break;
-                }
             }
         }
-        best_idx
-    }
-
-    /// Adjusts an in-hand buffer to `needed` elements without changing
-    /// existing capacity if the buffer is already large enough.
-    /// Returns stale data — caller must zero-fill if needed.
-    #[inline]
-    fn finalize_buffer(mut buf: Vec<f32>, needed: usize) -> Vec<f32> {
-        buf.truncate(needed);
-        if buf.len() < needed {
+        if let Some(idx) = best_idx {
+            let mut buf = pool.swap_remove(idx);
+            drop(pool); // release lock before potential realloc
+            buf.truncate(needed);
+            if buf.len() < needed {
+                #[cfg(feature = "unsafe-performance")]
+                #[allow(clippy::uninit_vec)]
+                {
+                    buf.reserve(needed - buf.len());
+                    // SAFETY: f32 has no validity invariant beyond being initialized.
+                    // Callers (from_pool_dirty) overwrite all data before reading.
+                    unsafe { buf.set_len(needed) };
+                }
+                #[cfg(not(feature = "unsafe-performance"))]
+                buf.resize(needed, 0.0);
+            }
+            buf
+        } else {
+            drop(pool); // release lock before allocation
             #[cfg(feature = "unsafe-performance")]
             #[allow(clippy::uninit_vec)]
             {
-                buf.reserve(needed - buf.len());
+                let mut buf = Vec::with_capacity(needed);
                 // SAFETY: f32 has no validity invariant beyond being initialized.
                 // Callers (from_pool_dirty) overwrite all data before reading.
                 unsafe { buf.set_len(needed) };
+                buf
             }
             #[cfg(not(feature = "unsafe-performance"))]
-            buf.resize(needed, 0.0);
-        }
-        buf
-    }
-
-    /// Allocate a fresh buffer of `needed` elements (fallback when both
-    /// TLS and overflow are empty/no-fit).
-    #[inline]
-    fn fresh_buffer(needed: usize) -> Vec<f32> {
-        #[cfg(feature = "unsafe-performance")]
-        #[allow(clippy::uninit_vec)]
-        {
-            let mut buf = Vec::with_capacity(needed);
-            // SAFETY: f32 has no validity invariant beyond being initialized.
-            // Callers (from_pool_dirty) overwrite all data before reading.
-            unsafe { buf.set_len(needed) };
-            buf
-        }
-        #[cfg(not(feature = "unsafe-performance"))]
-        {
-            vec![0.0; needed]
-        }
-    }
-
-    /// Takes a buffer of at least `needed` elements from the pool (best-fit).
-    /// Returns stale data — caller must zero-fill if needed.
-    ///
-    /// Fast path: per-thread TLS cache (no lock).
-    /// Slow path: shared overflow `Mutex` (only when TLS missed).
-    /// Fallback: fresh allocation.
-    ///
-    /// With `unsafe-performance`, new allocations skip zero-fill entirely.
-    pub(crate) fn take(&self, needed: usize) -> Vec<f32> {
-        // Fast path: lock-free TLS lookup. `get_or` initialises an empty
-        // slot the first time this thread touches the pool.
-        let cell = self.tls.get_or(|| RefCell::new(Vec::new()));
-        if let Some(buf) = {
-            let mut local = cell.borrow_mut();
-            Self::best_fit_index(&local, needed).map(|idx| local.swap_remove(idx))
-        } {
-            return Self::finalize_buffer(buf, needed);
-        }
-
-        // Slow path: shared overflow. Best-fit + swap_remove under the lock,
-        // then release the lock before any resize.
-        let from_overflow = {
-            let mut overflow = self.overflow.lock().unwrap();
-            Self::best_fit_index(&overflow, needed).map(|idx| overflow.swap_remove(idx))
-        };
-        if let Some(buf) = from_overflow {
-            return Self::finalize_buffer(buf, needed);
-        }
-
-        // Fallback: fresh allocation.
-        Self::fresh_buffer(needed)
-    }
-
-    /// Returns a buffer to the pool.
-    ///
-    /// Fast path: per-thread TLS (up to [`TLS_BUFFERS_PER_THREAD`]).
-    /// Slow path: shared overflow (up to [`OVERFLOW_BUFFERS`]).
-    /// Beyond both caps: buffer dropped silently.
-    pub(crate) fn put(&self, buf: Vec<f32>) {
-        let cell = self.tls.get_or(|| RefCell::new(Vec::new()));
-        {
-            let mut local = cell.borrow_mut();
-            if local.len() < TLS_BUFFERS_PER_THREAD {
-                local.push(buf);
-                return;
+            {
+                vec![0.0; needed]
             }
         }
-        // TLS full for this thread — spill to overflow.
-        let mut overflow = self.overflow.lock().unwrap();
-        if overflow.len() < OVERFLOW_BUFFERS {
-            overflow.push(buf);
+    }
+
+    /// Returns a buffer to the pool. Dropped silently if pool is full (48 buffers).
+    pub(crate) fn put(&self, buf: Vec<f32>) {
+        let mut pool = self.buffers.lock().unwrap();
+        if pool.len() < 48 {
+            pool.push(buf);
         }
-        // else: drop silently (pool at capacity)
     }
 }
 
@@ -702,120 +605,5 @@ mod tests {
         let img = Image3F::new(100, 50);
         assert_eq!(img.width(), 100);
         assert_eq!(img.height(), 50);
-    }
-
-    // ===========================================================
-    // B7c (2026-05-23): TLS pool tests
-    // ===========================================================
-
-    /// take → put → take must hit the TLS fast path on the same thread
-    /// and return the same underlying allocation (no fresh allocation).
-    #[test]
-    fn test_pool_tls_take_put_take_reuse() {
-        let pool = BufferPool::new();
-        let buf = pool.take(1024);
-        let ptr_before = buf.as_ptr();
-        pool.put(buf);
-        let buf2 = pool.take(1024);
-        let ptr_after = buf2.as_ptr();
-        assert_eq!(
-            ptr_before, ptr_after,
-            "TLS fast path must reuse the same allocation",
-        );
-        assert_eq!(buf2.len(), 1024);
-    }
-
-    /// Best-fit selection must work within the TLS cache: returning
-    /// buffers of multiple sizes, then taking should pick the smallest
-    /// excess.
-    #[test]
-    fn test_pool_tls_best_fit() {
-        let pool = BufferPool::new();
-        // Seed TLS with three different sizes via put.
-        pool.put(vec![0.0; 1024]);
-        pool.put(vec![0.0; 4096]);
-        pool.put(vec![0.0; 2048]);
-        // Asking for 1500 should pick the 2048 (smallest excess ≥ 1500).
-        let buf = pool.take(1500);
-        assert_eq!(buf.len(), 1500);
-        // Capacity should reflect that we picked the 2048 buffer (not 4096).
-        assert!(
-            buf.capacity() >= 1500 && buf.capacity() < 4000,
-            "expected best-fit 2048-cap buffer, got cap={}",
-            buf.capacity(),
-        );
-    }
-
-    /// Beyond `TLS_BUFFERS_PER_THREAD` puts, the pool must spill to the
-    /// shared overflow rather than dropping or panicking.
-    #[test]
-    fn test_pool_tls_overflow_spill() {
-        let pool = BufferPool::new();
-        // Fill the TLS cache.
-        for _ in 0..TLS_BUFFERS_PER_THREAD {
-            pool.put(vec![0.0; 64]);
-        }
-        // The next put should spill into overflow.
-        pool.put(vec![0.0; 128]);
-        // Take the spilled buffer back out — TLS still has 16 entries
-        // of size 64, none of which fits ≥ 100, so the take MUST hit
-        // overflow.
-        let buf = pool.take(100);
-        assert!(buf.len() == 100);
-        assert!(
-            buf.capacity() >= 128,
-            "expected overflow buffer (cap≥128), got cap={}",
-            buf.capacity(),
-        );
-    }
-
-    /// Two pool instances on the same thread MUST NOT share buffers
-    /// via TLS — each `BufferPool` has its own per-thread slot.
-    #[test]
-    fn test_pool_instances_isolated() {
-        let pool_a = BufferPool::new();
-        let pool_b = BufferPool::new();
-        let buf_a = pool_a.take(512);
-        let ptr_a = buf_a.as_ptr();
-        pool_a.put(buf_a);
-        // Take from a different pool — must NOT return pool_a's buffer.
-        let buf_b = pool_b.take(512);
-        let ptr_b = buf_b.as_ptr();
-        assert_ne!(
-            ptr_a, ptr_b,
-            "TLS slots must be per-instance, not shared across pools",
-        );
-    }
-
-    /// Concurrent take/put across rayon threads must not deadlock or
-    /// produce garbage. Stress-tests both TLS fast path and overflow
-    /// spill under contention.
-    #[test]
-    #[cfg(feature = "rayon")]
-    fn test_pool_parallel_take_put() {
-        use rayon::prelude::*;
-
-        let pool = BufferPool::new();
-        let n_ops = 256;
-        // All threads hammer the same pool.
-        (0..n_ops).into_par_iter().for_each(|i| {
-            let needed = 64 + (i % 32) * 16;
-            let mut buf = pool.take(needed);
-            // Touch the buffer to prove it's writable.
-            buf[0] = i as f32;
-            buf[needed - 1] = i as f32;
-            pool.put(buf);
-        });
-        // No panic, no deadlock. Verify the pool still works after the storm.
-        let buf = pool.take(1024);
-        assert_eq!(buf.len(), 1024);
-    }
-
-    /// Pool is Sync + Send — required so &BufferPool can cross
-    /// rayon::join branches.
-    #[test]
-    fn test_pool_sync_send_static() {
-        fn assert_sync_send<T: Sync + Send>() {}
-        assert_sync_send::<BufferPool>();
     }
 }
