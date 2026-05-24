@@ -32,6 +32,21 @@ use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraug
 use crate::psycho::{PsychoImage, separate_frequencies};
 use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite_f32};
 
+// W44-PHASE3-B7d Day 6: per-stage attribution timing.
+// Gated by `JXL_B7D_STAGE_TIMING=1` at runtime so it's free unless the bench
+// asks for it. Writes one line per stage per call to stderr.
+#[doc(hidden)]
+fn b7d_stage_timing_enabled() -> bool {
+    std::env::var_os("JXL_B7D_STAGE_TIMING").is_some()
+}
+
+#[doc(hidden)]
+fn b7d_log_stage(path: &str, stage: &str, t: std::time::Instant) -> std::time::Instant {
+    let elapsed_us = t.elapsed().as_nanos() as f64 / 1_000.0;
+    eprintln!("B7D_STAGE\t{path}\t{stage}\t{elapsed_us:.3}");
+    std::time::Instant::now()
+}
+
 /// Minimum image dimension for multi-resolution processing.
 const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
 
@@ -769,9 +784,11 @@ impl ButteraugliReference {
         let full_mask = &self.full.mask;
         let half_ref = self.half.as_ref();
         let pool = &self.pool;
+        let stage_timing = b7d_stage_timing_enabled();
 
         let (mut diffmap, sub_diffmap) = maybe_join(
             || {
+                let mut t = if stage_timing { std::time::Instant::now() } else { std::time::Instant::now() };
                 let xyb2 = linear_planar_to_xyb_butteraugli(
                     r,
                     g,
@@ -782,9 +799,12 @@ impl ButteraugliReference {
                     intensity_target,
                     pool,
                 );
+                if stage_timing { t = b7d_log_stage("full", "1_opsin", t); }
                 let ps2 = separate_frequencies(&xyb2, pool);
+                if stage_timing { t = b7d_log_stage("full", "2_separate_freqs", t); }
                 let dm =
                     compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
+                if stage_timing { let _ = b7d_log_stage("full", "3_compute_diffmap", t); }
                 ps2.recycle(pool);
                 xyb2.recycle(pool);
                 dm
@@ -821,12 +841,15 @@ impl ButteraugliReference {
             },
         );
 
+        let mut t4 = std::time::Instant::now();
         if let Some(sub) = sub_diffmap {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
             sub.recycle(pool);
         }
+        if stage_timing { t4 = b7d_log_stage("full", "3b_add_supersampled", t4); }
 
         let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
+        if stage_timing { let _ = b7d_log_stage("full", "4_score", t4); }
 
         // B7a: copy into caller's Vec (or move via owned buf if tight-stride)
         // then recycle the internal ImageF.data back to the pool. The caller's
@@ -880,12 +903,14 @@ impl ButteraugliReference {
         let full_mask = &self.full.mask;
         let half_ref = self.half.as_ref();
         let pool = &self.pool;
+        let stage_timing = b7d_stage_timing_enabled();
 
         // Stage 1 + Stage 2: opsin + separate_frequencies + malta + mask on the
         // full image (per current architecture — see method docstring for why
         // these stages are not tiled byte-identical at Day 5).
         let (full_intermediates, sub_diffmap) = maybe_join(
             || {
+                let mut t = std::time::Instant::now();
                 let xyb2 = linear_planar_to_xyb_butteraugli(
                     r,
                     g,
@@ -896,7 +921,9 @@ impl ButteraugliReference {
                     intensity_target,
                     pool,
                 );
+                if stage_timing { t = b7d_log_stage("strip", "1_opsin", t); }
                 let ps2 = separate_frequencies(&xyb2, pool);
+                if stage_timing { t = b7d_log_stage("strip", "2a_separate_freqs", t); }
                 // Compute malta + l2 error maps (same as compute_psycho_diff_malta).
                 let mut block_diff_ac = compute_psycho_diff_malta(
                     full_psycho,
@@ -905,6 +932,7 @@ impl ButteraugliReference {
                     params.xmul(),
                     pool,
                 );
+                if stage_timing { t = b7d_log_stage("strip", "2b_malta", t); }
                 // Apply distorted-side mask correction (writes into ac plane 1).
                 crate::mask::apply_mask_correction_precomputed(
                     full_mask,
@@ -913,6 +941,7 @@ impl ButteraugliReference {
                     Some(block_diff_ac.plane_mut(1)),
                     pool,
                 );
+                if stage_timing { let _ = b7d_log_stage("strip", "2c_mask_correction", t); }
                 (xyb2, ps2, block_diff_ac)
             },
             || {
@@ -950,6 +979,7 @@ impl ButteraugliReference {
 
         // Stage 3 tile-driven: combine_channels + DC diff into a pool-backed
         // full-image diffmap, but driven row-strip at a time.
+        let mut t3 = std::time::Instant::now();
         let mut diffmap =
             combine_channels_to_diffmap_strip_driver(
                 &full_mask.mask,
@@ -959,6 +989,7 @@ impl ButteraugliReference {
                 params.xmul(),
                 pool,
             );
+        if stage_timing { t3 = b7d_log_stage("strip", "3_combine_channels_tiled", t3); }
 
         block_diff_ac.recycle(pool);
         ps2.recycle(pool);
@@ -968,9 +999,11 @@ impl ButteraugliReference {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
             sub.recycle(pool);
         }
+        if stage_timing { t3 = b7d_log_stage("strip", "3b_add_supersampled", t3); }
 
         // Stage 4 global reduction: score + p-norm.
         let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
+        if stage_timing { let _ = b7d_log_stage("strip", "4_score", t3); }
 
         // Copy into caller's Vec, mirroring `compare_linear_planar_impl_into`.
         let needed = width * height;
