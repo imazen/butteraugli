@@ -102,6 +102,14 @@ pub(crate) mod blur;
 #[allow(dead_code)]
 pub(crate) mod blur_iir;
 
+// W44-PHASE3-B7d Day 2 — strip-tiled variants of the blur kernels.
+// Same `internals` gating as `blur` so external tests can drive parity.
+#[cfg(feature = "internals")]
+pub mod blur_strip;
+#[cfg(not(feature = "internals"))]
+#[allow(dead_code)]
+pub(crate) mod blur_strip;
+
 #[cfg(feature = "internals")]
 pub mod consts;
 #[cfg(not(feature = "internals"))]
