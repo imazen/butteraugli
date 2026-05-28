@@ -47,6 +47,30 @@ struct ScaleData {
     mask: PrecomputedMask,
 }
 
+/// Retained reference-side source data for the strip walker.
+///
+/// The strip walker (`compare_strip`, `compare_linear_strip`) needs to
+/// slice strip-shaped windows from the reference source. Storing the
+/// original sRGB bytes (`Srgb`) costs `width * height * 3` bytes —
+/// 4× less than storing the pre-converted linear `Vec<f32>` (`Linear`)
+/// that 0.9.3 retained for every `new()`-built reference. The
+/// per-strip sRGB→linear conversion (LUT-based, identical to the
+/// distorted-side conversion the strip walker already runs) recovers
+/// the linear bytes on demand without inflating the persistent
+/// footprint. The 4× savings closes most of the 0.9.3 warm-ref
+/// peak-heap regression (192 MB → 48 MB at 16 MP, 480 MB → 120 MB at
+/// 40 MP).
+#[derive(Clone)]
+enum ReferenceSource {
+    /// sRGB u8 bytes from `new()`. Stored as the original input — 3
+    /// bytes per pixel.
+    Srgb(Vec<u8>),
+    /// Linear f32 from `new_linear()`. 12 bytes per pixel; no
+    /// compression opportunity beyond clone elision since the input was
+    /// already linear.
+    Linear(Vec<f32>),
+}
+
 /// Precomputed butteraugli reference data for fast repeated comparisons.
 ///
 /// This struct stores precomputed frequency decomposition and XYB conversion
@@ -77,14 +101,19 @@ pub struct ButteraugliReference {
     params: ButteraugliParams,
     /// Persistent buffer pool — reused across compare calls to avoid re-allocation
     pool: BufferPool,
-    /// Interleaved linear-RGB source (for `compare_strip`).
+    /// Retained reference-side source data for the strip walker.
     ///
     /// `None` when the reference was constructed via
     /// `new_linear_planar` (planar-only path that doesn't retain the
-    /// interleaved source). `Some(buf)` for `new` and `new_linear`
-    /// constructions. The strip walker requires contiguous
-    /// interleaved RGB so it can slice strip-shaped windows.
-    linear_source: Option<Vec<f32>>,
+    /// interleaved source). `Some(Srgb(_))` for `new` constructions
+    /// (stores the original u8 bytes — 3 B/pixel). `Some(Linear(_))`
+    /// for `new_linear` constructions (12 B/pixel — no compression
+    /// opportunity since the input was already linear). 0.9.3 stored
+    /// linear f32 for both u8 and f32 constructors, costing 12 B/pixel
+    /// even for the sRGB path that already had cheaper u8 bytes
+    /// available — the 4× sRGB→linear blow-up dominated the warm-ref
+    /// heap regression sized by the CPU sweep on 2026-05-28.
+    source: Option<ReferenceSource>,
 }
 
 impl Clone for ButteraugliReference {
@@ -96,7 +125,7 @@ impl Clone for ButteraugliReference {
             height: self.height,
             params: self.params.clone(),
             pool: BufferPool::new(), // fresh empty pool for the clone
-            linear_source: self.linear_source.clone(),
+            source: self.source.clone(),
         }
     }
 }
@@ -150,8 +179,14 @@ impl ButteraugliReference {
         // Convert sRGB u8 → linear f32 and delegate.
         // Subsampling must happen in linear space, not gamma-compressed sRGB.
         let linear = srgb_u8_to_linear_f32(rgb);
+        // 0.9.4 memory fix: retain the original u8 bytes (3 B/pixel)
+        // for the strip walker instead of the 12 B/pixel linear f32
+        // clone that 0.9.3 stashed. The strip walker re-derives the
+        // linear bytes on demand using the same LUT path it already
+        // applies to the distorted side.
+        let src = Some(ReferenceSource::Srgb(rgb.to_vec()));
         // Skip re-validation in new_linear — params already validated above.
-        Self::new_linear_validated(&linear, width, height, params)
+        Self::new_linear_validated(&linear, width, height, params, src)
     }
 
     /// Precompute reference data from a linear RGB f32 image.
@@ -176,16 +211,26 @@ impl ButteraugliReference {
         params: ButteraugliParams,
     ) -> Result<Self, ButteraugliError> {
         params.validate()?;
-        Self::new_linear_validated(rgb, width, height, params)
+        // Linear-RGB callers don't have a cheaper representation to
+        // stash (f32 is already the smallest non-lossy form). Retain a
+        // clone for the strip walker.
+        let src = Some(ReferenceSource::Linear(rgb.to_vec()));
+        Self::new_linear_validated(rgb, width, height, params, src)
     }
 
     /// Internal constructor that skips param validation (caller must have
     /// already called `params.validate()`).
+    ///
+    /// The `source` argument carries the retained strip-walker source
+    /// (`Srgb`/`Linear`/`None`) — kept distinct from `rgb` so callers
+    /// like `new()` can stash the cheap u8 form while still passing the
+    /// linear f32 view this constructor needs to build the precompute.
     fn new_linear_validated(
         rgb: &[f32],
         width: usize,
         height: usize,
         params: ButteraugliParams,
+        source: Option<ReferenceSource>,
     ) -> Result<Self, ButteraugliError> {
         let expected_size = width
             .checked_mul(height)
@@ -252,7 +297,7 @@ impl ButteraugliReference {
             height,
             params,
             pool: reuse_pool,
-            linear_source: Some(rgb.to_vec()),
+            source,
         })
     }
 
@@ -376,7 +421,7 @@ impl ButteraugliReference {
             // the strip walker will surface a clear error if
             // compare_strip is called on a planar-constructed
             // reference.
-            linear_source: None,
+            source: None,
         })
     }
 
@@ -535,20 +580,93 @@ impl ButteraugliReference {
         Ok((score, pnorm_3))
     }
 
-    /// Interleaved linear-RGB source data, if retained.
+    /// Interleaved linear-RGB source data, if retained AND already
+    /// stored in linear form.
     ///
-    /// `Some(buf)` when the reference was built via `new` or
-    /// `new_linear`; `None` for `new_linear_planar` (the planar
-    /// constructor does not retain the interleaved source).
+    /// `Some(buf)` when the reference was built via `new_linear`
+    /// (linear bytes stored as-is); `None` for `new` (stores u8 sRGB —
+    /// strip walker must call [`Self::source_linear_rgb_owned`] to
+    /// materialise the linear form on demand) and for
+    /// `new_linear_planar` (planar constructor does not retain
+    /// interleaved source).
     ///
     /// `#[doc(hidden)]` because the buffer's layout is an
     /// implementation detail shared between the precompute and
     /// strip modules. External callers should not rely on the
     /// signature.
+    ///
+    /// 0.9.4 behavior change: pre-0.9.4 this returned `Some(_)` for
+    /// both `new` and `new_linear`-built references. After the memory
+    /// fix, `new`-built references store the cheaper u8 form — the
+    /// strip walker uses [`Self::source_linear_rgb_owned`] instead,
+    /// which is a no-op clone when the source is already linear and a
+    /// LUT-based conversion when the source is u8.
     #[doc(hidden)]
     #[must_use]
     pub fn source_linear_rgb(&self) -> Option<&[f32]> {
-        self.linear_source.as_deref()
+        match self.source.as_ref()? {
+            ReferenceSource::Linear(buf) => Some(buf.as_slice()),
+            ReferenceSource::Srgb(_) => None,
+        }
+    }
+
+    /// Owned linear-RGB source for the strip walker — materialises the
+    /// linear bytes from whichever storage form was retained.
+    ///
+    /// Returns `None` only when the reference was constructed via
+    /// `new_linear_planar` (planar constructor doesn't retain
+    /// interleaved source data at all).
+    ///
+    /// Allocates `width * height * 3 * 4 B` when the source is the u8
+    /// sRGB form (`new()`-built); zero-copies via clone when the source
+    /// is already linear f32 (`new_linear()`-built). The strip walker
+    /// invokes this once per `compare_strip` call and drops the result
+    /// when the per-call walk completes, so the linear buffer is alive
+    /// only during the strip-walk window — not retained across calls.
+    ///
+    /// `#[doc(hidden)]` for the same reasons as
+    /// [`Self::source_linear_rgb`].
+    #[doc(hidden)]
+    #[must_use]
+    pub fn source_linear_rgb_owned(&self) -> Option<Vec<f32>> {
+        match self.source.as_ref()? {
+            ReferenceSource::Linear(buf) => Some(buf.clone()),
+            ReferenceSource::Srgb(bytes) => Some(srgb_u8_to_linear_f32(bytes)),
+        }
+    }
+
+    /// Drops the retained reference-side source data, freeing the
+    /// per-pixel retention cost.
+    ///
+    /// After calling this, [`Self::compare_strip`] /
+    /// [`Self::compare_linear_strip`] and the `_srgb` /
+    /// `_linear_imgref` variants will return
+    /// [`ButteraugliError::InvalidParameter`] for the `reference`
+    /// argument — the non-strip [`Self::compare`] /
+    /// [`Self::compare_linear`] / [`Self::compare_linear_planar`]
+    /// paths are unaffected.
+    ///
+    /// Use this when the caller has determined that no strip
+    /// dispatch will follow on this reference and wants to reclaim
+    /// the `width * height * 3` (u8) or `width * height * 12` (f32)
+    /// bytes that the source clone occupies.
+    pub fn drop_strip_source(&mut self) {
+        self.source = None;
+    }
+
+    /// Frees the persistent buffer pool, releasing any cached buffers
+    /// held between `compare` calls.
+    ///
+    /// `compare` calls following `shrink_to_fit` will re-allocate
+    /// transient buffers from the OS instead of reusing pooled ones,
+    /// which trades a one-time allocation cost (~tens of ms at 16 MP)
+    /// for the pool footprint (~tens to hundreds of MB at 16 MP+).
+    ///
+    /// Cached precomputed reference data (XYB pyramid, masks, retained
+    /// source) is NOT affected — the warm-ref speedup over a cold
+    /// `butteraugli()` call still applies.
+    pub fn shrink_to_fit(&mut self) {
+        self.pool.clear();
     }
 
     /// Width of the reference image.

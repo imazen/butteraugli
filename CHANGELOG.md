@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-05-28
+
+### Fixed
+- **+18% warm-ref peak-heap regression at 16-40 MP** introduced in 0.9.3. The 0.9.3 strip-API work added a 12 B/pixel linear-f32 source clone to every `new()`/`new_linear()`-built `ButteraugliReference`, on top of a `BufferPool` cap of 48 that allowed the persistent reference pool to retain up to ~3.2 GB of full-image planes at 16 MP. CPU sweep on 2026-05-28 (`benchmarks/heaptrack/summary*.tsv`) measured warm-ref peak heap 3.81 GB vs cold 3.26 GB at 16 MP (+16.9 %), 8.71 GB vs 7.34 GB at 40 MP (+18.7 %). 0.9.4 fixes this in two steps that together restore warm-ref ≤ cold-path peak heap at every measured size:
+  - `new()`-built references now retain the original `Vec<u8>` sRGB bytes (3 B/pixel) instead of cloning the pre-converted linear `Vec<f32>` (12 B/pixel). `compare_strip` re-derives the linear bytes on demand via the same `SRGB_TO_LINEAR_LUT` it already applies to the distorted side. `new_linear()`-built references store the input as `Vec<f32>` as before (no compression opportunity beyond clone elision). At 16 MP this saves 192 MB of persistent footprint per reference; at 40 MP, 480 MB.
+  - `BufferPool::put` cap reduced 48 → 8 buffers. The original 48-cap was sized for the parallel join's worst-case concurrent buffer count plus headroom, but in practice the persistent reference's pool fills to its cap between compares and holds those buffers through the next compare's peak. 8 is sufficient to skip the mmap/munmap churn within a single `compare` call (validated by three-trial heaptrack measurement) while preventing the persistent pool footprint from dominating heap.
+- Post-fix three-trial median peak heap on the `cpu-profile` driver:
+
+  | size | cold | warm-ref (0.9.3) | warm-ref (0.9.4) | Δ vs cold |
+  | --- | --- | --- | --- | --- |
+  | 4 MP   | 814.61 MB | 836.77 MB (+2.7 %)  | **799.02 MB** | **-1.9 %** |
+  | 16 MP  | 3.26 GB   | 3.81 GB   (+16.9 %) | **3.23 GB**   | **-0.9 %** |
+  | 40 MP  | 7.79 GB   | 8.71 GB   (+11.8 %) | **7.83 GB**   | **+0.5 %** |
+
+  Wall time is unchanged from 0.9.3 (within run-to-run variance). The warm-ref path remains slower than cold-path on a single compare (the precompute cost is wasted on N=1) and faster per-amortized-call at N ≥ 2, as designed.
+
+### Added
+- `ButteraugliReference::drop_strip_source(&mut self)` — drops the retained reference-side source data (sRGB u8 or linear f32) so subsequent `compare_strip` / `compare_linear_strip` / `compare_strip_srgb` / `compare_strip_linear_imgref` calls return `InvalidParameter`. The non-strip `compare` / `compare_linear` / `compare_linear_planar` paths are unaffected. Use when the caller has determined that no strip dispatch will follow on this reference and wants to reclaim the per-pixel retention.
+- `ButteraugliReference::shrink_to_fit(&mut self)` — drains the persistent `BufferPool`, releasing any cached transient buffers held between `compare` calls at the cost of one re-allocation on the next `compare` call. Cached XYB pyramid / mask / source data is retained (the warm-ref speedup over a cold `butteraugli()` call still applies).
+
+### Changed
+- `ButteraugliReference::source_linear_rgb` (`#[doc(hidden)]`) now returns `None` for `new()`-built references — they store sRGB u8 instead of linear f32 after the 0.9.4 memory fix. The strip walker uses the new `source_linear_rgb_owned` accessor (also `#[doc(hidden)]`) which materialises the linear bytes from whichever storage form was retained — clones when `new_linear()`-built, LUT-converts when `new()`-built. External callers should not depend on either accessor's signature.
+
 ## [0.9.3] - 2026-05-28
 
 ### Added

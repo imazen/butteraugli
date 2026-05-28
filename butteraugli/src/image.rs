@@ -91,14 +91,41 @@ impl BufferPool {
         }
     }
 
-    /// Returns a buffer to the pool. Dropped silently if pool is full (48 buffers).
+    /// Returns a buffer to the pool. Dropped silently if pool is full.
+    ///
+    /// The cap was 48 in 0.9.3; reduced to [`MAX_POOL_BUFFERS`] = 8 in
+    /// 0.9.4 after the CPU sweep (`benchmarks/heaptrack/summary*.tsv`,
+    /// 2026-05-28) showed warm-ref peak heap +18% over the cold path at
+    /// 16 MP because the persistent reference pool accumulated up to 48
+    /// full-image planes between compares. At 8, three-trial median peak
+    /// heap on the cpu-profile driver (4096×4096, ButteraugliReference +
+    /// compare) is 3.23 GB vs the cold-path 3.26 GB — i.e. warm-ref ≤
+    /// cold-path, matching the design intent. Smaller caps (down to 8)
+    /// did not measurably improve heap further, and larger caps
+    /// (16 / 24 / 48) reintroduced the regression in proportion to the
+    /// cap.
     pub(crate) fn put(&self, buf: Vec<f32>) {
         let mut pool = self.buffers.lock().unwrap();
-        if pool.len() < 48 {
+        if pool.len() < MAX_POOL_BUFFERS {
             pool.push(buf);
         }
     }
+
+    /// Drains all cached buffers from the pool, freeing the memory.
+    ///
+    /// Called by `ButteraugliReference::shrink_to_fit` to release the
+    /// persistent pool footprint between batches.
+    pub(crate) fn clear(&self) {
+        self.buffers.lock().unwrap().clear();
+    }
 }
+
+/// Maximum number of cached buffers retained by a single [`BufferPool`].
+///
+/// See [`BufferPool::put`] for the rationale behind 8 (down from 48 in
+/// butteraugli 0.9.3). Exposed `pub(crate)` so the precompute module's
+/// tests can assert the cap is honored.
+pub(crate) const MAX_POOL_BUFFERS: usize = 8;
 
 impl Clone for BufferPool {
     /// Clone creates a fresh empty pool — the clone does not share buffers.
