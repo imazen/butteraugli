@@ -77,6 +77,14 @@ pub struct ButteraugliReference {
     params: ButteraugliParams,
     /// Persistent buffer pool — reused across compare calls to avoid re-allocation
     pool: BufferPool,
+    /// Interleaved linear-RGB source (for `compare_strip`).
+    ///
+    /// `None` when the reference was constructed via
+    /// `new_linear_planar` (planar-only path that doesn't retain the
+    /// interleaved source). `Some(buf)` for `new` and `new_linear`
+    /// constructions. The strip walker requires contiguous
+    /// interleaved RGB so it can slice strip-shaped windows.
+    linear_source: Option<Vec<f32>>,
 }
 
 impl Clone for ButteraugliReference {
@@ -88,6 +96,7 @@ impl Clone for ButteraugliReference {
             height: self.height,
             params: self.params.clone(),
             pool: BufferPool::new(), // fresh empty pool for the clone
+            linear_source: self.linear_source.clone(),
         }
     }
 }
@@ -243,6 +252,7 @@ impl ButteraugliReference {
             height,
             params,
             pool: reuse_pool,
+            linear_source: Some(rgb.to_vec()),
         })
     }
 
@@ -362,6 +372,11 @@ impl ButteraugliReference {
             height,
             params,
             pool: reuse_pool,
+            // Planar constructor doesn't have interleaved source;
+            // the strip walker will surface a clear error if
+            // compare_strip is called on a planar-constructed
+            // reference.
+            linear_source: None,
         })
     }
 
@@ -518,6 +533,22 @@ impl ButteraugliReference {
             return Err(ButteraugliError::NonFiniteResult);
         }
         Ok((score, pnorm_3))
+    }
+
+    /// Interleaved linear-RGB source data, if retained.
+    ///
+    /// `Some(buf)` when the reference was built via `new` or
+    /// `new_linear`; `None` for `new_linear_planar` (the planar
+    /// constructor does not retain the interleaved source).
+    ///
+    /// `#[doc(hidden)]` because the buffer's layout is an
+    /// implementation detail shared between the precompute and
+    /// strip modules. External callers should not rely on the
+    /// signature.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn source_linear_rgb(&self) -> Option<&[f32]> {
+        self.linear_source.as_deref()
     }
 
     /// Width of the reference image.
@@ -1894,10 +1925,7 @@ mod tests {
             .zip(diffmap_out.iter())
             .enumerate()
         {
-            assert!(
-                (a - b).abs() < 1e-7,
-                "diffmap[{i}]: owned={a}, into={b}"
-            );
+            assert!((a - b).abs() < 1e-7, "diffmap[{i}]: owned={a}, into={b}");
         }
 
         // Second call should reuse the existing Vec capacity (no allocation
@@ -1963,8 +1991,7 @@ mod tests {
 
         let mut diffmap_out: Vec<f32> = Vec::new();
         let short = vec![0.5f32; 4];
-        let result =
-            reference.compare_linear_planar_into(&short, &g, &b, width, &mut diffmap_out);
+        let result = reference.compare_linear_planar_into(&short, &g, &b, width, &mut diffmap_out);
         assert!(matches!(
             result,
             Err(ButteraugliError::InvalidBufferSize { .. })

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-05-28
+
+### Added
+- `butteraugli_strip` and `butteraugli_linear_strip` — strip-wise butteraugli with bounded peak memory for very large images. Processes the image in horizontal strips (default halo of 64 rows for the chained FIR Gaussian + Malta + mask blur stack) and aggregates the max-norm + libjxl 3-norm reductions across strips. Scores match the full-image path to within `~1e-2` on identical and `~1e-3` on different inputs at 1024² (FIR finite-support guarantees bit-identical interior diffmaps; aggregation differences arise only from f64 sum associativity). At 40 MP (7680×5120 heaptrack), peak heap drops from 7.43 GB to 1.94 GB (3.8× reduction) at equivalent wall time.
+- `ButteraugliReference::compare_strip` (sRGB u8 dist), `compare_linear_strip` (f32 linear dist), `compare_strip_srgb` (ImgRef<RGB8>), `compare_strip_linear_imgref` (ImgRef<RGB<f32>>) — cached-ref strip APIs. Strip-walks the dist side; the ref-side blurs are recomputed per strip so dist and ref share FIR boundary handling. Requires the reference to have been built via `new` or `new_linear` (the planar constructor doesn't retain interleaved source).
+- `ButteraugliStripConfig` with `halo_rows` knob for callers that want to trade per-strip overhead for tighter parity.
+- `HALO_ROWS_DEFAULT` (64) and `MIN_STRIP_HEIGHT` (8) public constants.
+- Hidden `ButteraugliReference::source_linear_rgb` accessor returning the retained interleaved linear-RGB source as `Option<&[f32]>`; used by the strip walker. Marked `#[doc(hidden)]` because external callers should not depend on the representation.
+
+### Changed
+- `ButteraugliReference::new` and `new_linear` now retain a clone of the interleaved linear-RGB source so `compare_strip` can slice strip-shaped windows from it. Memory cost: `width * height * 3 * 4 B` per reference (~480 MB at 40 MP). The planar constructor (`new_linear_planar`) is unchanged and does NOT retain the source — `compare_strip` on a planar-constructed reference returns `InvalidParameter`.
+
 ## [0.9.2] - 2026-05-01
 
 ### Added

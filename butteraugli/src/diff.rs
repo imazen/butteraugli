@@ -49,7 +49,7 @@ pub(crate) struct InternalResult {
 
 /// Minimum image dimension for multi-resolution processing.
 /// Images smaller than this are handled without recursion.
-const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
+pub(crate) const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
 
 /// Converts linear RGB f32 buffer to XYB Image3F using butteraugli's OpsinDynamicsImage.
 fn linear_rgb_to_xyb_image(
@@ -623,7 +623,7 @@ fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32
 }
 
 /// Computes the diffmap for a single resolution level (linear RGB input).
-fn compute_diffmap_single_resolution_linear(
+pub(crate) fn compute_diffmap_single_resolution_linear(
     rgb1: &[f32],
     rgb2: &[f32],
     width: usize,
@@ -662,7 +662,7 @@ fn compute_diffmap_single_resolution_linear(
 /// then adds ONE sub-level at half resolution via AddSupersampled2x.
 /// The C++ creates a recursive tree in Make() but Diffmap() only uses
 /// the immediate sub-level (via DiffmapOpsinDynamicsImage, which doesn't recurse).
-fn compute_diffmap_multiresolution_linear(
+pub(crate) fn compute_diffmap_multiresolution_linear(
     rgb1: &[f32],
     rgb2: &[f32],
     width: usize,
