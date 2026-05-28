@@ -49,7 +49,7 @@ pub(crate) struct InternalResult {
 
 /// Minimum image dimension for multi-resolution processing.
 /// Images smaller than this are handled without recursion.
-const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
+pub(crate) const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
 
 /// Converts linear RGB f32 buffer to XYB Image3F using butteraugli's OpsinDynamicsImage.
 fn linear_rgb_to_xyb_image(
@@ -623,7 +623,7 @@ fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32
 }
 
 /// Computes the diffmap for a single resolution level (linear RGB input).
-fn compute_diffmap_single_resolution_linear(
+pub(crate) fn compute_diffmap_single_resolution_linear(
     rgb1: &[f32],
     rgb2: &[f32],
     width: usize,
@@ -662,7 +662,7 @@ fn compute_diffmap_single_resolution_linear(
 /// then adds ONE sub-level at half resolution via AddSupersampled2x.
 /// The C++ creates a recursive tree in Make() but Diffmap() only uses
 /// the immediate sub-level (via DiffmapOpsinDynamicsImage, which doesn't recurse).
-fn compute_diffmap_multiresolution_linear(
+pub(crate) fn compute_diffmap_multiresolution_linear(
     rgb1: &[f32],
     rgb2: &[f32],
     width: usize,
@@ -845,33 +845,6 @@ pub(crate) fn imgref_rgbf32_to_f32_vec(img: ImgRef<RGB<f32>>) -> Vec<f32> {
     }
 
     out
-}
-
-/// Test-only re-exports of the private `accumulate_two` / `l2_diff*`
-/// functions so the W44-PHASE3-B7d Day 3 `crate::malta_strip` parity tests can
-/// compare strip output against the full-buffer reference.
-#[cfg(test)]
-pub(crate) mod tests_support {
-    use super::{ImageF, accumulate_two, l2_diff, l2_diff_asymmetric, l2_diff_write};
-
-    pub(crate) fn accumulate_two_full(a: &ImageF, b: &ImageF, dst: &mut ImageF) {
-        accumulate_two(a, b, dst);
-    }
-    pub(crate) fn l2_diff_full(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-        l2_diff(i0, i1, w, diffmap);
-    }
-    pub(crate) fn l2_diff_write_full(i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
-        l2_diff_write(i0, i1, w, diffmap);
-    }
-    pub(crate) fn l2_diff_asymmetric_full(
-        i0: &ImageF,
-        i1: &ImageF,
-        w_0gt1: f32,
-        w_0lt1: f32,
-        diffmap: &mut ImageF,
-    ) {
-        l2_diff_asymmetric(i0, i1, w_0gt1, w_0lt1, diffmap);
-    }
 }
 
 #[cfg(test)]

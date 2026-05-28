@@ -529,11 +529,8 @@ fn extract_window(data: &ImageF, x: usize, y: usize) -> [f32; 81] {
 ///
 /// Uses direct slice indexing instead of pointer arithmetic.
 /// Caller must ensure the pixel is at least 4 pixels from all borders.
-///
-/// `pub(crate)` for the W44-PHASE3-B7d Day 3 strip-tile wrapper in
-/// [`crate::malta_strip`] to reuse the exact arithmetic byte-for-byte.
 #[inline]
-pub(crate) fn malta_unit_interior(data: &[f32], center: usize, stride: usize) -> f32 {
+fn malta_unit_interior(data: &[f32], center: usize, stride: usize) -> f32 {
     let xs = stride;
     let xs2 = xs + xs;
     let xs3 = xs2 + xs;
@@ -773,11 +770,8 @@ pub(crate) fn malta_unit_interior(data: &[f32], center: usize, stride: usize) ->
 ///
 /// Uses direct slice indexing instead of pointer arithmetic.
 /// Caller must ensure the pixel is at least 4 pixels from all borders.
-///
-/// `pub(crate)` for the W44-PHASE3-B7d Day 3 strip-tile wrapper in
-/// [`crate::malta_strip`] to reuse the exact arithmetic byte-for-byte.
 #[inline]
-pub(crate) fn malta_unit_lf_interior(data: &[f32], center: usize, stride: usize) -> f32 {
+fn malta_unit_lf_interior(data: &[f32], center: usize, stride: usize) -> f32 {
     let xs = stride;
     let xs2 = xs + xs;
     let xs3 = xs2 + xs;
@@ -914,7 +908,7 @@ pub(crate) fn malta_unit_lf_interior(data: &[f32], center: usize, stride: usize)
 /// Processes pixels at center, center+1, ..., center+7 simultaneously.
 #[cfg(target_arch = "x86_64")]
 #[archmage::rite]
-pub(crate) fn malta_unit_interior_8x_v3(
+fn malta_unit_interior_8x_v3(
     token: archmage::X64V3Token,
     data: &[f32],
     center: usize,
@@ -1140,7 +1134,7 @@ pub(crate) fn malta_unit_interior_8x_v3(
 /// SIMD LF Malta filter for 8 consecutive interior pixels.
 #[cfg(target_arch = "x86_64")]
 #[archmage::rite]
-pub(crate) fn malta_unit_lf_interior_8x_v3(
+fn malta_unit_lf_interior_8x_v3(
     token: archmage::X64V3Token,
     data: &[f32],
     center: usize,
@@ -1481,7 +1475,7 @@ fn malta_diff_map_dispatch_v3(
 /// Processes pixels at center, center+1, ..., center+15 simultaneously.
 #[cfg(target_arch = "x86_64")]
 #[archmage::rite]
-pub(crate) fn malta_unit_interior_16x_v4(
+fn malta_unit_interior_16x_v4(
     token: archmage::X64V4Token,
     data: &[f32],
     center: usize,
@@ -1707,7 +1701,7 @@ pub(crate) fn malta_unit_interior_16x_v4(
 /// SIMD LF Malta filter for 16 consecutive interior pixels (AVX-512).
 #[cfg(target_arch = "x86_64")]
 #[archmage::rite]
-pub(crate) fn malta_unit_lf_interior_16x_v4(
+fn malta_unit_lf_interior_16x_v4(
     token: archmage::X64V4Token,
     data: &[f32],
     center: usize,
@@ -1868,7 +1862,7 @@ fn malta_diff_map_dispatch_v4(
 /// NEON HF Malta filter for 8 consecutive interior pixels (polyfilled 2×f32x4).
 #[cfg(target_arch = "aarch64")]
 #[archmage::rite]
-pub(crate) fn malta_unit_interior_8x_neon(
+fn malta_unit_interior_8x_neon(
     token: archmage::NeonToken,
     data: &[f32],
     center: usize,
@@ -2089,7 +2083,7 @@ pub(crate) fn malta_unit_interior_8x_neon(
 /// NEON LF Malta filter for 8 consecutive interior pixels (polyfilled 2×f32x4).
 #[cfg(target_arch = "aarch64")]
 #[archmage::rite]
-pub(crate) fn malta_unit_lf_interior_8x_neon(
+fn malta_unit_lf_interior_8x_neon(
     token: archmage::NeonToken,
     data: &[f32],
     center: usize,
@@ -2249,7 +2243,7 @@ fn malta_diff_map_dispatch_neon(
 /// WASM SIMD128 HF Malta filter for 8 consecutive interior pixels (polyfilled 2×v128).
 #[cfg(target_arch = "wasm32")]
 #[archmage::rite]
-pub(crate) fn malta_unit_interior_8x_wasm128(
+fn malta_unit_interior_8x_wasm128(
     token: archmage::Wasm128Token,
     data: &[f32],
     center: usize,
@@ -2470,7 +2464,7 @@ pub(crate) fn malta_unit_interior_8x_wasm128(
 /// WASM SIMD128 LF Malta filter for 8 consecutive interior pixels (polyfilled 2×v128).
 #[cfg(target_arch = "wasm32")]
 #[archmage::rite]
-pub(crate) fn malta_unit_lf_interior_8x_wasm128(
+fn malta_unit_lf_interior_8x_wasm128(
     token: archmage::Wasm128Token,
     data: &[f32],
     center: usize,

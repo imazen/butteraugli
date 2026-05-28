@@ -102,14 +102,6 @@ pub(crate) mod blur;
 #[allow(dead_code)]
 pub(crate) mod blur_iir;
 
-// W44-PHASE3-B7d Day 2 — strip-tiled variants of the blur kernels.
-// Same `internals` gating as `blur` so external tests can drive parity.
-#[cfg(feature = "internals")]
-pub mod blur_strip;
-#[cfg(not(feature = "internals"))]
-#[allow(dead_code)]
-pub(crate) mod blur_strip;
-
 #[cfg(feature = "internals")]
 pub mod consts;
 #[cfg(not(feature = "internals"))]
@@ -129,14 +121,6 @@ pub mod malta;
 #[cfg(not(feature = "internals"))]
 pub(crate) mod malta;
 
-// W44-PHASE3-B7d Day 3 — strip-tiled variants of malta_diff_map and the
-// pointwise l2_diff family. Same `internals` gating as `malta` / `blur_strip`.
-#[cfg(feature = "internals")]
-pub mod malta_strip;
-#[cfg(not(feature = "internals"))]
-#[allow(dead_code)]
-pub(crate) mod malta_strip;
-
 #[cfg(feature = "internals")]
 pub mod mask;
 #[cfg(not(feature = "internals"))]
@@ -152,19 +136,16 @@ pub(crate) mod opsin;
 pub mod precompute;
 pub use precompute::ButteraugliReference;
 
+mod strip;
+pub use strip::{
+    ButteraugliStripConfig, HALO_ROWS_DEFAULT, MIN_STRIP_HEIGHT, butteraugli_linear_strip,
+    butteraugli_linear_strip_with_config, butteraugli_strip, butteraugli_strip_with_config,
+};
+
 #[cfg(feature = "internals")]
 pub mod psycho;
 #[cfg(not(feature = "internals"))]
 pub(crate) mod psycho;
-
-// W44-PHASE3-B7d Day 4 — strip-tiled variants of the psycho + mask kernels
-// plus the separate_frequencies cascade orchestrator. Same `internals` gating
-// as `psycho` / `mask` so external tests can drive parity.
-#[cfg(feature = "internals")]
-pub mod psycho_strip;
-#[cfg(not(feature = "internals"))]
-#[allow(dead_code)]
-pub(crate) mod psycho_strip;
 
 // Used by cpp-parity tests (excluded from published crate)
 #[allow(dead_code)]

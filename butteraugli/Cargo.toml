@@ -42,27 +42,13 @@ avx512 = ["archmage/avx512", "magetypes/avx512"]
 # FIR path. Score deviation vs `butteraugli_main` reference is small but non-zero —
 # unsuitable for parity-sensitive workflows. Off by default. See blur_iir.rs.
 iir-blur = []
-# Expose `ButteraugliReference::compare_linear_planar_strip_into` and the
-# associated `combine_channels_to_diffmap_strip_driver` orchestrator. The
-# W44-PHASE3-B7d Day 5 strip-tile composition: produces BIT-IDENTICAL output to
-# `compare_linear_planar_into` (verified by `tests/strip_parity_50_images.rs`)
-# but runs 1.4-9.6% SLOWER at every tested size on AMD Zen 4 (Day 6 bench
-# `benchmarks/w44_phase3_b7d_day6_2026-05-24.{tsv,meta}`). Default OFF — the
-# production jxl-encoder buttloop must never accidentally call the strip path.
-# Kept as framework-only scaffolding for any future true-tile refactor that
-# replaces Days 2-4's padded-scratch delegation with mirror-reflect row-window
-# reads. See `precompute::compare_linear_planar_strip_into` docstring for the
-# negative-result narrative. The strip-view primitives on `ImageF` /
-# `Image3F` / `PsychoImage` are NOT gated — they are generally useful borrow
-# APIs and have other test-side consumers.
-strip-tile-butteraugli = []
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
 # Enable via: cargo test --features cpp-parity (after setting up local path in .cargo/config.toml)
 # cpp-parity = ["dep:jpegli-internals-sys"]
 
 [lints.rust]
 # cpp-parity tests check for a feature not published to crates.io
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cpp-parity", "avx512", "rayon", "iir-blur", "strip-tile-butteraugli"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cpp-parity", "avx512", "rayon", "iir-blur"))'] }
 
 [dependencies]
 archmage.workspace = true

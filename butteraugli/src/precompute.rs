@@ -32,21 +32,6 @@ use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraug
 use crate::psycho::{PsychoImage, separate_frequencies};
 use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite_f32};
 
-// W44-PHASE3-B7d Day 6: per-stage attribution timing.
-// Gated by `JXL_B7D_STAGE_TIMING=1` at runtime so it's free unless the bench
-// asks for it. Writes one line per stage per call to stderr.
-#[doc(hidden)]
-fn b7d_stage_timing_enabled() -> bool {
-    std::env::var_os("JXL_B7D_STAGE_TIMING").is_some()
-}
-
-#[doc(hidden)]
-fn b7d_log_stage(path: &str, stage: &str, t: std::time::Instant) -> std::time::Instant {
-    let elapsed_us = t.elapsed().as_nanos() as f64 / 1_000.0;
-    eprintln!("B7D_STAGE\t{path}\t{stage}\t{elapsed_us:.3}");
-    std::time::Instant::now()
-}
-
 /// Minimum image dimension for multi-resolution processing.
 const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
 
@@ -92,6 +77,14 @@ pub struct ButteraugliReference {
     params: ButteraugliParams,
     /// Persistent buffer pool — reused across compare calls to avoid re-allocation
     pool: BufferPool,
+    /// Interleaved linear-RGB source (for `compare_strip`).
+    ///
+    /// `None` when the reference was constructed via
+    /// `new_linear_planar` (planar-only path that doesn't retain the
+    /// interleaved source). `Some(buf)` for `new` and `new_linear`
+    /// constructions. The strip walker requires contiguous
+    /// interleaved RGB so it can slice strip-shaped windows.
+    linear_source: Option<Vec<f32>>,
 }
 
 impl Clone for ButteraugliReference {
@@ -103,6 +96,7 @@ impl Clone for ButteraugliReference {
             height: self.height,
             params: self.params.clone(),
             pool: BufferPool::new(), // fresh empty pool for the clone
+            linear_source: self.linear_source.clone(),
         }
     }
 }
@@ -258,6 +252,7 @@ impl ButteraugliReference {
             height,
             params,
             pool: reuse_pool,
+            linear_source: Some(rgb.to_vec()),
         })
     }
 
@@ -377,6 +372,11 @@ impl ButteraugliReference {
             height,
             params,
             pool: reuse_pool,
+            // Planar constructor doesn't have interleaved source;
+            // the strip walker will surface a clear error if
+            // compare_strip is called on a planar-constructed
+            // reference.
+            linear_source: None,
         })
     }
 
@@ -535,86 +535,20 @@ impl ButteraugliReference {
         Ok((score, pnorm_3))
     }
 
-    /// Strip-tiled variant of [`compare_linear_planar_into`].
+    /// Interleaved linear-RGB source data, if retained.
     ///
-    /// **Framework-only, feature-gated, default OFF.** This path is gated
-    /// behind `feature = "strip-tile-butteraugli"` because the Day 6 honest
-    /// bench measured it 1.4-9.6% SLOWER than the full path at every tested
-    /// size on AMD Zen 4 — the RFC's projected -35 to -47% wall reduction did
-    /// NOT materialize. See `benchmarks/w44_phase3_b7d_day6_2026-05-24.meta`
-    /// and the closing CLAUDE.md Investigation Note for the negative-result
-    /// analysis. Production jxl-encoder buttloop must NEVER route through
-    /// this path; it stays available as scaffolding for any future true-tile
-    /// refactor that replaces Days 2-4's padded-scratch delegation with
-    /// mirror-reflect row-window reads.
+    /// `Some(buf)` when the reference was built via `new` or
+    /// `new_linear`; `None` for `new_linear_planar` (the planar
+    /// constructor does not retain the interleaved source).
     ///
-    /// Internal pipeline composes the existing primitives in strip form so that
-    /// the final pixel-fusion stage runs in `STRIP_ROWS`-row batches, while the
-    /// upstream stages (opsin → separate_frequencies → malta → mask) run on the
-    /// full image. Returns a scalar score + diffmap BIT-IDENTICAL to
-    /// `compare_linear_planar_into` (verified by
-    /// `tests/strip_parity_50_images.rs`, also gated behind this feature).
-    ///
-    /// # W44-PHASE3-B7d arc disposition
-    ///
-    /// The CLOSED B7d arc shipped Days 1-5 framework + tests, Day 6 honest
-    /// negative bench, Day 7 feature-gate framework-only. The Days 2-4 strip
-    /// primitives (`separate_frequencies_strip`, `malta_diff_map_strip`,
-    /// `fuzzy_erosion_strip`, etc.) all use parent-height padded scratch
-    /// internally to maintain byte-identity at non-edge strip boundaries —
-    /// so tiling them is byte-identical but not perf-faster, because the
-    /// padded-scratch delegation defeats the cache-locality benefit that
-    /// motivated the RFC. Only Stage 3 (combine_channels, halo=0, pointwise)
-    /// actually tiles, and it accounts for only ~3.3% of total wall.
-    ///
-    /// **Tile-able**: per-pixel fused combine_channels + DC diff math (Stage 3
-    /// here; halo = 0, pointwise; strip tiling is byte-identical by
-    /// construction).
-    /// **NOT tile-able byte-identical**: opsin / separate_frequencies / malta /
-    /// mask. Their internal kernels have halo > 0 with mirror-reflect
-    /// boundaries that diverge under naive strip tiling (would require
-    /// padded-to-parent scratch — equivalent to running full-image).
-    /// **Global**: final p-norm score reduction (max + p3 + p6 + p12).
-    ///
-    /// On entry, `diffmap_out` may be any size; it is resized to
-    /// `self.width() * self.height()` and overwritten with the per-pixel
-    /// butteraugli diffmap.
-    ///
-    /// # Errors
-    /// Same as [`compare_linear_planar`].
-    #[cfg(feature = "strip-tile-butteraugli")]
-    pub fn compare_linear_planar_strip_into(
-        &self,
-        r: &[f32],
-        g: &[f32],
-        b: &[f32],
-        stride: usize,
-        diffmap_out: &mut Vec<f32>,
-    ) -> Result<(f64, f64), ButteraugliError> {
-        let min_size =
-            stride
-                .checked_mul(self.height)
-                .ok_or(ButteraugliError::DimensionOverflow {
-                    width: self.width,
-                    height: self.height,
-                })?;
-        if r.len() < min_size || g.len() < min_size || b.len() < min_size {
-            return Err(ButteraugliError::InvalidBufferSize {
-                expected: min_size,
-                actual: r.len().min(g.len()).min(b.len()),
-            });
-        }
-
-        check_finite_f32(&r[..min_size], "compare planar r")?;
-        check_finite_f32(&g[..min_size], "compare planar g")?;
-        check_finite_f32(&b[..min_size], "compare planar b")?;
-
-        let (score, pnorm_3) =
-            self.compare_linear_planar_strip_impl_into(r, g, b, stride, diffmap_out);
-        if !score.is_finite() {
-            return Err(ButteraugliError::NonFiniteResult);
-        }
-        Ok((score, pnorm_3))
+    /// `#[doc(hidden)]` because the buffer's layout is an
+    /// implementation detail shared between the precompute and
+    /// strip modules. External callers should not rely on the
+    /// signature.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn source_linear_rgb(&self) -> Option<&[f32]> {
+        self.linear_source.as_deref()
     }
 
     /// Width of the reference image.
@@ -795,11 +729,9 @@ impl ButteraugliReference {
         let full_mask = &self.full.mask;
         let half_ref = self.half.as_ref();
         let pool = &self.pool;
-        let stage_timing = b7d_stage_timing_enabled();
 
         let (mut diffmap, sub_diffmap) = maybe_join(
             || {
-                let mut t = if stage_timing { std::time::Instant::now() } else { std::time::Instant::now() };
                 let xyb2 = linear_planar_to_xyb_butteraugli(
                     r,
                     g,
@@ -810,12 +742,9 @@ impl ButteraugliReference {
                     intensity_target,
                     pool,
                 );
-                if stage_timing { t = b7d_log_stage("full", "1_opsin", t); }
                 let ps2 = separate_frequencies(&xyb2, pool);
-                if stage_timing { t = b7d_log_stage("full", "2_separate_freqs", t); }
                 let dm =
                     compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
-                if stage_timing { let _ = b7d_log_stage("full", "3_compute_diffmap", t); }
                 ps2.recycle(pool);
                 xyb2.recycle(pool);
                 dm
@@ -852,15 +781,12 @@ impl ButteraugliReference {
             },
         );
 
-        let mut t4 = std::time::Instant::now();
         if let Some(sub) = sub_diffmap {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
             sub.recycle(pool);
         }
-        if stage_timing { t4 = b7d_log_stage("full", "3b_add_supersampled", t4); }
 
         let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
-        if stage_timing { let _ = b7d_log_stage("full", "4_score", t4); }
 
         // B7a: copy into caller's Vec (or move via owned buf if tight-stride)
         // then recycle the internal ImageF.data back to the pool. The caller's
@@ -877,159 +803,6 @@ impl ButteraugliReference {
             dst.copy_from_slice(&diffmap.data()[..needed]);
         } else {
             // Padded — copy row by row to strip stride padding.
-            for y in 0..height {
-                let src_row = diffmap.row(y);
-                let dst_row = &mut dst[y * width..(y + 1) * width];
-                dst_row.copy_from_slice(src_row);
-            }
-        }
-        diffmap.recycle(pool);
-
-        (score, pnorm_3)
-    }
-
-    /// Strip-tiled internal implementation (W44-PHASE3-B7d Day 5).
-    ///
-    /// Drives the existing full-image pipeline through Stage 1 + Stage 2
-    /// (opsin → separate_frequencies → malta → mask), then runs Stage 3
-    /// (combine_channels + DC diff math) in `STRIP_ROWS`-row batches and
-    /// writes per-strip diffmap rows into the caller's Vec. Stage 3 is
-    /// strict-pointwise (halo = 0), so strip tiling is byte-identical by
-    /// construction. The strip path also exercises the
-    /// `combine_channels_to_diffmap_strip_into` driver below which is the
-    /// composition-proof callable for Day 6+ deeper tiling experiments.
-    ///
-    /// **Feature-gated** (`strip-tile-butteraugli`, default OFF) per Day 7
-    /// arc-close — see public-API docstring on `compare_linear_planar_strip_into`.
-    #[cfg(feature = "strip-tile-butteraugli")]
-    fn compare_linear_planar_strip_impl_into(
-        &self,
-        r: &[f32],
-        g: &[f32],
-        b: &[f32],
-        stride: usize,
-        diffmap_out: &mut Vec<f32>,
-    ) -> (f64, f64) {
-        let intensity_target = self.params.intensity_target();
-        let width = self.width;
-        let height = self.height;
-        let params = &self.params;
-        let full_psycho = &self.full.psycho;
-        let full_mask = &self.full.mask;
-        let half_ref = self.half.as_ref();
-        let pool = &self.pool;
-        let stage_timing = b7d_stage_timing_enabled();
-
-        // Stage 1 + Stage 2: opsin + separate_frequencies + malta + mask on the
-        // full image (per current architecture — see method docstring for why
-        // these stages are not tiled byte-identical at Day 5).
-        let (full_intermediates, sub_diffmap) = maybe_join(
-            || {
-                let mut t = std::time::Instant::now();
-                let xyb2 = linear_planar_to_xyb_butteraugli(
-                    r,
-                    g,
-                    b,
-                    width,
-                    height,
-                    stride,
-                    intensity_target,
-                    pool,
-                );
-                if stage_timing { t = b7d_log_stage("strip", "1_opsin", t); }
-                let ps2 = separate_frequencies(&xyb2, pool);
-                if stage_timing { t = b7d_log_stage("strip", "2a_separate_freqs", t); }
-                // Compute malta + l2 error maps (same as compute_psycho_diff_malta).
-                let mut block_diff_ac = compute_psycho_diff_malta(
-                    full_psycho,
-                    &ps2,
-                    params.hf_asymmetry(),
-                    params.xmul(),
-                    pool,
-                );
-                if stage_timing { t = b7d_log_stage("strip", "2b_malta", t); }
-                // Apply distorted-side mask correction (writes into ac plane 1).
-                crate::mask::apply_mask_correction_precomputed(
-                    full_mask,
-                    &ps2.hf,
-                    &ps2.uhf,
-                    Some(block_diff_ac.plane_mut(1)),
-                    pool,
-                );
-                if stage_timing { let _ = b7d_log_stage("strip", "2c_mask_correction", t); }
-                (xyb2, ps2, block_diff_ac)
-            },
-            || {
-                half_ref.map(|half| {
-                    let (sub_r, sub_g, sub_b, sw, sh) =
-                        subsample_planar_rgb_2x(r, g, b, width, height, stride, pool);
-                    let sub_xyb = linear_planar_to_xyb_butteraugli(
-                        &sub_r,
-                        &sub_g,
-                        &sub_b,
-                        sw,
-                        sh,
-                        sw,
-                        intensity_target,
-                        pool,
-                    );
-                    pool.put(sub_r);
-                    pool.put(sub_g);
-                    pool.put(sub_b);
-                    let sub_ps = separate_frequencies(&sub_xyb, pool);
-                    let dm = compute_diffmap_with_precomputed(
-                        &half.psycho,
-                        &sub_ps,
-                        &half.mask,
-                        params,
-                        pool,
-                    );
-                    sub_ps.recycle(pool);
-                    sub_xyb.recycle(pool);
-                    dm
-                })
-            },
-        );
-        let (xyb2, ps2, mut block_diff_ac) = full_intermediates;
-
-        // Stage 3 tile-driven: combine_channels + DC diff into a pool-backed
-        // full-image diffmap, but driven row-strip at a time.
-        let mut t3 = std::time::Instant::now();
-        let mut diffmap =
-            combine_channels_to_diffmap_strip_driver(
-                &full_mask.mask,
-                &full_psycho.lf,
-                &ps2.lf,
-                &block_diff_ac,
-                params.xmul(),
-                pool,
-            );
-        if stage_timing { t3 = b7d_log_stage("strip", "3_combine_channels_tiled", t3); }
-
-        block_diff_ac.recycle(pool);
-        ps2.recycle(pool);
-        xyb2.recycle(pool);
-
-        if let Some(sub) = sub_diffmap {
-            add_supersampled_2x(&sub, 0.5, &mut diffmap);
-            sub.recycle(pool);
-        }
-        if stage_timing { t3 = b7d_log_stage("strip", "3b_add_supersampled", t3); }
-
-        // Stage 4 global reduction: score + p-norm.
-        let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
-        if stage_timing { let _ = b7d_log_stage("strip", "4_score", t3); }
-
-        // Copy into caller's Vec, mirroring `compare_linear_planar_impl_into`.
-        let needed = width * height;
-        if diffmap_out.capacity() < needed {
-            diffmap_out.reserve(needed - diffmap_out.len());
-        }
-        diffmap_out.resize(needed, 0.0);
-        let dst = &mut diffmap_out[..needed];
-        if diffmap.stride() == width {
-            dst.copy_from_slice(&diffmap.data()[..needed]);
-        } else {
             for y in 0..height {
                 let src_row = diffmap.row(y);
                 let dst_row = &mut dst[y * width..(y + 1) * width];
@@ -1399,107 +1172,6 @@ fn combine_channels_to_diffmap_fused(
 
             out[x] = (dc_masked + ac_masked).sqrt();
         }
-    }
-
-    diffmap
-}
-
-/// Strip-tiled driver for the per-pixel fuse used in the strip-tiled compare
-/// path (W44-PHASE3-B7d Day 5).
-///
-/// Calls `combine_channels_to_diffmap_fused` once on a per-strip scratch
-/// `block_diff_ac` slice (zero-halo per-pixel pointwise math; the
-/// autoversioned full-image kernel is the same byte-identical SIMD path used
-/// by the non-strip variant), then copies the per-strip diffmap rows back
-/// into the full-image diffmap.
-///
-/// Returns the full-image diffmap. Output is BIT-IDENTICAL to the single
-/// `combine_channels_to_diffmap_fused` call used by the non-strip path
-/// because the kernel is purely pointwise and the strip's input slice is the
-/// same memory the full-image kernel would read at those rows.
-///
-/// # Strip size selection
-///
-/// Day 5 uses `STRIP_ROWS = 16`. The Day 5 wall-clock target is "≤ 1.5×
-/// full-buffer at 1024²" (sanity gate, not perf claim); Day 6 measured the
-/// strip driver runs ~3.3× SLOWER than the single full-image kernel call
-/// because of per-strip pool ops + copy-in + copy-out (see Day 6 bench
-/// meta). Day 7 disposition: framework-only, gated behind
-/// `strip-tile-butteraugli`.
-#[cfg(feature = "strip-tile-butteraugli")]
-fn combine_channels_to_diffmap_strip_driver(
-    mask: &ImageF,
-    lf1: &Image3F,
-    lf2: &Image3F,
-    block_diff_ac: &Image3F,
-    xmul: f32,
-    pool: &BufferPool,
-) -> ImageF {
-    // Day 5 strip configuration. See module docstring.
-    const STRIP_ROWS: usize = 16;
-
-    let width = mask.width();
-    let height = mask.height();
-    let mut diffmap = ImageF::from_pool_dirty(width, height, pool);
-
-    // Drive the existing autoversioned per-pixel kernel one strip at a time
-    // by constructing a per-strip Image3F slice for block_diff_ac and a
-    // per-strip ImageF slice for mask, lf1, lf2, then calling the FULL
-    // existing kernel on those slices. The existing kernel is purely
-    // pointwise (halo = 0) so the slice approach is byte-identical to the
-    // single-call full-image kernel.
-    //
-    // To minimise per-strip copy overhead, we build the slice scratch
-    // images from the pool and copy ONLY the strip's rows in/out, then run
-    // the existing `combine_channels_to_diffmap_fused` (which is the
-    // autoversioned SIMD path) on the strip scratch.
-    let mut y = 0;
-    while y < height {
-        let strip_h = STRIP_ROWS.min(height - y);
-
-        // Per-strip scratch for the 6 input image bands + mask.
-        let mut s_mask = ImageF::from_pool_dirty(width, strip_h, pool);
-        let mut s_lf1 = Image3F::from_pool_dirty(width, strip_h, pool);
-        let mut s_lf2 = Image3F::from_pool_dirty(width, strip_h, pool);
-        let mut s_ac = Image3F::from_pool_dirty(width, strip_h, pool);
-
-        for ly in 0..strip_h {
-            let gy = y + ly;
-            s_mask.row_mut(ly).copy_from_slice(mask.row(gy));
-            for p in 0..3 {
-                s_lf1
-                    .plane_mut(p)
-                    .row_mut(ly)
-                    .copy_from_slice(lf1.plane(p).row(gy));
-                s_lf2
-                    .plane_mut(p)
-                    .row_mut(ly)
-                    .copy_from_slice(lf2.plane(p).row(gy));
-                s_ac.plane_mut(p)
-                    .row_mut(ly)
-                    .copy_from_slice(block_diff_ac.plane(p).row(gy));
-            }
-        }
-
-        // Run the existing autoversioned per-pixel kernel on the strip
-        // scratch. Byte-identical to the full-image call because the kernel
-        // is purely pointwise (no row-to-row dependencies).
-        let s_diffmap =
-            combine_channels_to_diffmap_fused(&s_mask, &s_lf1, &s_lf2, &s_ac, xmul, pool);
-
-        // Copy strip rows into the full-image diffmap.
-        for ly in 0..strip_h {
-            let gy = y + ly;
-            diffmap.row_mut(gy).copy_from_slice(s_diffmap.row(ly));
-        }
-
-        s_mask.recycle(pool);
-        s_lf1.recycle(pool);
-        s_lf2.recycle(pool);
-        s_ac.recycle(pool);
-        s_diffmap.recycle(pool);
-
-        y += strip_h;
     }
 
     diffmap
@@ -2199,15 +1871,26 @@ mod tests {
     fn test_compare_linear_planar_iir_determinism_repro() {
         let width = 48;
         let height = 48;
-        let r1: Vec<f32> = (0..width * height).map(|i| ((i % 32) as f32) / 32.0).collect();
-        let g1: Vec<f32> = (0..width * height).map(|i| ((i % 16) as f32) / 16.0).collect();
-        let b1: Vec<f32> = (0..width * height).map(|i| ((i % 8) as f32) / 8.0).collect();
+        let r1: Vec<f32> = (0..width * height)
+            .map(|i| ((i % 32) as f32) / 32.0)
+            .collect();
+        let g1: Vec<f32> = (0..width * height)
+            .map(|i| ((i % 16) as f32) / 16.0)
+            .collect();
+        let b1: Vec<f32> = (0..width * height)
+            .map(|i| ((i % 8) as f32) / 8.0)
+            .collect();
         let r2: Vec<f32> = r1.iter().map(|&v| (v * 0.97).min(1.0)).collect();
         let g2: Vec<f32> = g1.iter().map(|&v| (v * 0.97).min(1.0)).collect();
         let b2: Vec<f32> = b1.iter().map(|&v| (v * 0.97).min(1.0)).collect();
 
         let reference = ButteraugliReference::new_linear_planar(
-            &r1, &g1, &b1, width, height, width,
+            &r1,
+            &g1,
+            &b1,
+            width,
+            height,
+            width,
             ButteraugliParams::default().with_compute_diffmap(true),
         )
         .expect("new reference");
