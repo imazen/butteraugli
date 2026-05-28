@@ -521,16 +521,16 @@ impl ButteraugliReference {
         // `Linear`-stored references hand back a clone. Allocated once
         // per call and dropped when the strip walk completes — no
         // persistent linear retention.
-        let linear1 = self.source_linear_rgb_owned().ok_or(
-            ButteraugliError::InvalidParameter {
+        let linear1 = self
+            .source_linear_rgb_owned()
+            .ok_or(ButteraugliError::InvalidParameter {
                 name: "reference",
                 value: 0.0,
                 reason: "compare_strip requires a reference built via \
                      ButteraugliReference::new or new_linear (the planar \
                      constructor does not retain interleaved source data, \
                      and `drop_strip_source` was not previously called)",
-            },
-        )?;
+            })?;
         let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
         let linear2: Vec<f32> = rgb.iter().map(|&v| lut[v as usize]).collect();
 
@@ -586,16 +586,16 @@ impl ButteraugliReference {
         }
         check_finite_f32(rgb, "compare_linear_strip rgb")?;
         // 0.9.4: see compare_strip for source-materialisation rationale.
-        let linear1 = self.source_linear_rgb_owned().ok_or(
-            ButteraugliError::InvalidParameter {
+        let linear1 = self
+            .source_linear_rgb_owned()
+            .ok_or(ButteraugliError::InvalidParameter {
                 name: "reference",
                 value: 0.0,
                 reason: "compare_linear_strip requires a reference built via \
                      ButteraugliReference::new or new_linear (the planar \
                      constructor does not retain interleaved source data, \
                      and `drop_strip_source` was not previously called)",
-            },
-        )?;
+            })?;
         run_strip_walker_linear(
             &linear1,
             rgb,
