@@ -17,13 +17,8 @@ exclude = [
     "comparison_outputs/",
     # Examples are local dev tools, not useful to crate consumers
     "examples/",
-    # Tests that require jpegli-internals-sys (cpp-parity feature, not on crates.io)
-    "tests/cpp_parity.rs",
-    "tests/cpp_fuzz.rs",
-    "tests/intermediate_values.rs",
-    "tests/step_by_step_comparison.rs",
-    "tests/reference_parity.rs",
-    "tests/capture_cpp_scores.rs",
+    # Tests are not useful to crate consumers; declarations stay in Cargo.toml for local builds
+    "tests/",
 ]
 
 [features]

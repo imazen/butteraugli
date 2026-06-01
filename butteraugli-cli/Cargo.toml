@@ -11,6 +11,10 @@ description = "Command-line tool for butteraugli perceptual image quality compar
 keywords = ["image", "quality", "perceptual", "butteraugli", "cli"]
 categories = ["command-line-utilities", "multimedia::images"]
 readme = "README.md"
+exclude = [
+    # Tests are not useful to crate consumers; declarations stay in Cargo.toml for local builds
+    "tests/",
+]
 
 [[bin]]
 name = "butteraugli"

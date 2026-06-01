@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Exclude `tests/` directories from published packages for both `butteraugli` and `butteraugli-cli`; local `cargo test` is unaffected
+
 ## [0.9.4] - 2026-05-28
 
 ### Fixed
