@@ -160,6 +160,62 @@ pub mod reference_data;
 pub use imgref::{Img, ImgRef, ImgVec};
 pub use rgb::{RGB, RGB8};
 
+/// Reflect-101 index map (OpenCV `BORDER_REFLECT_101`): fold an
+/// out-of-range index `i` back into `[0, n)` by mirroring at the borders
+/// without repeating the edge sample. Identity for `i < n`, so the
+/// original samples land at `[0, n)` after padding; `n <= 1` collapses
+/// to 0 (a single row/column replicates).
+#[inline]
+fn reflect_index(i: usize, n: usize) -> usize {
+    if n <= 1 {
+        return 0;
+    }
+    let period = 2 * (n - 1);
+    let mut k = i % period;
+    if k >= n {
+        k = period - k;
+    }
+    k
+}
+
+/// Reflect(mirror)-pad an `ImgRef<T>` up to `min` px on each axis so
+/// butteraugli can score images below its 8×8 floor (the blur + edge
+/// passes need ≥8 px). Returns `None` when the image is already ≥ `min`
+/// on both axes (the caller scores the borrow directly) or is empty. The
+/// original pixels occupy the top-left `w × h` region of the result, so
+/// a diffmap computed on the padded image can be cropped back with
+/// [`crop_diffmap`].
+fn reflect_pad_to_min<T: Copy>(img: ImgRef<T>, min: usize) -> Option<ImgVec<T>> {
+    let (w, h) = (img.width(), img.height());
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let (pw, ph) = (w.max(min), h.max(min));
+    if pw == w && ph == h {
+        return None;
+    }
+    let rows: Vec<&[T]> = img.rows().collect();
+    let mut out = Vec::with_capacity(pw * ph);
+    for y in 0..ph {
+        let srow = rows[reflect_index(y, h)];
+        for x in 0..pw {
+            out.push(srow[reflect_index(x, w)]);
+        }
+    }
+    Some(Img::new(out, pw, ph))
+}
+
+/// Crop a per-pixel diffmap back to the logical `w × h` (top-left
+/// sub-rectangle) after the inputs were reflect-padded by
+/// [`reflect_pad_to_min`]. No-op when already the requested size.
+fn crop_diffmap(dm: ImgVec<f32>, w: usize, h: usize) -> ImgVec<f32> {
+    if dm.width() == w && dm.height() == h {
+        return dm;
+    }
+    let (buf, cw, ch) = dm.as_ref().sub_image(0, 0, w, h).to_contiguous_buf();
+    Img::new(buf.into_owned(), cw, ch)
+}
+
 /// Error type for butteraugli operations.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -568,7 +624,8 @@ pub fn butteraugli(
     let (w1, h1) = (img1.width(), img1.height());
     let (w2, h2) = (img2.width(), img2.height());
 
-    if w1 < 8 || h1 < 8 {
+    // Empty images can't be scored or reflect-padded.
+    if w1 == 0 || h1 == 0 {
         return Err(ButteraugliError::ImageTooSmall {
             width: w1,
             height: h1,
@@ -591,7 +648,18 @@ pub fn butteraugli(
         },
     )?;
 
-    let result = diff::compute_butteraugli_imgref(img1, img2, params, params.compute_diffmap);
+    // Reflect(mirror)-pad sub-8px inputs up to the 8×8 floor so a small
+    // image scores down to 1×1 instead of erroring. NO-OP at ≥8px
+    // (scores the borrows directly); the diffmap is cropped back to the
+    // logical extent below.
+    let pad1 = reflect_pad_to_min(img1, 8);
+    let pad2 = reflect_pad_to_min(img2, 8);
+    let (i1, i2) = match (pad1.as_ref(), pad2.as_ref()) {
+        (Some(a), Some(b)) => (a.as_ref(), b.as_ref()),
+        _ => (img1, img2),
+    };
+
+    let result = diff::compute_butteraugli_imgref(i1, i2, params, params.compute_diffmap);
 
     if !result.score.is_finite() {
         return Err(ButteraugliError::NonFiniteResult);
@@ -600,7 +668,10 @@ pub fn butteraugli(
     Ok(ButteraugliResult {
         score: result.score,
         pnorm_3: result.pnorm_3,
-        diffmap: result.diffmap.map(image::ImageF::into_imgvec),
+        diffmap: result
+            .diffmap
+            .map(image::ImageF::into_imgvec)
+            .map(|dm| crop_diffmap(dm, w1, h1)),
     })
 }
 
@@ -631,7 +702,8 @@ pub fn butteraugli_linear(
     let (w1, h1) = (img1.width(), img1.height());
     let (w2, h2) = (img2.width(), img2.height());
 
-    if w1 < 8 || h1 < 8 {
+    // Empty images can't be scored or reflect-padded.
+    if w1 == 0 || h1 == 0 {
         return Err(ButteraugliError::ImageTooSmall {
             width: w1,
             height: h1,
@@ -654,8 +726,17 @@ pub fn butteraugli_linear(
     check_finite_rgb_imgref(img1)?;
     check_finite_rgb_imgref(img2)?;
 
+    // Reflect(mirror)-pad sub-8px inputs up to the 8×8 floor (see
+    // `butteraugli`). NO-OP at ≥8px.
+    let pad1 = reflect_pad_to_min(img1, 8);
+    let pad2 = reflect_pad_to_min(img2, 8);
+    let (i1, i2) = match (pad1.as_ref(), pad2.as_ref()) {
+        (Some(a), Some(b)) => (a.as_ref(), b.as_ref()),
+        _ => (img1, img2),
+    };
+
     let result =
-        diff::compute_butteraugli_linear_imgref(img1, img2, params, params.compute_diffmap);
+        diff::compute_butteraugli_linear_imgref(i1, i2, params, params.compute_diffmap);
 
     if !result.score.is_finite() {
         return Err(ButteraugliError::NonFiniteResult);
@@ -664,7 +745,10 @@ pub fn butteraugli_linear(
     Ok(ButteraugliResult {
         score: result.score,
         pnorm_3: result.pnorm_3,
-        diffmap: result.diffmap.map(image::ImageF::into_imgvec),
+        diffmap: result
+            .diffmap
+            .map(image::ImageF::into_imgvec)
+            .map(|dm| crop_diffmap(dm, w1, h1)),
     })
 }
 
@@ -742,15 +826,36 @@ mod tests {
     }
 
     #[test]
-    fn test_too_small_dimensions() {
-        let pixels: Vec<RGB8> = vec![RGB8::new(0, 0, 0); 4 * 4];
+    fn test_sub_8_reflect_pads_instead_of_rejecting() {
+        // Sub-8px images are reflect(mirror)-padded up to the 8×8 floor
+        // and scored (down to 1×1) rather than rejected. An identical
+        // pair must still score ~0 like any identical pair.
+        let pixels: Vec<RGB8> = (0..4 * 4)
+            .map(|i| RGB8::new((i * 7) as u8, (i * 13) as u8, (i * 29) as u8))
+            .collect();
         let img = Img::new(pixels, 4, 4);
+        let same = butteraugli(img.as_ref(), img.as_ref(), &ButteraugliParams::default())
+            .expect("sub-8 image must score (reflect-padded), not reject");
+        assert!(
+            same.score < 0.001,
+            "identical 4×4 must score ~0, got {}",
+            same.score
+        );
 
-        let result = butteraugli(img.as_ref(), img.as_ref(), &ButteraugliParams::default());
-        assert!(matches!(
-            result,
-            Err(ButteraugliError::ImageTooSmall { .. })
-        ));
+        // 1×1 also scores instead of erroring.
+        let one = Img::new(vec![RGB8::new(10, 20, 30)], 1, 1);
+        let one_score = butteraugli(one.as_ref(), one.as_ref(), &ButteraugliParams::default())
+            .expect("1×1 image must score")
+            .score;
+        assert!(one_score < 0.001, "identical 1×1 must score ~0, got {one_score}");
+
+        // A real sub-8 difference produces a finite, non-trivial score.
+        let a = Img::new(vec![RGB8::new(0, 0, 0); 5 * 5], 5, 5);
+        let b = Img::new(vec![RGB8::new(255, 255, 255); 5 * 5], 5, 5);
+        let diff = butteraugli(a.as_ref(), b.as_ref(), &ButteraugliParams::default())
+            .expect("5×5 differing pair must score")
+            .score;
+        assert!(diff.is_finite() && diff > 0.0, "5×5 black/white score {diff}");
     }
 
     #[test]
