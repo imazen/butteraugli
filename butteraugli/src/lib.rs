@@ -22,7 +22,8 @@
 //! use imgref::Img;
 //! use rgb::RGB8;
 //!
-//! // Create two 8x8 RGB images (must be 8x8 minimum)
+//! // Create two 8x8 RGB images. Images smaller than 8x8 (down to 1x1)
+//! // are reflect(mirror)-padded up to the 8x8 floor and scored too.
 //! let width = 8;
 //! let height = 8;
 //! let pixels: Vec<RGB8> = (0..width * height)
@@ -39,10 +40,32 @@
 //! assert!(result.score < 0.01);
 //! ```
 //!
+//! ## Input scaling and `intensity_target`
+//!
+//! Butteraugli models absolute luminance. Input pixel values are mapped to
+//! nits (cd/m²) before the opsin stage:
+//!
+//! - [`butteraugli`] takes gamma-encoded sRGB u8; each channel is decoded
+//!   with the sRGB EOTF to linear `[0.0, 1.0]`.
+//! - [`butteraugli_linear`] takes linear RGB f32 directly.
+//!
+//! In both cases linear `1.0` is then scaled to
+//! [`ButteraugliParams::intensity_target`] nits (default `80.0`, the SDR
+//! convention used by libjxl's `butteraugli_main`). Linear values above
+//! `1.0` are accepted and map above `intensity_target` nits; for HDR
+//! content, scale your data so `1.0` is the mastering/display peak and set
+//! `intensity_target` to that peak in nits. Negative values are clamped to
+//! `0.0` inside the opsin stage; NaN/Inf inputs are rejected with
+//! [`ButteraugliError::NonFiniteResult`].
+//!
 //! ## Features
 //!
-//! - **`cli`**: Command-line tool (adds clap, image, serde_json)
-//! - **`internals`**: Expose internal modules for testing/benchmarking (unstable API)
+//! - **`rayon`** *(default)*: multi-threaded blur and Malta passes
+//! - **`avx512`** *(default)*: AVX-512 runtime dispatch (used only when the CPU supports it)
+//! - **`iir-blur`**: O(N) recursive Gaussian instead of FIR convolution — faster on
+//!   non-AVX-512 hardware but NOT score-parity with libjxl; off by default
+//! - **`unsafe-performance`**: unchecked indexing in hot loops (pre-validated ranges)
+//! - **`internals`**: expose internal modules for testing/benchmarking (unstable API)
 //!
 //! ## References
 //!
@@ -220,7 +243,15 @@ fn crop_diffmap(dm: ImgVec<f32>, w: usize, h: usize) -> ImgVec<f32> {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ButteraugliError {
-    /// Image is too small (minimum 8x8).
+    /// Image (or strip height) is below the supported minimum.
+    ///
+    /// [`butteraugli`] / [`butteraugli_linear`] return this only for empty
+    /// (zero-dimension) inputs — sub-8px images are reflect-padded and
+    /// scored. The strip API ([`butteraugli_strip`] and the
+    /// `ButteraugliReference::compare_*strip*` methods) returns it for
+    /// images smaller than 8×8 and for `strip_height <`
+    /// [`MIN_STRIP_HEIGHT`] (reported as `width = strip_height`,
+    /// `height = MIN_STRIP_HEIGHT`).
     #[non_exhaustive]
     ImageTooSmall {
         /// Image width.
@@ -284,7 +315,7 @@ impl std::fmt::Display for ButteraugliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ImageTooSmall { width, height } => {
-                write!(f, "image too small: {width}x{height} (minimum 8x8)")
+                write!(f, "image or strip too small: {width}x{height}")
             }
             Self::DimensionMismatch { w1, h1, w2, h2 } => {
                 write!(f, "image dimensions don't match: {w1}x{h1} vs {w2}x{h2}")
@@ -362,7 +393,15 @@ impl ButteraugliParams {
         Self::default()
     }
 
-    /// Sets the intensity target (display brightness in nits).
+    /// Sets the intensity target — the luminance in nits (cd/m²) that a
+    /// linear input value of `1.0` is mapped to before the opsin stage.
+    ///
+    /// Default is `80.0`, the SDR convention used by libjxl's
+    /// `butteraugli_main`. For HDR content, scale your linear input so
+    /// `1.0` is the mastering/display peak and set this to that peak in
+    /// nits (e.g. `250.0`, `1000.0`). Internally every linear RGB sample
+    /// is multiplied by this value, so it must be finite and positive
+    /// (checked by [`Self::validate`]).
     #[must_use]
     pub fn with_intensity_target(mut self, intensity_target: f32) -> Self {
         self.intensity_target = intensity_target;
@@ -586,7 +625,13 @@ impl ButteraugliResult {
 /// Computes butteraugli score between two sRGB images.
 ///
 /// This function accepts 8-bit sRGB data via `ImgRef<RGB8>` and internally converts
-/// to linear RGB for perceptual comparison.
+/// to linear RGB for perceptual comparison (linear `1.0` maps to
+/// [`ButteraugliParams::intensity_target`] nits — see the crate-level
+/// "Input scaling" notes).
+///
+/// Images smaller than 8×8 (down to 1×1) are reflect(mirror)-padded up to
+/// the 8×8 floor and scored; the returned diffmap is cropped back to the
+/// input dimensions.
 ///
 /// # Arguments
 /// * `img1` - First image (sRGB, supports stride via ImgRef)
@@ -599,7 +644,7 @@ impl ButteraugliResult {
 /// # Errors
 /// Returns an error if:
 /// - Image dimensions don't match
-/// - Images are smaller than 8x8 pixels
+/// - Either dimension is zero
 ///
 /// # Example
 /// ```rust
@@ -680,9 +725,21 @@ pub fn butteraugli(
 /// This function accepts linear RGB float data via `ImgRef<RGB<f32>>`.
 /// Use this for HDR content or when you already have linear RGB data.
 ///
+/// **Scaling contract:** linear `1.0` maps to
+/// [`ButteraugliParams::intensity_target`] nits (default `80.0` = SDR).
+/// Values above `1.0` are accepted and map proportionally above
+/// `intensity_target`; negatives are clamped to `0.0` in the opsin stage;
+/// NaN/Inf pixels are rejected with [`ButteraugliError::NonFiniteResult`].
+/// For HDR, scale your data so `1.0` is the mastering/display peak and set
+/// `intensity_target` to that peak in nits.
+///
+/// Images smaller than 8×8 (down to 1×1) are reflect(mirror)-padded up to
+/// the 8×8 floor and scored; the returned diffmap is cropped back to the
+/// input dimensions.
+///
 /// # Arguments
-/// * `img1` - First image (linear RGB, values in 0.0-1.0 range)
-/// * `img2` - Second image (linear RGB, values in 0.0-1.0 range)
+/// * `img1` - First image (linear RGB, `1.0` = `intensity_target` nits)
+/// * `img2` - Second image (linear RGB, `1.0` = `intensity_target` nits)
 /// * `params` - Comparison parameters
 ///
 /// # Returns
@@ -691,7 +748,8 @@ pub fn butteraugli(
 /// # Errors
 /// Returns an error if:
 /// - Image dimensions don't match
-/// - Images are smaller than 8x8 pixels
+/// - Either dimension is zero
+/// - Any input pixel is NaN or infinite
 pub fn butteraugli_linear(
     img1: ImgRef<RGB<f32>>,
     img2: ImgRef<RGB<f32>>,
@@ -735,8 +793,7 @@ pub fn butteraugli_linear(
         _ => (img1, img2),
     };
 
-    let result =
-        diff::compute_butteraugli_linear_imgref(i1, i2, params, params.compute_diffmap);
+    let result = diff::compute_butteraugli_linear_imgref(i1, i2, params, params.compute_diffmap);
 
     if !result.score.is_finite() {
         return Err(ButteraugliError::NonFiniteResult);
@@ -847,7 +904,10 @@ mod tests {
         let one_score = butteraugli(one.as_ref(), one.as_ref(), &ButteraugliParams::default())
             .expect("1×1 image must score")
             .score;
-        assert!(one_score < 0.001, "identical 1×1 must score ~0, got {one_score}");
+        assert!(
+            one_score < 0.001,
+            "identical 1×1 must score ~0, got {one_score}"
+        );
 
         // A real sub-8 difference produces a finite, non-trivial score.
         let a = Img::new(vec![RGB8::new(0, 0, 0); 5 * 5], 5, 5);
@@ -855,7 +915,10 @@ mod tests {
         let diff = butteraugli(a.as_ref(), b.as_ref(), &ButteraugliParams::default())
             .expect("5×5 differing pair must score")
             .score;
-        assert!(diff.is_finite() && diff > 0.0, "5×5 black/white score {diff}");
+        assert!(
+            diff.is_finite() && diff > 0.0,
+            "5×5 black/white score {diff}"
+        );
     }
 
     #[test]
