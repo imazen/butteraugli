@@ -119,18 +119,3 @@ pub fn find_cjpegli() -> Option<PathBuf> {
 
     None
 }
-
-/// Macro to skip test if optional resource is missing (for truly optional tests).
-/// Use sparingly - prefer panicking for missing required resources.
-#[macro_export]
-macro_rules! skip_if_unavailable {
-    ($opt:expr, $msg:literal) => {
-        match $opt {
-            Some(v) => v,
-            None => {
-                eprintln!("SKIPPING TEST: {}", $msg);
-                return;
-            }
-        }
-    };
-}

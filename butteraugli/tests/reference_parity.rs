@@ -17,7 +17,10 @@ mod common;
 // `butteraugli::reference_data`). Lives under tests/common/ so it ships
 // with neither the library source nor the published package;
 // #[path]-included here (not via `common::`) so the 10.9k-line table is
-// only compiled into this test binary.
+// only compiled into this test binary. The allows replace the crate-level
+// lints that covered the generated literals when it lived in src/
+// (`expected_stats` is captured for future regression use, not yet read).
+#[allow(clippy::excessive_precision, clippy::approx_constant, dead_code)]
 #[path = "common/reference_data.rs"]
 mod reference_data;
 

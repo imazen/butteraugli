@@ -37,6 +37,12 @@ avx512 = ["archmage/avx512", "magetypes/avx512"]
 # FIR path. Score deviation vs `butteraugli_main` reference is small but non-zero —
 # unsuitable for parity-sensitive workflows. Off by default. See blur_iir.rs.
 iir-blur = []
+# Test-only: compile the conformance tests that need the local jpegli test
+# corpus (JPEGLI_TESTDATA). Off in CI — the feature gate is the explicit,
+# caller-visible skip switch (no silent runtime skipping). With the feature
+# enabled, missing corpus data fails the tests loudly.
+# Run locally: cargo test -p butteraugli --features corpus-tests --test conformance
+corpus-tests = []
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
 # Enable via: cargo test --features cpp-parity (after setting up local path in .cargo/config.toml)
 # cpp-parity = ["dep:jpegli-internals-sys"]

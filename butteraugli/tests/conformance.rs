@@ -9,9 +9,14 @@
 
 mod common;
 
-use butteraugli::{BUTTERAUGLI_BAD, BUTTERAUGLI_GOOD, ButteraugliParams, Img, RGB8, butteraugli};
+#[cfg(feature = "corpus-tests")]
+use butteraugli::BUTTERAUGLI_BAD;
+use butteraugli::{BUTTERAUGLI_GOOD, ButteraugliParams, Img, RGB8, butteraugli};
+#[cfg(feature = "corpus-tests")]
 use std::fs;
+#[cfg(feature = "corpus-tests")]
 use std::io::BufReader;
+#[cfg(feature = "corpus-tests")]
 use std::path::Path;
 
 /// Convert RGB byte slice to Vec<RGB8>
@@ -22,6 +27,7 @@ fn rgb_bytes_to_pixels(rgb: &[u8]) -> Vec<RGB8> {
 }
 
 /// Load a PNG file and return RGB data.
+#[cfg(feature = "corpus-tests")]
 fn load_png(path: &Path) -> Option<(Vec<u8>, usize, usize)> {
     let file = fs::File::open(path).ok()?;
     let decoder = png::Decoder::new(BufReader::new(file));
@@ -156,16 +162,15 @@ fn test_large_difference_nonzero_score() {
 
 /// Test butteraugli score monotonicity with JPEG quality.
 /// Higher quality should give lower (better) butteraugli scores.
+///
+/// Gated behind the `corpus-tests` feature because it needs the local
+/// jpegli test corpus (`JPEGLI_TESTDATA`). The gate is the caller-visible
+/// skip switch: without the feature the test doesn't exist; with it,
+/// missing corpus data fails loudly (no silent runtime skip).
 #[test]
+#[cfg(feature = "corpus-tests")]
 fn test_score_monotonicity_with_quality() {
-    let Some(path) = common::try_get_flower_small_path() else {
-        eprintln!("Skipping test: test image not found. Set JPEGLI_TESTDATA env var.");
-        return;
-    };
-    if !path.exists() {
-        eprintln!("Skipping test: test image not found at {path:?}");
-        return;
-    }
+    let path = common::get_flower_small_path();
 
     let (original, width, height) = load_png(&path).expect("Failed to load test image");
     let original_pixels = rgb_bytes_to_pixels(&original);
@@ -179,10 +184,11 @@ fn test_score_monotonicity_with_quality() {
         let jpeg_data = encode_jpeg(&original, width as u32, height as u32, quality);
         let decoded = decode_jpeg(&jpeg_data);
 
-        if decoded.len() != original.len() {
-            eprintln!("Size mismatch after roundtrip, skipping quality {quality}");
-            continue;
-        }
+        assert_eq!(
+            decoded.len(),
+            original.len(),
+            "JPEG roundtrip size mismatch at quality {quality}"
+        );
 
         let decoded_pixels = rgb_bytes_to_pixels(&decoded);
         let img_decoded = Img::new(decoded_pixels, width, height);
@@ -261,18 +267,14 @@ fn test_diffmap_dimensions() {
     assert_eq!(diffmap.height(), height);
 }
 
-/// Test with a real image through jpegli roundtrip.
+/// Test with a real image through a mozjpeg roundtrip.
+///
+/// Gated behind `corpus-tests` (see `test_score_monotonicity_with_quality`);
+/// missing corpus data fails loudly instead of silently skipping.
 #[test]
-#[ignore] // Requires test image and jpegli encoder
+#[cfg(feature = "corpus-tests")]
 fn test_jpegli_roundtrip_butteraugli() {
-    let Some(path) = common::try_get_flower_small_path() else {
-        eprintln!("Skipping test: test image not found. Set JPEGLI_TESTDATA env var.");
-        return;
-    };
-    if !path.exists() {
-        eprintln!("Skipping test: test image not found at {path:?}");
-        return;
-    }
+    let path = common::get_flower_small_path();
 
     let (original, width, height) = load_png(&path).expect("Failed to load test image");
     let original_pixels = rgb_bytes_to_pixels(&original);
@@ -283,10 +285,11 @@ fn test_jpegli_roundtrip_butteraugli() {
         let jpeg_data = encode_jpeg(&original, width as u32, height as u32, quality);
         let decoded = decode_jpeg(&jpeg_data);
 
-        if decoded.len() != original.len() {
-            eprintln!("Size mismatch at Q{quality}, skipping");
-            continue;
-        }
+        assert_eq!(
+            decoded.len(),
+            original.len(),
+            "JPEG roundtrip size mismatch at Q{quality}"
+        );
 
         let decoded_pixels = rgb_bytes_to_pixels(&decoded);
         let img_decoded = Img::new(decoded_pixels, width, height);
@@ -312,55 +315,15 @@ fn test_jpegli_roundtrip_butteraugli() {
     }
 }
 
-/// Test comparing Rust butteraugli with C++ (if cjpegli is available).
-#[test]
-#[ignore] // Requires C++ cjpegli build
-fn test_cpp_butteraugli_comparison() {
-    let Some(cjpegli) = common::find_cjpegli() else {
-        eprintln!("Skipping: cjpegli not found. Set CJPEGLI_PATH env var.");
-        return;
-    };
-    let _ = cjpegli; // TODO: use cjpegli for comparison
+// `test_cpp_butteraugli_comparison` was removed here: its body was a stub
+// that never compared against C++ (the cjpegli handle was unused, the
+// comparison a TODO, and the only output a println of the Rust score). Real
+// C++ parity coverage lives in tests/reference_parity.rs (908 captured
+// butteraugli_main cases) and the cpp-parity-gated suites.
 
-    let Some(path) = common::try_get_flower_small_path() else {
-        eprintln!("Skipping: test image not found. Set JPEGLI_TESTDATA env var.");
-        return;
-    };
-    if !path.exists() {
-        eprintln!("Skipping: test image not found");
-        return;
-    }
+// Helper functions (used only by the corpus-tests-gated tests above)
 
-    let (original, width, height) = load_png(&path).expect("Failed to load");
-    let original_pixels = rgb_bytes_to_pixels(&original);
-    let img_original = Img::new(original_pixels, width, height);
-
-    // Encode with Rust jpegli, decode, measure with Rust butteraugli
-    let jpeg_data = encode_jpeg(&original, width as u32, height as u32, 85);
-    let decoded = decode_jpeg(&jpeg_data);
-
-    let decoded_pixels = rgb_bytes_to_pixels(&decoded);
-    let img_decoded = Img::new(decoded_pixels, width, height);
-
-    let params = ButteraugliParams::default();
-    let rust_result =
-        butteraugli(img_original.as_ref(), img_decoded.as_ref(), &params).expect("valid input");
-    println!("Rust butteraugli: {:.4}", rust_result.score);
-
-    // TODO: Call C++ butteraugli for comparison
-    // This would require either:
-    // 1. FFI bindings to butteraugli library
-    // 2. Calling a command-line tool that reports butteraugli score
-
-    // For now, just report the score
-    println!(
-        "Note: C++ comparison not implemented. Rust score: {:.4}",
-        rust_result.score
-    );
-}
-
-// Helper functions
-
+#[cfg(feature = "corpus-tests")]
 fn encode_jpeg(rgb: &[u8], width: u32, height: u32, quality: u8) -> Vec<u8> {
     use std::io::Cursor;
 
@@ -384,6 +347,7 @@ fn encode_jpeg(rgb: &[u8], width: u32, height: u32, quality: u8) -> Vec<u8> {
     output
 }
 
+#[cfg(feature = "corpus-tests")]
 fn decode_jpeg(data: &[u8]) -> Vec<u8> {
     let mut decoder = jpeg_decoder::Decoder::new(data);
     decoder.decode().unwrap_or_default()
