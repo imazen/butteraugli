@@ -29,6 +29,13 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # The corpus-tests feature gates conformance tests that need the local
+      # jpegli corpus (JPEGLI_TESTDATA). CI can't run them (no corpus), but
+      # compiling them here keeps the gated code from rotting. Not running
+      # them in CI is the explicit, caller-visible skip decision.
+      - name: Compile corpus-gated tests (not run — no corpus in CI)
+        run: cargo test -p butteraugli --features corpus-tests --test conformance --no-run
+
   # Test on multiple platforms
   test:
     name: Test (${{ matrix.os }})
@@ -70,6 +77,9 @@ jobs:
 
       - name: Run cross-arch parity tests
         run: cargo test -p butteraugli --test cross_arch_parity
+
+      - name: Run strip parity tests
+        run: cargo test -p butteraugli --test strip_parity
 
   # ==========================================================================
   # Cross-compiled testing via QEMU
