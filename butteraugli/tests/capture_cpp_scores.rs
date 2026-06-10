@@ -5,7 +5,8 @@
 //!   cargo test --test capture_cpp_scores -- --ignored --nocapture 2>&1 | tee /tmp/capture.log
 //!
 //! It generates PPM image pairs, runs butteraugli_main on each, computes diffmap
-//! stats from Rust, and writes the results to /tmp/butteraugli_reference_data.rs.
+//! stats from Rust, and writes the results to /tmp/butteraugli_reference_data.rs
+//! (install as tests/common/reference_data.rs).
 
 mod common;
 

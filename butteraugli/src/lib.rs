@@ -174,11 +174,6 @@ pub(crate) mod psycho;
 #[allow(dead_code)]
 pub(crate) mod xyb;
 
-// C++ reference data for regression testing (auto-generated)
-// Hidden from docs as this is internal test infrastructure
-#[doc(hidden)]
-pub mod reference_data;
-
 // Re-export imgref and rgb types for convenience
 pub use imgref::{Img, ImgRef, ImgVec};
 pub use rgb::{RGB, RGB8};
