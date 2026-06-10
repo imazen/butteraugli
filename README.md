@@ -1,10 +1,4 @@
-# butteraugli
-
-[![Crates.io](https://img.shields.io/crates/v/butteraugli.svg)](https://crates.io/crates/butteraugli)
-[![Documentation](https://docs.rs/butteraugli/badge.svg)](https://docs.rs/butteraugli)
-[![CI](https://github.com/imazen/butteraugli/actions/workflows/ci.yml/badge.svg)](https://github.com/imazen/butteraugli/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/imazen/butteraugli/graph/badge.svg)](https://codecov.io/gh/imazen/butteraugli)
-[![License](https://img.shields.io/crates/l/butteraugli.svg)](LICENSE)
+# butteraugli [![CI](https://img.shields.io/github/actions/workflow/status/imazen/butteraugli/ci.yml?style=flat-square&label=CI)](https://github.com/imazen/butteraugli/actions/workflows/ci.yml) [![crates.io](https://img.shields.io/crates/v/butteraugli?style=flat-square)](https://crates.io/crates/butteraugli) [![lib.rs](https://img.shields.io/crates/v/butteraugli?style=flat-square&label=lib.rs&color=blue)](https://lib.rs/crates/butteraugli) [![docs.rs](https://img.shields.io/docsrs/butteraugli?style=flat-square)](https://docs.rs/butteraugli) [![codecov](https://img.shields.io/codecov/c/gh/imazen/butteraugli?style=flat-square)](https://codecov.io/gh/imazen/butteraugli) [![License](https://img.shields.io/crates/l/butteraugli?style=flat-square)](LICENSE)
 
 Pure Rust implementation of Google's **butteraugli** perceptual image quality metric from [libjxl](https://github.com/libjxl/libjxl).
 
@@ -71,9 +65,19 @@ butteraugli = "0.9"
 | Function | Input Type | Color Space | Use Case |
 |----------|------------|-------------|----------|
 | `butteraugli` | `ImgRef<RGB8>` | sRGB (gamma-encoded) | Standard 8-bit images |
-| `butteraugli_linear` | `ImgRef<RGB<f32>>` | Linear RGB (0.0-1.0) | HDR, 16-bit, float pipelines |
+| `butteraugli_linear` | `ImgRef<RGB<f32>>` | Linear RGB | HDR, 16-bit, float pipelines |
 
-Both APIs support stride (padding) and require minimum 8x8 images.
+Both APIs support stride (padding). Images smaller than 8x8 (down to 1x1)
+are reflect(mirror)-padded up to butteraugli's 8x8 floor and scored; the
+diffmap is cropped back to the input size. The strip APIs below still
+require at least 8x8.
+
+**Scaling contract:** linear `1.0` maps to `intensity_target` nits
+(default `80.0` — the SDR convention used by libjxl's `butteraugli_main`).
+Values above `1.0` are accepted and map proportionally above
+`intensity_target`. For HDR, scale your linear data so `1.0` is the
+mastering/display peak and set `.with_intensity_target(peak_nits)`. The
+sRGB u8 path decodes with the sRGB EOTF to linear before the same scaling.
 
 ### Example
 
@@ -131,10 +135,28 @@ let params = ButteraugliParams::new()
     .with_compute_diffmap(true);
 ```
 
+### Repeated Comparisons and Bounded Memory
+
+For comparing many distorted images against one reference, precompute the
+reference once with `ButteraugliReference` (`new` / `new_linear` /
+`new_linear_planar`), then call `compare` / `compare_linear` /
+`compare_linear_planar` per candidate — the reference-side XYB pyramid and
+masks are reused.
+
+For very large images, the strip API bounds peak memory by walking the
+image in horizontal strips (3.8x lower peak heap at 40 MP, equivalent wall
+time): `butteraugli_strip` / `butteraugli_linear_strip` one-shot, or
+`ButteraugliReference::compare_strip` and friends with a cached reference.
+Strip scores match the full-image path to ~1e-2; see `ButteraugliStripConfig`.
+
 ## Features
 
-- **`internals`**: Expose internal modules for testing/benchmarking (unstable API)
+- **`rayon`** *(default)*: Multi-threaded blur and Malta passes
+- **`avx512`** *(default)*: AVX-512 runtime dispatch (only used when the CPU supports it)
+- **`iir-blur`**: O(N) recursive Gaussian instead of FIR convolution; faster on non-AVX-512
+  hardware but not score-parity with libjxl — off by default
 - **`unsafe-performance`**: Unchecked indexing in hot loops (~6% fewer instructions, pre-validated ranges)
+- **`internals`**: Expose internal modules for testing/benchmarking (unstable API)
 
 ## Performance
 
@@ -209,7 +231,7 @@ Always provide RGB input (sRGB u8 or linear f32); butteraugli handles the conver
 - [JPEG XL reference implementation (libjxl)](https://github.com/libjxl/libjxl) — canonical source for butteraugli
 - [Butteraugli paper](https://github.com/google/butteraugli/blob/master/doc/butteraugli-theory.pdf)
 
-> **Note:** The archived [google/butteraugli](https://github.com/google/butteraugli) repository is a standalone fork with little in common with the current butteraugli in libjxl. It should not be used as a reference. This crate ports from libjxl's `lib/extras/butteraugli.cc`.
+> **Note:** This crate ports from libjxl's `lib/extras/butteraugli.cc`, where butteraugli development continued after the original [google/butteraugli](https://github.com/google/butteraugli) repository was archived. Scores are validated against libjxl's `butteraugli_main`, not the archived standalone version.
 
 ## Development
 
