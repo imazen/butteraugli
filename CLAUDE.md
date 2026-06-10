@@ -7,6 +7,39 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 None currently known. Parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 
+## Release state (2026-06-10 audit)
+
+- **Latest published = 0.9.3** (crates.io + GH release v0.9.3). The in-tree workspace
+  version is 0.9.4 (bumped in 3e41f32) but 0.9.4 was NEVER published — no tag, no GH
+  release, not on crates.io. zenmetrics already pins `butteraugli = "0.9.4"` with a
+  path patch, so publishing 0.9.4 unblocks its crates.io resolution.
+- cargo-semver-checks vs 0.9.3: no semver update required (additive only).
+- CHANGELOG: [Unreleased] holds everything since 0.9.3 (the phantom `[0.9.4]` release
+  heading was folded back in). Sections for 0.7.0–0.9.1 were never written; GH release
+  notes exist for those tags if backfill is ever wanted.
+
+## Incident: 0.9.3 merge dropped the iir-blur stride fix (found+fixed 2026-06-10)
+
+The strip-api branch's B8 fix (579e91a — stride-aware IIR row addressing, fixes
+pool-reuse nondeterminism) was lost when 6e3a7bd merged the squashed branch state:
+main's blur_iir.rs came out byte-identical to the PRE-fix version while the fix's
+regression tests survived. 0.9.3 shipped with `--features iir-blur` failing its own
+lib tests. Restored in ae506088 by taking 579e91a's file wholesale. Lesson: after any
+squash-then-merge, diff the merged tree against the branch tip — surviving tests with
+a vanished fix is exactly what `git log --oneline <merge>..<branch>` won't show.
+
+## Test discipline notes
+
+- `corpus-tests` cargo feature (added 63a13de) gates the two conformance tests that
+  need `JPEGLI_TESTDATA`; without the feature they don't exist, with it missing data
+  fails loudly. CI compiles them with `--no-run`. No silent runtime skips.
+- The C++ reference table lives at `tests/common/reference_data.rs` (moved out of
+  `src/` in 601bd9a — it shipped 290 KB of dead weight in the published crate).
+  Regenerate via `cargo test --test capture_cpp_scores -- --ignored`.
+- clippy `-D warnings` is green across default / iir-blur / internals /
+  unsafe-performance / all-combined (58c665d). CI only lints the default set, so
+  re-run the matrix locally when touching gated code.
+
 ## FIR Blur — At LLVM Ceiling (2026-04-17)
 
 The FIR `convolve_horizontal_interior_*` and `convolve_vertical_*` functions
