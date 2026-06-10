@@ -1,35 +1,9 @@
-//! Constants for butteraugli and XYB color space.
+//! Constants for butteraugli.
 //!
-//! These values are from the libjxl C++ implementation.
-
-// ============================================================================
-// XYB Color Space Constants
-// ============================================================================
-
-/// Opsin absorbance matrix for converting linear RGB to opsin space.
-/// This is an LMS-like transform (matches jpegli values).
-pub const XYB_OPSIN_ABSORBANCE_MATRIX: [f32; 9] = [
-    0.30,
-    0.622,
-    0.078, // Row 0
-    0.23,
-    0.692,
-    0.078, // Row 1
-    0.243_422_69,
-    0.204_767_44,
-    0.551_809_87, // Row 2
-];
-
-/// Bias added to opsin values before cube root (matches jpegli values).
-pub const XYB_OPSIN_ABSORBANCE_BIAS: [f32; 3] = [0.003_793_073_3, 0.003_793_073_3, 0.003_793_073_3];
-
-/// Negative cube root of opsin absorbance bias.
-/// This is subtracted after the cube root operation.
-pub const XYB_NEG_OPSIN_ABSORBANCE_BIAS_CBRT: [f32; 3] = [
-    -0.155_954_12, // -cbrt(0.003_793_073_3)
-    -0.155_954_12,
-    -0.155_954_12,
-];
+//! These values are from libjxl's butteraugli.cc. Note that butteraugli's
+//! own opsin transform (see `crate::opsin`) is distinct from the JPEG XL
+//! codec's cbrt-based XYB color space; the codec transform is not used
+//! anywhere in this crate.
 
 // ============================================================================
 // Butteraugli Constants

@@ -170,10 +170,6 @@ pub mod psycho;
 #[cfg(not(feature = "internals"))]
 pub(crate) mod psycho;
 
-// Used by cpp-parity tests (excluded from published crate)
-#[allow(dead_code)]
-pub(crate) mod xyb;
-
 // Re-export imgref and rgb types for convenience
 pub use imgref::{Img, ImgRef, ImgVec};
 pub use rgb::{RGB, RGB8};
