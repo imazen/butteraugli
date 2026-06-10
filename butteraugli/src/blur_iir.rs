@@ -146,6 +146,10 @@ fn horizontal_pass(input: &[f32], output: &mut [f32], width: usize, coeffs: &Iir
     }
 }
 
+// inline(always) is intentional: the per-row IIR scan is the hot loop and
+// the call sits inside the chunks_exact zip; measured as part of the
+// 2026-04-17 iir-blur perf work (see CLAUDE.md "IIR Blur Feature").
+#[allow(clippy::inline_always)]
 #[inline(always)]
 fn horizontal_row(input: &[f32], output: &mut [f32], coeffs: &IirCoeffs) {
     let width = input.len() as isize;
@@ -217,7 +221,7 @@ fn vertical_pass(
     incant!(
         vertical_pass_inner(input, output, width, height, coeffs),
         [v4, v3, neon, wasm128, scalar]
-    )
+    );
 }
 
 // AVX-512 path: 16 columns at a time. On Zen 4 this is the same throughput as

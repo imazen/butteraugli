@@ -869,6 +869,11 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     }
     #[cfg(feature = "iir-blur")]
     {
+        // The explicit `return` is load-bearing: this cfg'd block sits in
+        // statement position, so without `return` its value would be
+        // discarded. clippy flags needless_return because it can't see the
+        // cfg(not(iir-blur)) tail expression below when the feature is on.
+        #[allow(clippy::needless_return)]
         return crate::blur_iir::gaussian_blur_iir(input, sigma, pool);
     }
     #[cfg(not(feature = "iir-blur"))]
@@ -1021,6 +1026,11 @@ fn gaussian_blur_dispatch_wasm128(
     output
 }
 
+// Reached via incant!'s implicit scalar fallback from gaussian_blur (FIR
+// path). With iir-blur enabled that incant! call is cfg'd out entirely, so
+// the scalar variant — the only one not referenced through #[arcane]
+// tier shims — goes dead in that configuration only.
+#[cfg_attr(feature = "iir-blur", allow(dead_code))]
 fn gaussian_blur_dispatch_scalar(
     _token: archmage::ScalarToken,
     input: &ImageF,

@@ -297,57 +297,10 @@ impl ImageF {
         self.data[y * self.stride + x] = value;
     }
 
-    /// Gets a pixel value without bounds checking.
-    ///
-    /// # Safety
-    /// Caller must ensure `y * stride + x < data.len()`.
-    #[cfg(feature = "unsafe-performance")]
-    #[allow(clippy::inline_always)]
-    #[inline(always)]
-    #[must_use]
-    pub(crate) unsafe fn get_unchecked(&self, x: usize, y: usize) -> f32 {
-        // SAFETY: caller asserts y * stride + x < data.len()
-        unsafe { *self.data.get_unchecked(y * self.stride + x) }
-    }
-
-    /// Sets a pixel value without bounds checking.
-    ///
-    /// # Safety
-    /// Caller must ensure `y * stride + x < data.len()`.
-    #[cfg(feature = "unsafe-performance")]
-    #[allow(clippy::inline_always)]
-    #[inline(always)]
-    pub(crate) unsafe fn set_unchecked(&mut self, x: usize, y: usize, value: f32) {
-        // SAFETY: caller asserts y * stride + x < data.len()
-        unsafe { *self.data.get_unchecked_mut(y * self.stride + x) = value };
-    }
-
-    /// Returns a row slice without bounds checking.
-    ///
-    /// # Safety
-    /// Caller must ensure `y < height`.
-    #[cfg(feature = "unsafe-performance")]
-    #[allow(clippy::inline_always)]
-    #[inline(always)]
-    #[must_use]
-    pub(crate) unsafe fn row_unchecked(&self, y: usize) -> &[f32] {
-        let start = y * self.stride;
-        // SAFETY: caller asserts y < height
-        unsafe { self.data.get_unchecked(start..start + self.width) }
-    }
-
-    /// Returns a mutable row slice without bounds checking.
-    ///
-    /// # Safety
-    /// Caller must ensure `y < height`.
-    #[cfg(feature = "unsafe-performance")]
-    #[allow(clippy::inline_always)]
-    #[inline(always)]
-    pub(crate) unsafe fn row_mut_unchecked(&mut self, y: usize) -> &mut [f32] {
-        let start = y * self.stride;
-        // SAFETY: caller asserts y < height
-        unsafe { self.data.get_unchecked_mut(start..start + self.width) }
-    }
+    // The unsafe-performance gated {get,set,row,row_mut}_unchecked accessors
+    // that used to live here were removed: nothing called them in any
+    // feature combination (the Malta hot loops index slices directly with
+    // their own pre-validated unchecked access).
 
     /// Returns a raw pointer to the data for SIMD operations.
     #[inline]
@@ -493,6 +446,10 @@ impl Image3F {
     /// Creates a new 3-channel image WITHOUT zero-filling.
     ///
     /// Callers MUST overwrite every pixel before reading.
+    // Only called from the #[cfg(test)] PsychoImage::new constructor; the
+    // non-test lib target sees it as dead, which surfaces when the
+    // `internals` feature drops the module-level allow(dead_code).
+    #[allow(dead_code)]
     #[must_use]
     pub(crate) fn new_uninit(width: usize, height: usize) -> Self {
         Self {

@@ -6,6 +6,12 @@
 //!
 //! Run with: `cargo test --test cross_arch_parity`
 //! Cross-test: `cross test -p butteraugli --test cross_arch_parity --target aarch64-unknown-linux-gnu`
+//!
+//! Reference scores were captured from the FIR blur path; iir-blur is not
+//! parity-stable, so the whole file is FIR-only (file-level gate — the
+//! per-test gates alone left the shared consts/helpers dead under
+//! `--features iir-blur`, failing clippy -D warnings).
+#![cfg(not(feature = "iir-blur"))]
 
 mod common;
 
