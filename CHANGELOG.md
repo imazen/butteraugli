@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests: the two corpus-dependent conformance tests are now gated behind a new test-only `corpus-tests` feature instead of silently skipping at runtime when `JPEGLI_TESTDATA` is absent; with the feature on, missing data fails loudly. CI compiles them (`--no-run`) so they can't rot. (63a13de, aba2e25)
 
 ### Removed
+- Dead crate-private `src/xyb.rs` module deleted — it implemented the JPEG XL *codec's* cbrt-based XYB transform, not butteraugli's own opsin transform (`opsin.rs`), had zero callers anywhere in the repo, and its docs misleadingly described the cbrt transform as "used by butteraugli". Its three `XYB_*` consts in `consts.rs` (referenced only by it) went with it. No public API impact — the module was `pub(crate)` and never exported. (c645a39)
 - `butteraugli::reference_data` (`#[doc(hidden)]`, 10.9k lines of auto-generated C++ reference scores) moved out of the library into `tests/common/` — it was consumed only by `tests/reference_parity.rs` and shipped as dead weight in the published crate (139 KB → 96 KB package). It was documented as internal test infrastructure; no known external consumer. (601bd9a)
 - `test_cpp_butteraugli_comparison` stub removed from the conformance suite — it never performed the C++ comparison its name promised (TODO body, unused cjpegli handle, println-only). Real parity coverage: `tests/reference_parity.rs` (908 `butteraugli_main` cases) + the cpp-parity suites. (63a13de)
 
