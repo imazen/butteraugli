@@ -530,7 +530,7 @@ impl ButteraugliReference {
     /// Compare a distorted planar linear RGB image, writing the diffmap
     /// into a caller-owned `Vec<f32>`.
     ///
-    /// This is the buffer-recycling variant of [`compare_linear_planar`] —
+    /// This is the buffer-recycling variant of [`Self::compare_linear_planar`] —
     /// the caller passes a persistent `Vec<f32>` that is reused across
     /// successive compares (e.g. across butteraugli-loop iterations in an
     /// encoder), avoiding the per-call fresh `width * height * 4 B`
@@ -546,7 +546,7 @@ impl ButteraugliReference {
     /// management (B7a, 2026-05-23).
     ///
     /// # Errors
-    /// Same as [`compare_linear_planar`].
+    /// Same as [`Self::compare_linear_planar`].
     pub fn compare_linear_planar_into(
         &self,
         r: &[f32],
