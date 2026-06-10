@@ -9,6 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Public-API snapshot regen (butteraugli/tests/public_api_doc.rs) needs
+  # nightly rustdoc + cargo-public-api; only the lint job carries them and
+  # runs the check.
+  ZEN_API_DOC: off
 
 jobs:
   # Formatting and linting - only needs to run once
@@ -35,6 +39,16 @@ jobs:
       # them in CI is the explicit, caller-visible skip decision.
       - name: Compile corpus-gated tests (not run — no corpus in CI)
         run: cargo test -p butteraugli --features corpus-tests --test conformance --no-run
+
+      - uses: dtolnay/rust-toolchain@nightly # rustdoc JSON for cargo-public-api
+      - uses: dtolnay/rust-toolchain@stable # restore stable as default
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-public-api
+      - name: Public-API snapshot is current
+        run: cargo test -p butteraugli --test public_api_doc
+        env:
+          ZEN_API_DOC: check
 
   # Test on multiple platforms
   test:

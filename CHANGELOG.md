@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requires ≥8×8. (328cf8e)
 - `ButteraugliReference::drop_strip_source(&mut self)` — drops the retained reference-side source data (sRGB u8 or linear f32) so subsequent `compare_strip` / `compare_linear_strip` / `compare_strip_srgb` / `compare_strip_linear_imgref` calls return `InvalidParameter`. The non-strip `compare` / `compare_linear` / `compare_linear_planar` paths are unaffected. Use when the caller has determined that no strip dispatch will follow on this reference and wants to reclaim the per-pixel retention. (3e41f32)
 - `ButteraugliReference::shrink_to_fit(&mut self)` — drains the persistent `BufferPool`, releasing any cached transient buffers held between `compare` calls at the cost of one re-allocation on the next `compare` call. Cached XYB pyramid / mask / source data is retained (the warm-ref speedup over a cold `butteraugli()` call still applies). (3e41f32)
+- Versioned public-API surface snapshot at `docs/public-api/butteraugli.txt`, regenerated on every `cargo test` by `butteraugli/tests/public_api_doc.rs` (`ZEN_API_DOC=check` verifies in the CI lint job, `=off` skips); `justfile` recipes `fmt` / `api-doc` / `api-doc-check`. Dev-only — not part of the published package.
 
 ### Changed
 - Exclude `tests/` directories from published packages for both `butteraugli` and `butteraugli-cli`; local `cargo test` is unaffected (3b7afe7)
