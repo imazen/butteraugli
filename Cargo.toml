@@ -1,7 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["butteraugli", "butteraugli-cli", "butteraugli-bench"]
-exclude = ["experiments"]
+# apidoc/ is the CI-free public-API snapshot runner (its own tiny package, see
+# apidoc/Cargo.toml); excluded so plain `cargo test` and CI never build it.
+exclude = ["experiments", "apidoc"]
 
 [workspace.package]
 version = "0.9.4"

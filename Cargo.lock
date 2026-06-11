@@ -157,7 +157,6 @@ dependencies = [
  "proptest",
  "rayon",
  "rgb",
- "serde_json",
 ]
 
 [[package]]

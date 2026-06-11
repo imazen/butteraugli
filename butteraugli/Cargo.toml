@@ -71,9 +71,6 @@ approx = "0.5"
 # Date/time for reference data generation
 chrono = "0.4"
 
-# cargo metadata parsing for tests/public_api_doc.rs
-serde_json = "1.0.150"
-
 # These don't compile on wasm32 — gate them to non-wasm targets
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # JPEG encoding/decoding for roundtrip tests

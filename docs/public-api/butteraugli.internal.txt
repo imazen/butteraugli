@@ -1,0 +1,34 @@
+# butteraugli public API — doc(hidden) items and excluded-feature surface
+# excluded features: (none)
+# (regenerated on every `cargo test` by zenutils-apidoc; ZEN_API_DOC=check verifies, =off skips).
+# Encodings: crate-name prefix stripped; auto traits collapse to a
+# count + exceptions; trait impls collapse to one roster line per
+# type (method signatures live at the trait definition); blanket
+# impls omitted; re-export duplicates annotated `[also: path]`.
+# DO NOT EDIT BY HAND — commit regenerated changes with the code.
+
+## summary
+#
+#   inherent methods                            2
+#   struct fields                               4
+#   enum variants                               2
+#   trait roster entries (type × trait)         1
+#
+# per-module pub lines:
+#   (root)                            6
+#   precompute                        2
+
+## items (8 lines)
+
+#[non_exhaustive] pub ButteraugliError::InvalidBufferSize
+#[non_exhaustive] pub ButteraugliError::InvalidDimensions
+pub ButteraugliError::InvalidBufferSize::actual: usize
+pub ButteraugliError::InvalidBufferSize::expected: usize
+pub ButteraugliError::InvalidDimensions::height: usize
+pub ButteraugliError::InvalidDimensions::width: usize
+pub fn precompute::ButteraugliReference::source_linear_rgb(&self) -> core::option::Option<&[f32]>
+pub fn precompute::ButteraugliReference::source_linear_rgb_owned(&self) -> core::option::Option<alloc::vec::Vec<f32>>
+
+## trait impls (1 types)
+
+ButteraugliStripConfig: TrivialClone

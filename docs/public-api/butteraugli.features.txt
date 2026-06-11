@@ -1,0 +1,171 @@
+# butteraugli public API — additions from non-default features
+# features: avx512,corpus-tests,iir-blur,internals,rayon,unsafe-performance
+# (regenerated on every `cargo test` by zenutils-apidoc; ZEN_API_DOC=check verifies, =off skips).
+# Encodings: crate-name prefix stripped; auto traits collapse to a
+# count + exceptions; trait impls collapse to one roster line per
+# type (method signatures live at the trait definition); blanket
+# impls omitted; re-export duplicates annotated `[also: path]`.
+# DO NOT EDIT BY HAND — commit regenerated changes with the code.
+
+## summary
+#
+#   pub modules                                 7
+#   pub types (struct/enum/trait/alias)         5
+#   pub consts/statics                         45
+#   free functions                             27
+#   inherent methods                           35
+#   struct fields                               6
+#   trait roster entries (type × trait)        14
+#   auto-trait-complete types                   4
+#   auto-trait exceptions                       1
+#
+# per-module pub lines:
+#   (root)                            7
+#   blur                              7
+#   consts                           45
+#   image                            36
+#   malta                             1
+#   mask                             13
+#   opsin                             8
+#   psycho                            8
+
+## items (125 lines)
+
+pub mod blur
+pub fn blur::blur_5x5(&image::ImageF, &[f32; 3], &image::BufferPool) -> image::ImageF
+pub fn blur::blur_mirrored_5x5(&image::ImageF, &[f32; 3], &image::BufferPool) -> image::ImageF
+pub fn blur::blur_with_border(&image::ImageF, f32, f32, &image::BufferPool) -> image::ImageF
+pub fn blur::compute_kernel(f32) -> alloc::vec::Vec<f32>
+pub fn blur::compute_separable5_weights(f32) -> [f32; 3]
+pub fn blur::gaussian_blur(&image::ImageF, f32, &image::BufferPool) -> image::ImageF
+pub fn blur::gaussian_blur_inplace(&mut image::ImageF, f32, &image::BufferPool)
+pub mod consts
+pub const consts::ADD_HF_RANGE: f64
+pub const consts::ADD_MF_RANGE: f64
+pub const consts::BMUL_LF_TO_VALS: f64
+pub const consts::COMBINE_CHANNELS_MULS: [f32; 3]
+pub const consts::GLOBAL_SCALE: f32
+pub const consts::INTENSITY_TARGET_NORMALIZATION: f32
+pub const consts::INTERNAL_GOOD_QUALITY_THRESHOLD: f32
+pub const consts::MASK_BIAS: f32
+pub const consts::MASK_DC_Y_MUL: f64
+pub const consts::MASK_DC_Y_OFFSET: f64
+pub const consts::MASK_DC_Y_SCALER: f64
+pub const consts::MASK_MUL: f32
+pub const consts::MASK_RADIUS: f32
+pub const consts::MASK_TO_ERROR_MUL: f32
+pub const consts::MASK_Y_MUL: f64
+pub const consts::MASK_Y_OFFSET: f64
+pub const consts::MASK_Y_SCALER: f64
+pub const consts::MAXCLAMP_HF: f64
+pub const consts::MAXCLAMP_UHF: f64
+pub const consts::MUL_Y_HF: f64
+pub const consts::MUL_Y_UHF: f64
+pub const consts::NORM1_HF: f64
+pub const consts::NORM1_HF_X: f64
+pub const consts::NORM1_MF: f64
+pub const consts::NORM1_MF_X: f64
+pub const consts::NORM1_UHF: f64
+pub const consts::NORM1_UHF_X: f64
+pub const consts::REMOVE_HF_RANGE: f64
+pub const consts::REMOVE_MF_RANGE: f64
+pub const consts::REMOVE_UHF_RANGE: f64
+pub const consts::SIGMA_HF: f64
+pub const consts::SIGMA_LF: f64
+pub const consts::SIGMA_UHF: f64
+pub const consts::SUPPRESS_S: f64
+pub const consts::SUPPRESS_XY: f64
+pub const consts::WMUL: [f64; 9]
+pub const consts::W_HF_MALTA: f64
+pub const consts::W_HF_MALTA_X: f64
+pub const consts::W_MF_MALTA: f64
+pub const consts::W_MF_MALTA_X: f64
+pub const consts::W_UHF_MALTA: f64
+pub const consts::W_UHF_MALTA_X: f64
+pub const consts::XMUL_LF_TO_VALS: f64
+pub const consts::YMUL_LF_TO_VALS: f64
+pub const consts::Y_TO_B_MUL_LF_TO_VALS: f64
+pub mod image
+pub struct image::BufferPool
+pub fn image::BufferPool::new() -> Self
+pub struct image::Image3F
+pub fn image::Image3F::from_planes(image::ImageF, image::ImageF, image::ImageF) -> Self
+pub fn image::Image3F::height(&self) -> usize
+pub fn image::Image3F::new(usize, usize) -> Self
+pub fn image::Image3F::plane(&self, usize) -> &image::ImageF
+pub fn image::Image3F::plane_mut(&mut self, usize) -> &mut image::ImageF
+pub fn image::Image3F::plane_row(&self, usize, usize) -> &[f32]
+pub fn image::Image3F::plane_row_mut(&mut self, usize, usize) -> &mut [f32]
+pub fn image::Image3F::planes_mut(&mut self) -> (&mut image::ImageF, &mut image::ImageF, &mut image::ImageF)
+pub fn image::Image3F::width(&self) -> usize
+pub struct image::ImageF
+pub fn image::ImageF::as_mut_ptr(&mut self) -> *mut f32
+pub fn image::ImageF::as_ptr(&self) -> *const f32
+pub fn image::ImageF::copy_from(&mut self, &Self)
+pub fn image::ImageF::data(&self) -> &[f32]
+pub fn image::ImageF::data_mut(&mut self) -> &mut [f32]
+pub fn image::ImageF::fill(&mut self, f32)
+pub fn image::ImageF::filled(usize, usize, f32) -> Self
+pub fn image::ImageF::from_pool_dirty(usize, usize, &image::BufferPool) -> Self
+pub fn image::ImageF::from_pool_zeroed(usize, usize, &image::BufferPool) -> Self
+pub fn image::ImageF::from_vec(alloc::vec::Vec<f32>, usize, usize) -> Self
+pub fn image::ImageF::from_vec_padded(alloc::vec::Vec<f32>, usize, usize, usize) -> Self
+pub fn image::ImageF::get(&self, usize, usize) -> f32
+pub fn image::ImageF::height(&self) -> usize
+pub fn image::ImageF::new(usize, usize) -> Self
+pub fn image::ImageF::recycle(self, &image::BufferPool)
+pub fn image::ImageF::row(&self, usize) -> &[f32]
+pub fn image::ImageF::row_full(&self, usize) -> &[f32]
+pub fn image::ImageF::row_full_mut(&mut self, usize) -> &mut [f32]
+pub fn image::ImageF::row_mut(&mut self, usize) -> &mut [f32]
+pub fn image::ImageF::same_size(&self, &Self) -> bool
+pub fn image::ImageF::set(&mut self, usize, usize, f32)
+pub fn image::ImageF::stride(&self) -> usize
+pub fn image::ImageF::width(&self) -> usize
+pub mod malta
+pub fn malta::malta_diff_map(&image::ImageF, &image::ImageF, f64, f64, f64, bool, &image::BufferPool) -> image::ImageF
+pub mod mask
+pub struct mask::PrecomputedMask
+pub mask::PrecomputedMask::blurred: image::ImageF
+pub mask::PrecomputedMask::mask: image::ImageF
+pub fn mask::apply_mask_correction_precomputed(&mask::PrecomputedMask, &[image::ImageF; 2], &[image::ImageF; 2], core::option::Option<&mut image::ImageF>, &image::BufferPool)
+pub fn mask::apply_masking(&image::ImageF, &image::ImageF, &mut image::ImageF)
+pub fn mask::combine_channels_for_masking(&[image::ImageF; 2], &[image::ImageF; 2], &mut image::ImageF)
+pub fn mask::compute_mask(&image::ImageF, &image::ImageF, core::option::Option<&mut image::ImageF>, &image::BufferPool) -> image::ImageF
+pub fn mask::compute_mask_from_hf_uhf(&[image::ImageF; 2], &[image::ImageF; 2], &[image::ImageF; 2], &[image::ImageF; 2], core::option::Option<&mut image::ImageF>, &image::BufferPool) -> image::ImageF
+pub fn mask::diff_precompute(&image::ImageF, f32, f32, &mut image::ImageF)
+pub fn mask::fuzzy_erosion(&image::ImageF, &mut image::ImageF)
+pub fn mask::mask_dc_y(f64) -> f64
+pub fn mask::mask_y(f64) -> f64
+pub fn mask::precompute_reference_mask(&[image::ImageF; 2], &[image::ImageF; 2], &image::BufferPool) -> mask::PrecomputedMask
+pub mod opsin
+pub fn opsin::fast_log2f(f32) -> f32
+pub fn opsin::gamma(f32) -> f32
+pub fn opsin::linear_planar_to_xyb_butteraugli(&[f32], &[f32], &[f32], usize, usize, usize, f32, &image::BufferPool) -> image::Image3F
+pub fn opsin::linear_rgb_to_xyb_butteraugli(&[f32], usize, usize, f32, &image::BufferPool) -> image::Image3F
+pub fn opsin::opsin_absorbance(f32, f32, f32, bool) -> (f32, f32, f32)
+pub fn opsin::opsin_dynamics_image(&image::Image3F, f32, &image::BufferPool) -> image::Image3F
+pub fn opsin::srgb_to_linear(u8) -> f32
+pub fn opsin::srgb_to_xyb_butteraugli(&[u8], usize, usize, f32, &image::BufferPool) -> image::Image3F
+pub mod psycho
+pub struct psycho::PsychoImage
+pub psycho::PsychoImage::hf: [image::ImageF; 2]
+pub psycho::PsychoImage::lf: image::Image3F
+pub psycho::PsychoImage::mf: image::Image3F
+pub psycho::PsychoImage::uhf: [image::ImageF; 2]
+pub fn psycho::PsychoImage::height(&self) -> usize
+pub fn psycho::PsychoImage::width(&self) -> usize
+pub fn psycho::separate_frequencies(&image::Image3F, &image::BufferPool) -> psycho::PsychoImage
+
+## trait impls (5 types)
+
+image::BufferPool: Clone, Debug, Default
+image::Image3F: Clone, Debug, Index<usize>, IndexMut<usize>
+image::ImageF: Clone, Debug, Index<(usize, usize)>, IndexMut<(usize, usize)>
+mask::PrecomputedMask: Clone
+psycho::PsychoImage: Clone, Debug
+
+## auto traits
+
+4 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
+image::BufferPool: !Freeze
