@@ -66,6 +66,7 @@
 //! # Ok::<(), butteraugli::ButteraugliError>(())
 //! ```
 
+use enough::Stop;
 use imgref::ImgRef;
 use rgb::{RGB, RGB8};
 
@@ -238,6 +239,38 @@ pub fn butteraugli_strip(
     )
 }
 
+/// Like [`butteraugli_strip`], but cooperatively cancellable via an
+/// [`enough::Stop`] token.
+///
+/// `stop` is checked once per strip, at the top of the strip loop (the
+/// outermost per-strip boundary); the per-strip diffmap kernels are never
+/// interrupted mid-strip. If the token signals a stop, returns
+/// [`ButteraugliError::Cancelled`] carrying the [`enough::StopReason`].
+///
+/// Pass [`enough::Unstoppable`] for a non-cancellable call (this is exactly
+/// what [`butteraugli_strip`] does — it is zero-cost). Uses the default
+/// strip config (halo = [`HALO_ROWS_DEFAULT`]).
+///
+/// # Errors
+/// As [`butteraugli_strip`], plus [`ButteraugliError::Cancelled`] if `stop`
+/// signals cancellation.
+pub fn butteraugli_strip_with_stop(
+    img1: ImgRef<RGB8>,
+    img2: ImgRef<RGB8>,
+    params: &ButteraugliParams,
+    strip_height: u32,
+    stop: &dyn Stop,
+) -> Result<ButteraugliResult, ButteraugliError> {
+    butteraugli_strip_with_config_and_stop(
+        img1,
+        img2,
+        params,
+        strip_height,
+        ButteraugliStripConfig::default(),
+        stop,
+    )
+}
+
 /// Strip-wise butteraugli with sRGB u8 inputs and explicit
 /// configuration.
 ///
@@ -249,6 +282,26 @@ pub fn butteraugli_strip_with_config(
     params: &ButteraugliParams,
     strip_height: u32,
     config: ButteraugliStripConfig,
+) -> Result<ButteraugliResult, ButteraugliError> {
+    butteraugli_strip_with_config_and_stop(
+        img1,
+        img2,
+        params,
+        strip_height,
+        config,
+        &enough::Unstoppable,
+    )
+}
+
+/// Shared body for the sRGB strip entry points; `stop` is threaded to the
+/// strip walker which checks it once per strip.
+fn butteraugli_strip_with_config_and_stop(
+    img1: ImgRef<RGB8>,
+    img2: ImgRef<RGB8>,
+    params: &ButteraugliParams,
+    strip_height: u32,
+    config: ButteraugliStripConfig,
+    stop: &dyn Stop,
 ) -> Result<ButteraugliResult, ButteraugliError> {
     params.validate()?;
     validate_image_pair(img1, img2, strip_height as usize)?;
@@ -271,6 +324,7 @@ pub fn butteraugli_strip_with_config(
         params,
         config.halo_rows,
         params.compute_diffmap(),
+        stop,
     )
 }
 
@@ -335,6 +389,7 @@ pub fn butteraugli_linear_strip_with_config(
     check_finite_f32(&linear1, "linear rgb1")?;
     check_finite_f32(&linear2, "linear rgb2")?;
 
+    // No cancellation token on this entry point — `Unstoppable` is zero-cost.
     run_strip_walker_linear(
         &linear1,
         &linear2,
@@ -344,6 +399,7 @@ pub fn butteraugli_linear_strip_with_config(
         params,
         config.halo_rows,
         params.compute_diffmap(),
+        &enough::Unstoppable,
     )
 }
 
@@ -376,6 +432,10 @@ fn validate_image_pair(
 /// buffer for each strip, calls the existing diffmap path on the
 /// strip's rows (with halo), accumulates the strip's interior into a
 /// single max + p-norm reducer, and produces the final score.
+///
+/// `stop` is checked once per strip, at the top of the strip loop (the
+/// outermost per-strip boundary) — never inside the per-strip diffmap
+/// kernels. A `cancel()` is therefore honoured at strip granularity.
 #[allow(clippy::too_many_arguments)]
 fn run_strip_walker_linear(
     rgb1: &[f32],
@@ -386,6 +446,7 @@ fn run_strip_walker_linear(
     params: &ButteraugliParams,
     halo: usize,
     want_diffmap: bool,
+    stop: &dyn Stop,
 ) -> Result<ButteraugliResult, ButteraugliError> {
     let mut full_diffmap: Option<Vec<f32>> = if want_diffmap {
         Some(vec![0.0; width * height])
@@ -396,6 +457,10 @@ fn run_strip_walker_linear(
 
     let mut y = 0usize;
     while y < height {
+        // Cooperative cancellation: outermost per-strip boundary — checked
+        // before this strip's diffmap is computed, never inside the kernels.
+        stop.check().map_err(ButteraugliError::Cancelled)?;
+
         let mut next_y = (y + strip_height).next_multiple_of(STRIP_ALIGNMENT);
         if next_y >= height || height - next_y < STRIP_ALIGNMENT {
             next_y = height;
@@ -490,6 +555,31 @@ impl ButteraugliReference {
         self.compare_strip_with_config(rgb, strip_height, ButteraugliStripConfig::default())
     }
 
+    /// Cancellable variant of [`Self::compare_strip`].
+    ///
+    /// `stop` is checked once per strip, at the outermost per-strip boundary
+    /// of the strip walker, before that strip's diffmap is computed; a
+    /// cancelled token returns [`ButteraugliError::Cancelled`].
+    /// [`enough::Unstoppable`] makes this behave identically to
+    /// [`Self::compare_strip`] at zero cost.
+    ///
+    /// # Errors
+    /// As [`Self::compare_strip`], plus [`ButteraugliError::Cancelled`] if
+    /// `stop` signals cancellation between strips.
+    pub fn compare_strip_with_stop(
+        &self,
+        rgb: &[u8],
+        strip_height: u32,
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_strip_with_config_and_stop(
+            rgb,
+            strip_height,
+            ButteraugliStripConfig::default(),
+            stop,
+        )
+    }
+
     /// Strip-bounded comparison with explicit configuration.
     ///
     /// # Errors
@@ -499,6 +589,23 @@ impl ButteraugliReference {
         rgb: &[u8],
         strip_height: u32,
         config: ButteraugliStripConfig,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_strip_with_config_and_stop(rgb, strip_height, config, &enough::Unstoppable)
+    }
+
+    /// Shared body for the sRGB strip entry points; `stop` is threaded to the
+    /// strip walker (checked once per strip). The non-cancellable entry points
+    /// pass [`enough::Unstoppable`].
+    ///
+    /// # Errors
+    /// As [`ButteraugliReference::compare_strip`], plus
+    /// [`ButteraugliError::Cancelled`] if `stop` signals cancellation.
+    fn compare_strip_with_config_and_stop(
+        &self,
+        rgb: &[u8],
+        strip_height: u32,
+        config: ButteraugliStripConfig,
+        stop: &dyn Stop,
     ) -> Result<ButteraugliResult, ButteraugliError> {
         let width = self.width();
         let height = self.height();
@@ -534,6 +641,8 @@ impl ButteraugliReference {
         let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
         let linear2: Vec<f32> = rgb.iter().map(|&v| lut[v as usize]).collect();
 
+        // `stop` is checked once per strip inside the walker; non-cancellable
+        // callers pass `Unstoppable` (zero-cost).
         run_strip_walker_linear(
             &linear1,
             &linear2,
@@ -543,6 +652,7 @@ impl ButteraugliReference {
             self.params(),
             config.halo_rows,
             self.params().compute_diffmap(),
+            stop,
         )
     }
 
@@ -559,6 +669,31 @@ impl ButteraugliReference {
         self.compare_linear_strip_with_config(rgb, strip_height, ButteraugliStripConfig::default())
     }
 
+    /// Cancellable variant of [`Self::compare_linear_strip`].
+    ///
+    /// `stop` is checked once per strip, at the outermost per-strip boundary
+    /// of the strip walker, before that strip's diffmap is computed; a
+    /// cancelled token returns [`ButteraugliError::Cancelled`].
+    /// [`enough::Unstoppable`] makes this behave identically to
+    /// [`Self::compare_linear_strip`] at zero cost.
+    ///
+    /// # Errors
+    /// As [`Self::compare_linear_strip`], plus [`ButteraugliError::Cancelled`]
+    /// if `stop` signals cancellation between strips.
+    pub fn compare_linear_strip_with_stop(
+        &self,
+        rgb: &[f32],
+        strip_height: u32,
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_linear_strip_with_config_and_stop(
+            rgb,
+            strip_height,
+            ButteraugliStripConfig::default(),
+            stop,
+        )
+    }
+
     /// Strip-bounded linear-RGB comparison with explicit configuration.
     ///
     /// # Errors
@@ -568,6 +703,28 @@ impl ButteraugliReference {
         rgb: &[f32],
         strip_height: u32,
         config: ButteraugliStripConfig,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_linear_strip_with_config_and_stop(
+            rgb,
+            strip_height,
+            config,
+            &enough::Unstoppable,
+        )
+    }
+
+    /// Shared body for the linear-RGB strip entry points; `stop` is threaded
+    /// to the strip walker (checked once per strip). The non-cancellable entry
+    /// points pass [`enough::Unstoppable`].
+    ///
+    /// # Errors
+    /// As [`ButteraugliReference::compare_strip`], plus
+    /// [`ButteraugliError::Cancelled`] if `stop` signals cancellation.
+    fn compare_linear_strip_with_config_and_stop(
+        &self,
+        rgb: &[f32],
+        strip_height: u32,
+        config: ButteraugliStripConfig,
+        stop: &dyn Stop,
     ) -> Result<ButteraugliResult, ButteraugliError> {
         let width = self.width();
         let height = self.height();
@@ -596,6 +753,8 @@ impl ButteraugliReference {
                      constructor does not retain interleaved source data, \
                      and `drop_strip_source` was not previously called)",
             })?;
+        // `stop` is checked once per strip inside the walker; non-cancellable
+        // callers pass `Unstoppable` (zero-cost).
         run_strip_walker_linear(
             &linear1,
             rgb,
@@ -605,6 +764,7 @@ impl ButteraugliReference {
             self.params(),
             config.halo_rows,
             self.params().compute_diffmap(),
+            stop,
         )
     }
 
@@ -618,6 +778,25 @@ impl ButteraugliReference {
         img: ImgRef<RGB8>,
         strip_height: u32,
     ) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_strip_srgb_with_stop(img, strip_height, &enough::Unstoppable)
+    }
+
+    /// Cancellable variant of [`Self::compare_strip_srgb`].
+    ///
+    /// `stop` is checked once per strip inside the strip walker; a cancelled
+    /// token returns [`ButteraugliError::Cancelled`]. [`enough::Unstoppable`]
+    /// makes this behave identically to [`Self::compare_strip_srgb`] at zero
+    /// cost.
+    ///
+    /// # Errors
+    /// As [`Self::compare_strip_srgb`], plus [`ButteraugliError::Cancelled`]
+    /// if `stop` signals cancellation between strips.
+    pub fn compare_strip_srgb_with_stop(
+        &self,
+        img: ImgRef<RGB8>,
+        strip_height: u32,
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
         if img.width() != self.width() || img.height() != self.height() {
             return Err(ButteraugliError::DimensionMismatch {
                 w1: self.width(),
@@ -627,7 +806,7 @@ impl ButteraugliReference {
             });
         }
         let linear = imgref_srgb_to_linear_f32(img);
-        self.compare_linear_strip(&linear, strip_height)
+        self.compare_linear_strip_with_stop(&linear, strip_height, stop)
     }
 
     /// Compare a distorted linear-RGB image (as `ImgRef<RGB<f32>>`)
@@ -640,6 +819,26 @@ impl ButteraugliReference {
         img: ImgRef<RGB<f32>>,
         strip_height: u32,
     ) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_strip_linear_imgref_with_stop(img, strip_height, &enough::Unstoppable)
+    }
+
+    /// Cancellable variant of [`Self::compare_strip_linear_imgref`].
+    ///
+    /// `stop` is checked once per strip inside the strip walker; a cancelled
+    /// token returns [`ButteraugliError::Cancelled`]. [`enough::Unstoppable`]
+    /// makes this behave identically to [`Self::compare_strip_linear_imgref`]
+    /// at zero cost.
+    ///
+    /// # Errors
+    /// As [`Self::compare_strip_linear_imgref`], plus
+    /// [`ButteraugliError::Cancelled`] if `stop` signals cancellation between
+    /// strips.
+    pub fn compare_strip_linear_imgref_with_stop(
+        &self,
+        img: ImgRef<RGB<f32>>,
+        strip_height: u32,
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
         if img.width() != self.width() || img.height() != self.height() {
             return Err(ButteraugliError::DimensionMismatch {
                 w1: self.width(),
@@ -650,6 +849,6 @@ impl ButteraugliReference {
         }
         let linear = imgref_rgbf32_to_f32_vec(img);
         check_finite_f32(&linear, "linear rgb")?;
-        self.compare_linear_strip(&linear, strip_height)
+        self.compare_linear_strip_with_stop(&linear, strip_height, stop)
     }
 }

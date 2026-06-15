@@ -6,27 +6,27 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: butteraugli.txt 109 lines (supported surface) | butteraugli.features.txt 132 added (features: avx512,corpus-tests,iir-blur,internals,rayon,unsafe-performance) | butteraugli.internal.txt 9 lines (9 hidden + 0 excluded-feature)
+# files: butteraugli.txt 130 lines (supported surface) | butteraugli.features.txt 132 added (features: avx512,corpus-tests,iir-blur,internals,rayon,unsafe-performance) | butteraugli.internal.txt 9 lines (9 hidden + 0 excluded-feature)
 
 ## summary
 #
 #   pub modules                                 2
 #   pub types (struct/enum/trait/alias)         6
 #   pub consts/statics                          4
-#   free functions                              7
-#   inherent methods                           59
+#   free functions                             10
+#   inherent methods                           75
 #   struct fields                              15
-#   enum variants                               5
-#   re-exports                                  5
+#   enum variants                               6
+#   re-exports                                  6
 #   trait roster entries (type × trait)        15
 #   auto-trait-complete types                   4
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
-#   (root)                           58
-#   precompute                       45
+#   (root)                           63
+#   precompute                       61
 
-## items (102 lines)
+## items (123 lines)
 
 pub mod butteraugli
 pub use Img
@@ -34,13 +34,18 @@ pub use ImgRef
 pub use ImgVec
 pub use RGB
 pub use RGB8
+pub use enough
 pub mod precompute
 pub fn precompute::ButteraugliReference::compare(&self, &[u8]) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear(&self, &[f32]) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_imgref(&self, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_linear_imgref_with_stop(&self, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_planar(&self, &[f32], &[f32], &[f32], usize) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_planar_into(&self, &[f32], &[f32], &[f32], usize, &mut alloc::vec::Vec<f32>) -> core::result::Result<(f64, f64), ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_linear_with_stop(&self, &[f32], &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_srgb(&self, imgref::ImgRef<'_, rgb::RGB8>) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_srgb_with_stop(&self, imgref::ImgRef<'_, rgb::RGB8>, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_with_stop(&self, &[u8], &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::drop_strip_source(&mut self)
 pub fn precompute::ButteraugliReference::from_linear(imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::from_srgb(imgref::ImgRef<'_, rgb::RGB8>, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
@@ -53,11 +58,16 @@ pub fn precompute::ButteraugliReference::shrink_to_fit(&mut self)
 pub fn precompute::ButteraugliReference::width(&self) -> usize
 pub fn precompute::ButteraugliReference::compare_linear_strip(&self, &[f32], u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_strip_with_config(&self, &[f32], u32, ButteraugliStripConfig) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_linear_strip_with_stop(&self, &[f32], u32, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_strip(&self, &[u8], u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_strip_linear_imgref(&self, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_strip_linear_imgref_with_stop(&self, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, u32, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_strip_srgb(&self, imgref::ImgRef<'_, rgb::RGB8>, u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_strip_srgb_with_stop(&self, imgref::ImgRef<'_, rgb::RGB8>, u32, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_strip_with_config(&self, &[u8], u32, ButteraugliStripConfig) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_strip_with_stop(&self, &[u8], u32, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 #[non_exhaustive] pub enum ButteraugliError
+pub ButteraugliError::Cancelled(enough::reason::StopReason)
 #[non_exhaustive] pub ButteraugliError::DimensionMismatch
 pub ButteraugliError::DimensionMismatch::h1: usize
 pub ButteraugliError::DimensionMismatch::h2: usize
@@ -91,9 +101,13 @@ pub struct ButteraugliReference [also: precompute]
 pub fn precompute::ButteraugliReference::compare(&self, &[u8]) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear(&self, &[f32]) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_imgref(&self, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_linear_imgref_with_stop(&self, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_planar(&self, &[f32], &[f32], &[f32], usize) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_planar_into(&self, &[f32], &[f32], &[f32], usize, &mut alloc::vec::Vec<f32>) -> core::result::Result<(f64, f64), ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_linear_with_stop(&self, &[f32], &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_srgb(&self, imgref::ImgRef<'_, rgb::RGB8>) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_srgb_with_stop(&self, imgref::ImgRef<'_, rgb::RGB8>, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_with_stop(&self, &[u8], &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::drop_strip_source(&mut self)
 pub fn precompute::ButteraugliReference::from_linear(imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::from_srgb(imgref::ImgRef<'_, rgb::RGB8>, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
@@ -106,10 +120,14 @@ pub fn precompute::ButteraugliReference::shrink_to_fit(&mut self)
 pub fn precompute::ButteraugliReference::width(&self) -> usize
 pub fn precompute::ButteraugliReference::compare_linear_strip(&self, &[f32], u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_strip_with_config(&self, &[f32], u32, ButteraugliStripConfig) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_linear_strip_with_stop(&self, &[f32], u32, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_strip(&self, &[u8], u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_strip_linear_imgref(&self, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_strip_linear_imgref_with_stop(&self, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, u32, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_strip_srgb(&self, imgref::ImgRef<'_, rgb::RGB8>, u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_strip_srgb_with_stop(&self, imgref::ImgRef<'_, rgb::RGB8>, u32, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_strip_with_config(&self, &[u8], u32, ButteraugliStripConfig) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_strip_with_stop(&self, &[u8], u32, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 #[non_exhaustive] pub struct ButteraugliResult
 pub ButteraugliResult::diffmap: core::option::Option<imgref::ImgVec<f32>>
 pub ButteraugliResult::pnorm_3: f64
@@ -127,8 +145,11 @@ pub fn butteraugli(imgref::ImgRef<'_, rgb::RGB8>, imgref::ImgRef<'_, rgb::RGB8>,
 pub fn butteraugli_linear(imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, &ButteraugliParams) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn butteraugli_linear_strip(imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, &ButteraugliParams, u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn butteraugli_linear_strip_with_config(imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, &ButteraugliParams, u32, ButteraugliStripConfig) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn butteraugli_linear_with_stop(imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, &ButteraugliParams, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn butteraugli_strip(imgref::ImgRef<'_, rgb::RGB8>, imgref::ImgRef<'_, rgb::RGB8>, &ButteraugliParams, u32) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn butteraugli_strip_with_config(imgref::ImgRef<'_, rgb::RGB8>, imgref::ImgRef<'_, rgb::RGB8>, &ButteraugliParams, u32, ButteraugliStripConfig) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn butteraugli_strip_with_stop(imgref::ImgRef<'_, rgb::RGB8>, imgref::ImgRef<'_, rgb::RGB8>, &ButteraugliParams, u32, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn butteraugli_with_stop(imgref::ImgRef<'_, rgb::RGB8>, imgref::ImgRef<'_, rgb::RGB8>, &ButteraugliParams, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn srgb_to_linear(u8) -> f32
 
 ## trait impls (5 types)

@@ -163,6 +163,7 @@ mod strip;
 pub use strip::{
     ButteraugliStripConfig, HALO_ROWS_DEFAULT, MIN_STRIP_HEIGHT, butteraugli_linear_strip,
     butteraugli_linear_strip_with_config, butteraugli_strip, butteraugli_strip_with_config,
+    butteraugli_strip_with_stop,
 };
 
 #[cfg(feature = "internals")]
@@ -173,6 +174,12 @@ pub(crate) mod psycho;
 // Re-export imgref and rgb types for convenience
 pub use imgref::{Img, ImgRef, ImgVec};
 pub use rgb::{RGB, RGB8};
+
+/// Re-export of the [`enough`] cooperative-cancellation crate, so callers of
+/// the `*_with_stop` entry points (e.g. [`butteraugli_with_stop`]) can name
+/// [`enough::Stop`] / [`enough::Unstoppable`] / [`enough::StopReason`]
+/// without taking a direct dependency.
+pub use enough;
 
 /// Reflect-101 index map (OpenCV `BORDER_REFLECT_101`): fold an
 /// out-of-range index `i` back into `[0, n)` by mirroring at the borders
@@ -300,6 +307,11 @@ pub enum ButteraugliError {
     },
     /// Score computation produced NaN or infinity (usually from non-finite input pixels).
     NonFiniteResult,
+    /// The computation was cooperatively cancelled via the
+    /// [`enough::Stop`] token passed to a `*_with_stop` entry point
+    /// (e.g. [`butteraugli_with_stop`]). Carries the
+    /// [`enough::StopReason`] (cancelled vs. timed out).
+    Cancelled(enough::StopReason),
 }
 
 impl std::fmt::Display for ButteraugliError {
@@ -332,6 +344,9 @@ impl std::fmt::Display for ButteraugliError {
                     f,
                     "image dimensions {width}x{height} overflow buffer size calculation"
                 )
+            }
+            Self::Cancelled(reason) => {
+                write!(f, "butteraugli computation cancelled: {reason}")
             }
             Self::NonFiniteResult => {
                 write!(
@@ -655,6 +670,38 @@ pub fn butteraugli(
     img2: ImgRef<RGB8>,
     params: &ButteraugliParams,
 ) -> Result<ButteraugliResult, ButteraugliError> {
+    butteraugli_with_stop(img1, img2, params, &enough::Unstoppable)
+}
+
+/// Like [`butteraugli`], but cooperatively cancellable via an
+/// [`enough::Stop`] token.
+///
+/// `stop` is checked once at the outermost per-scale boundary of the core
+/// compute (before any of the multi-scale processing blocks run); the
+/// per-pixel kernels are never interrupted mid-scale. If the token signals a
+/// stop, returns [`ButteraugliError::Cancelled`] carrying the
+/// [`enough::StopReason`].
+///
+/// Pass [`enough::Unstoppable`] for a non-cancellable call (this is exactly
+/// what [`butteraugli`] does — it is zero-cost).
+///
+/// # Arguments
+/// * `img1` - First image (sRGB, supports stride via ImgRef)
+/// * `img2` - Second image (sRGB, supports stride via ImgRef)
+/// * `params` - Comparison parameters
+/// * `stop` - Cooperative-cancellation token
+///
+/// # Errors
+/// Returns an error if:
+/// - Image dimensions don't match
+/// - Either dimension is zero
+/// - `stop` signals cancellation ([`ButteraugliError::Cancelled`])
+pub fn butteraugli_with_stop(
+    img1: ImgRef<RGB8>,
+    img2: ImgRef<RGB8>,
+    params: &ButteraugliParams,
+    stop: &dyn enough::Stop,
+) -> Result<ButteraugliResult, ButteraugliError> {
     params.validate()?;
 
     let (w1, h1) = (img1.width(), img1.height());
@@ -695,7 +742,7 @@ pub fn butteraugli(
         _ => (img1, img2),
     };
 
-    let result = diff::compute_butteraugli_imgref(i1, i2, params, params.compute_diffmap);
+    let result = diff::compute_butteraugli_imgref(i1, i2, params, params.compute_diffmap, stop)?;
 
     if !result.score.is_finite() {
         return Err(ButteraugliError::NonFiniteResult);
@@ -746,6 +793,39 @@ pub fn butteraugli_linear(
     img2: ImgRef<RGB<f32>>,
     params: &ButteraugliParams,
 ) -> Result<ButteraugliResult, ButteraugliError> {
+    butteraugli_linear_with_stop(img1, img2, params, &enough::Unstoppable)
+}
+
+/// Like [`butteraugli_linear`], but cooperatively cancellable via an
+/// [`enough::Stop`] token.
+///
+/// `stop` is checked once at the outermost per-scale boundary of the core
+/// compute (before any of the multi-scale processing blocks run); the
+/// per-pixel kernels are never interrupted mid-scale. If the token signals a
+/// stop, returns [`ButteraugliError::Cancelled`] carrying the
+/// [`enough::StopReason`].
+///
+/// Pass [`enough::Unstoppable`] for a non-cancellable call (this is exactly
+/// what [`butteraugli_linear`] does — it is zero-cost).
+///
+/// # Arguments
+/// * `img1` - First image (linear RGB, `1.0` = `intensity_target` nits)
+/// * `img2` - Second image (linear RGB, `1.0` = `intensity_target` nits)
+/// * `params` - Comparison parameters
+/// * `stop` - Cooperative-cancellation token
+///
+/// # Errors
+/// Returns an error if:
+/// - Image dimensions don't match
+/// - Either dimension is zero
+/// - Any input pixel is NaN or infinite
+/// - `stop` signals cancellation ([`ButteraugliError::Cancelled`])
+pub fn butteraugli_linear_with_stop(
+    img1: ImgRef<RGB<f32>>,
+    img2: ImgRef<RGB<f32>>,
+    params: &ButteraugliParams,
+    stop: &dyn enough::Stop,
+) -> Result<ButteraugliResult, ButteraugliError> {
     params.validate()?;
 
     let (w1, h1) = (img1.width(), img1.height());
@@ -784,7 +864,8 @@ pub fn butteraugli_linear(
         _ => (img1, img2),
     };
 
-    let result = diff::compute_butteraugli_linear_imgref(i1, i2, params, params.compute_diffmap);
+    let result =
+        diff::compute_butteraugli_linear_imgref(i1, i2, params, params.compute_diffmap, stop)?;
 
     if !result.score.is_finite() {
         return Err(ButteraugliError::NonFiniteResult);

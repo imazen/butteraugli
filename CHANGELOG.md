@@ -12,11 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      Everything below ships with the next publish. -->
 
 ### Added
-- Sub-8px images (down to 1×1) are now reflect(mirror)-padded up to the 8×8
-  floor and scored by `butteraugli` / `butteraugli_linear` instead of being
-  rejected with `ImageTooSmall`; the returned diffmap is cropped back to the
-  input size. Zero-dimension inputs still error. The strip API still
-  requires ≥8×8. (328cf8e)
+- Cooperative cancellation: `butteraugli_with_stop`, `butteraugli_linear_with_stop`,
+  and `butteraugli_strip_with_stop` mirror `butteraugli` / `butteraugli_linear` /
+  `butteraugli_strip` but take a trailing `stop: &dyn enough::Stop` token. The token
+  is checked at the outermost per-scale boundary of the core compute (one-shot) and
+  once per strip at the top of the strip loop — never inside the per-pixel
+  psycho/blur/malta/mask/opsin kernels — so a cancellation is honoured at scale /
+  strip granularity with zero hot-loop overhead. A new additive
+  `ButteraugliError::Cancelled(enough::StopReason)` variant is returned on cancel
+  (the enum is `#[non_exhaustive]`, so this is non-breaking). The non-`_with_stop`
+  functions delegate to the `_with_stop` versions with `enough::Unstoppable` (zero
+  cost). The `enough` crate is re-exported (`butteraugli::enough`) so callers can
+  name `Stop` / `Unstoppable` / `StopReason` without a direct dependency.
+  The warm-reference `ButteraugliReference` batch API (the codec-sweep hot path:
+  precompute the reference once, compare many distorted images) is covered too —
+  `compare_with_stop`, `compare_linear_with_stop`, `compare_srgb_with_stop`,
+  `compare_linear_imgref_with_stop` check the token at the warm-ref core's outermost
+  per-scale boundary (before the full-res + half-res `maybe_join` dispatch), and
+  `compare_strip_with_stop`, `compare_linear_strip_with_stop`,
+  `compare_strip_srgb_with_stop`, `compare_strip_linear_imgref_with_stop` thread it
+  into the already-per-strip-checked strip walker. Same non-breaking delegation: the
+  existing methods call the `_with_stop` versions with `enough::Unstoppable`.
 - `ButteraugliReference::drop_strip_source(&mut self)` — drops the retained reference-side source data (sRGB u8 or linear f32) so subsequent `compare_strip` / `compare_linear_strip` / `compare_strip_srgb` / `compare_strip_linear_imgref` calls return `InvalidParameter`. The non-strip `compare` / `compare_linear` / `compare_linear_planar` paths are unaffected. Use when the caller has determined that no strip dispatch will follow on this reference and wants to reclaim the per-pixel retention. (3e41f32)
 - `ButteraugliReference::shrink_to_fit(&mut self)` — drains the persistent `BufferPool`, releasing any cached transient buffers held between `compare` calls at the cost of one re-allocation on the next `compare` call. Cached XYB pyramid / mask / source data is retained (the warm-ref speedup over a cold `butteraugli()` call still applies). (3e41f32)
 - Versioned public-API surface snapshot at `docs/public-api/butteraugli.txt`, regenerated on every `cargo test` by `butteraugli/tests/public_api_doc.rs` (`ZEN_API_DOC=check` verifies in the CI lint job, `=off` skips); `justfile` recipes `fmt` / `api-doc` / `api-doc-check`. Dev-only — not part of the published package.
