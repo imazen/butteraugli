@@ -95,6 +95,63 @@ let result = butteraugli(img1.as_ref(), img2.as_ref(), &ButteraugliParams::defau
 println!("Score: {:.4}", result.score);
 ```
 
+### From a flat `Vec<u8>` of RGB bytes
+
+Most decoders hand you a packed row-major `Vec<u8>` (3 bytes per pixel),
+not a `Vec<RGB8>`. `Img`, `ImgRef`, `ImgVec`, `RGB`, and `RGB8` are all
+re-exported from the crate root, so you don't need to add `imgref` or `rgb`
+yourself — turn the bytes into `RGB8` pixels with `RGB8::new` and wrap them
+with `Img::new`:
+
+```rust
+use butteraugli::{butteraugli, ButteraugliParams, Img, RGB8};
+
+// `orig` and `dist` are `&[u8]`, row-major, exactly `width * height * 3` bytes.
+fn score(orig: &[u8], dist: &[u8], width: usize, height: usize)
+    -> Result<f64, butteraugli::ButteraugliError>
+{
+    let to_pixels = |bytes: &[u8]| -> Vec<RGB8> {
+        bytes
+            .chunks_exact(3)
+            .map(|px| RGB8::new(px[0], px[1], px[2]))
+            .collect()
+    };
+
+    let img1 = Img::new(to_pixels(orig), width, height);
+    let img2 = Img::new(to_pixels(dist), width, height);
+
+    let result = butteraugli(img1.as_ref(), img2.as_ref(), &ButteraugliParams::default())?;
+    Ok(result.score)
+}
+```
+
+If your rows carry padding (a row stride larger than `width * 3`), keep the
+flat buffer and build a borrowed view with `ImgRef::new_stride(buf, width,
+height, stride_in_pixels)` instead of copying into a packed `Vec` — the
+linear path has a matching `ImgRef<RGB<f32>>` form. Both the sRGB and linear
+APIs walk stride natively at no extra cost on the tightly-packed path.
+
+#### RGBA input
+
+There is no RGBA entry point — butteraugli compares three color channels and
+ignores alpha. If your buffer is 4 bytes per pixel, drop the alpha while
+building the pixels with `chunks_exact(4)` and keep the first three lanes:
+
+```rust
+let to_pixels = |bytes: &[u8]| -> Vec<RGB8> {
+    bytes
+        .chunks_exact(4) // RGBA in, RGB8 out
+        .map(|px| RGB8::new(px[0], px[1], px[2]))
+        .collect()
+};
+```
+
+Using `chunks_exact(3)` on RGBA bytes does *not* fail — it silently
+misaligns every pixel after the first and produces a meaningless score, so
+match the chunk size to your actual layout. (Premultiplied alpha is not
+unpremultiplied for you; convert to straight RGB first if your pipeline
+premultiplies.)
+
 ### Difference Map
 
 ```rust
@@ -148,6 +205,119 @@ image in horizontal strips (3.8x lower peak heap at 40 MP, equivalent wall
 time): `butteraugli_strip` / `butteraugli_linear_strip` one-shot, or
 `ButteraugliReference::compare_strip` and friends with a cached reference.
 Strip scores match the full-image path to ~1e-2; see `ButteraugliStripConfig`.
+
+### Cooperative Cancellation
+
+Every slow entry point has a `*_with_stop` twin that takes a trailing
+`stop: &dyn enough::Stop` token. The token is polled at the outermost
+per-scale boundary (one-shot) and once per strip at the top of the strip loop
+— never inside the per-pixel opsin / blur / Malta / masking kernels — so a
+cancellation is honored at scale / strip granularity with zero hot-loop
+overhead. When the token fires, the call returns
+`Err(ButteraugliError::Cancelled(reason))`.
+
+| Non-cancellable | Cancellable twin |
+|-----------------|------------------|
+| `butteraugli` | `butteraugli_with_stop` |
+| `butteraugli_linear` | `butteraugli_linear_with_stop` |
+| `butteraugli_strip` | `butteraugli_strip_with_stop` |
+| `ButteraugliReference::compare` | `compare_with_stop` |
+| `ButteraugliReference::compare_linear` | `compare_linear_with_stop` |
+| `ButteraugliReference::compare_srgb` | `compare_srgb_with_stop` |
+| `ButteraugliReference::compare_linear_imgref` | `compare_linear_imgref_with_stop` |
+| `ButteraugliReference::compare_strip` | `compare_strip_with_stop` |
+| `ButteraugliReference::compare_linear_strip` | `compare_linear_strip_with_stop` |
+
+The non-`_with_stop` functions are exactly their `_with_stop` twin called with
+`enough::Unstoppable`, the no-op token — so there is no behavioral or perf
+difference between `butteraugli(a, b, &p)` and
+`butteraugli_with_stop(a, b, &p, &enough::Unstoppable)`. The
+[`enough`](https://crates.io/crates/enough) crate is re-exported as
+`butteraugli::enough`, so you can name `Stop` / `Unstoppable` / `StopReason`
+without adding it to your own `Cargo.toml`:
+
+```rust
+use butteraugli::{butteraugli_with_stop, ButteraugliParams, ButteraugliError};
+
+// A non-cancellable call, spelled explicitly:
+let result = butteraugli_with_stop(
+    img1.as_ref(),
+    img2.as_ref(),
+    &ButteraugliParams::default(),
+    &butteraugli::enough::Unstoppable,
+);
+```
+
+For a token you can actually trip from another thread (a deadline, a
+"newer request arrived" signal, a Ctrl-C handler), pull in
+[`almost-enough`](https://crates.io/crates/almost-enough), which provides
+`Stopper` — an `Arc`-backed, `Clone`-able, `Send + Sync` cancellation flag.
+Hand a clone to the worker, keep one for yourself, and call `.cancel()` when
+you want the comparison to bail:
+
+```toml
+[dependencies]
+butteraugli = "0.9"
+enough = "0.4.4"          # only if you name the Stop trait directly
+almost-enough = "0.4.4"   # the Stopper / SyncStopper cancellation tokens
+```
+
+```rust
+use almost_enough::Stopper;
+use butteraugli::{butteraugli_with_stop, ButteraugliParams, ButteraugliError};
+
+let stop = Stopper::new();
+let worker_stop = stop.clone(); // clones share one flag; any clone can cancel
+
+let handle = std::thread::spawn(move || {
+    butteraugli_with_stop(
+        img1.as_ref(),
+        img2.as_ref(),
+        &ButteraugliParams::default(),
+        &worker_stop,
+    )
+});
+
+// ... later, from elsewhere — e.g. a newer request landed, or a deadline hit:
+stop.cancel();
+
+match handle.join().unwrap() {
+    Ok(result)                            => println!("score {:.4}", result.score),
+    Err(ButteraugliError::Cancelled(why)) => eprintln!("cancelled: {why:?}"),
+    Err(e)                                => eprintln!("error: {e}"),
+}
+```
+
+`Stopper` uses Relaxed atomics; reach for `almost_enough::SyncStopper` (same
+shape) if you need Release/Acquire ordering to publish other writes alongside
+the cancel. Both satisfy `&dyn enough::Stop`. A pre-cancelled token
+(`Stopper::cancelled()`) makes the very first per-scale check bail before any
+per-pixel work runs.
+
+## Errors and Result Types
+
+Every fallible entry point returns
+`Result<ButteraugliResult, ButteraugliError>`.
+
+`ButteraugliError` is `#[non_exhaustive]` and implements both `Display` and
+`std::error::Error`, so it slots into `?`, `anyhow`, `thiserror`, and friends.
+Its variants cover dimension mismatch / too-small / overflow inputs, a
+`NonFiniteResult` for NaN/Inf pixels, and `Cancelled(enough::StopReason)` from
+the cancellation tokens above. New variants may be added in future releases —
+match with a `_ => …` arm.
+
+`ButteraugliResult` carries:
+
+| Field / method | Type | Meaning |
+|----------------|------|---------|
+| `score` | `f64` | Max-norm distance (the historical score; `<1.0` good, `>2.0` bad). |
+| `max_norm()` | `f64` | Same value as `score`, named for unambiguous call sites. |
+| `pnorm_3` | `f64` | libjxl 3-norm aggregation (`butteraugli_main --pnorm`). Always populated. |
+| `pnorm(p)` | `f64 -> Option<f64>` | libjxl p-norm of the diffmap. `p == 3.0` reuses `pnorm_3` for free; other `p` returns `None` unless `compute_diffmap` was enabled. |
+| `diffmap` | `Option<ImgVec<f32>>` | Per-pixel difference map; `Some` only when `compute_diffmap` was set. |
+
+The struct is also `#[non_exhaustive]`; construct it only via the comparison
+functions, and read it by field/method.
 
 ## Features
 
