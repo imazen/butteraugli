@@ -3,7 +3,6 @@
 //! This module ties together all the components to compute the
 //! perceptual difference between two images.
 
-use crate::ButteraugliParams;
 use crate::consts::{
     NORM1_HF, NORM1_HF_X, NORM1_MF, NORM1_MF_X, NORM1_UHF, NORM1_UHF_X, W_HF_MALTA, W_HF_MALTA_X,
     W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X, WMUL,
@@ -13,6 +12,8 @@ use crate::malta::malta_diff_map;
 use crate::mask::compute_mask_from_hf_uhf;
 use crate::opsin::linear_rgb_to_xyb_butteraugli;
 use crate::psycho::{PsychoImage, separate_frequencies};
+use crate::{ButteraugliError, ButteraugliParams};
+use enough::Stop;
 use imgref::ImgRef;
 use rgb::{RGB, RGB8};
 
@@ -722,29 +723,52 @@ pub fn compute_butteraugli_impl(
     let linear1 = srgb_u8_to_linear_f32(rgb1);
     let linear2 = srgb_u8_to_linear_f32(rgb2);
 
-    compute_butteraugli_linear_impl(&linear1, &linear2, width, height, params)
+    // Test-only helper: no cancellation token, so `Unstoppable` (which never
+    // returns `Err`) makes the `Result` infallible here.
+    compute_butteraugli_linear_impl(
+        &linear1,
+        &linear2,
+        width,
+        height,
+        params,
+        &enough::Unstoppable,
+    )
+    .expect("Unstoppable never cancels")
 }
 
 /// Main implementation of butteraugli comparison (linear RGB f32 input).
 ///
 /// This matches the C++ butteraugli API which expects linear RGB float input.
+///
+/// This is the core compute orchestrator: it dispatches the multi-scale
+/// work (single-resolution for small images, full-res + one half-res
+/// sub-level otherwise). The cooperative-cancellation check lives here, at
+/// the outermost scale-iteration boundary — *before* any scale's processing
+/// block — so a `cancel()` between strips / before a one-shot compare is
+/// honoured without ever entering the per-pixel kernels in
+/// `psycho`/`blur`/`malta`/`mask`/`opsin`. Those inner loops carry no check.
 pub fn compute_butteraugli_linear_impl(
     rgb1: &[f32],
     rgb2: &[f32],
     width: usize,
     height: usize,
     params: &ButteraugliParams,
-) -> InternalResult {
+    stop: &dyn Stop,
+) -> Result<InternalResult, ButteraugliError> {
     assert_eq!(rgb1.len(), width * height * 3);
     assert_eq!(rgb2.len(), width * height * 3);
 
+    // Cooperative cancellation: outermost per-scale (one-shot) boundary —
+    // checked before the scale dispatch below, never inside the kernels.
+    stop.check().map_err(ButteraugliError::Cancelled)?;
+
     // Handle identical images case
     if rgb1 == rgb2 {
-        return InternalResult {
+        return Ok(InternalResult {
             score: 0.0,
             pnorm_3: 0.0,
             diffmap: Some(ImageF::new(width, height)),
-        };
+        });
     }
 
     // Handle very small images without multi-resolution
@@ -757,11 +781,11 @@ pub fn compute_butteraugli_linear_impl(
     // Single-pass reduction: max-norm score AND libjxl 3-norm
     let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
 
-    InternalResult {
+    Ok(InternalResult {
         score,
         pnorm_3,
         diffmap: Some(diffmap),
-    }
+    })
 }
 
 /// Implementation of butteraugli comparison for ImgRef<RGB8>.
@@ -770,7 +794,8 @@ pub(crate) fn compute_butteraugli_imgref(
     img2: ImgRef<RGB8>,
     params: &ButteraugliParams,
     compute_diffmap: bool,
-) -> InternalResult {
+    stop: &dyn Stop,
+) -> Result<InternalResult, ButteraugliError> {
     let width = img1.width();
     let height = img1.height();
 
@@ -779,13 +804,14 @@ pub(crate) fn compute_butteraugli_imgref(
     let linear1 = imgref_srgb_to_linear_f32(img1);
     let linear2 = imgref_srgb_to_linear_f32(img2);
 
-    let mut result = compute_butteraugli_linear_impl(&linear1, &linear2, width, height, params);
+    let mut result =
+        compute_butteraugli_linear_impl(&linear1, &linear2, width, height, params, stop)?;
 
     if !compute_diffmap {
         result.diffmap = None;
     }
 
-    result
+    Ok(result)
 }
 
 /// Converts ImgRef<RGB8> directly to interleaved linear f32, skipping
@@ -811,7 +837,8 @@ pub(crate) fn compute_butteraugli_linear_imgref(
     img2: ImgRef<RGB<f32>>,
     params: &ButteraugliParams,
     compute_diffmap: bool,
-) -> InternalResult {
+    stop: &dyn Stop,
+) -> Result<InternalResult, ButteraugliError> {
     let width = img1.width();
     let height = img1.height();
 
@@ -820,14 +847,14 @@ pub(crate) fn compute_butteraugli_linear_imgref(
     let rgb2 = imgref_rgbf32_to_f32_vec(img2);
 
     // Use the existing proven implementation with multiresolution support
-    let mut result = compute_butteraugli_linear_impl(&rgb1, &rgb2, width, height, params);
+    let mut result = compute_butteraugli_linear_impl(&rgb1, &rgb2, width, height, params, stop)?;
 
     // Drop diffmap if not requested
     if !compute_diffmap {
         result.diffmap = None;
     }
 
-    result
+    Ok(result)
 }
 
 /// Converts ImgRef<RGB<f32>> to a contiguous Vec<f32> in RGB order.

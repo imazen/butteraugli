@@ -25,6 +25,8 @@
 //! }
 //! ```
 
+use enough::Stop;
+
 use crate::diff::maybe_join;
 use crate::image::{BufferPool, Image3F, ImageF};
 use crate::mask::PrecomputedMask;
@@ -438,6 +440,24 @@ impl ButteraugliReference {
     /// Returns an error if:
     /// - Buffer size doesn't match reference dimensions
     pub fn compare(&self, rgb: &[u8]) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_with_stop(rgb, &enough::Unstoppable)
+    }
+
+    /// Cancellable variant of [`Self::compare`].
+    ///
+    /// `stop` is checked once at the outermost per-scale boundary of the
+    /// warm-reference compute, before any per-pixel work; a cancelled token
+    /// returns [`ButteraugliError::Cancelled`]. [`enough::Unstoppable`] makes
+    /// this behave identically to [`Self::compare`] at zero cost.
+    ///
+    /// # Errors
+    /// As [`Self::compare`], plus [`ButteraugliError::Cancelled`] if `stop`
+    /// signals cancellation.
+    pub fn compare_with_stop(
+        &self,
+        rgb: &[u8],
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
         let expected_size = self.width * self.height * 3;
 
         if rgb.len() != expected_size {
@@ -447,7 +467,7 @@ impl ButteraugliReference {
             });
         }
 
-        let result = self.compare_impl(rgb);
+        let result = self.compare_impl(rgb, stop)?;
         if !result.score.is_finite() {
             return Err(ButteraugliError::NonFiniteResult);
         }
@@ -463,6 +483,24 @@ impl ButteraugliReference {
     /// Returns an error if:
     /// - Buffer size doesn't match reference dimensions
     pub fn compare_linear(&self, rgb: &[f32]) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_linear_with_stop(rgb, &enough::Unstoppable)
+    }
+
+    /// Cancellable variant of [`Self::compare_linear`].
+    ///
+    /// `stop` is checked once at the outermost per-scale boundary of the
+    /// warm-reference compute, before any per-pixel work; a cancelled token
+    /// returns [`ButteraugliError::Cancelled`]. [`enough::Unstoppable`] makes
+    /// this behave identically to [`Self::compare_linear`] at zero cost.
+    ///
+    /// # Errors
+    /// As [`Self::compare_linear`], plus [`ButteraugliError::Cancelled`] if
+    /// `stop` signals cancellation.
+    pub fn compare_linear_with_stop(
+        &self,
+        rgb: &[f32],
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
         let expected_size = self.width * self.height * 3;
 
         if rgb.len() != expected_size {
@@ -474,7 +512,7 @@ impl ButteraugliReference {
 
         check_finite_f32(rgb, "compare linear rgb")?;
 
-        let result = self.compare_linear_impl(rgb);
+        let result = self.compare_linear_impl(rgb, stop)?;
         if !result.score.is_finite() {
             return Err(ButteraugliError::NonFiniteResult);
         }
@@ -520,7 +558,8 @@ impl ButteraugliReference {
         check_finite_f32(&g[..min_size], "compare planar g")?;
         check_finite_f32(&b[..min_size], "compare planar b")?;
 
-        let result = self.compare_linear_planar_impl(r, g, b, stride);
+        // Non-cancellable entry point — `Unstoppable` is zero-cost.
+        let result = self.compare_linear_planar_impl(r, g, b, stride, &enough::Unstoppable)?;
         if !result.score.is_finite() {
             return Err(ButteraugliError::NonFiniteResult);
         }
@@ -573,7 +612,15 @@ impl ButteraugliReference {
         check_finite_f32(&g[..min_size], "compare planar g")?;
         check_finite_f32(&b[..min_size], "compare planar b")?;
 
-        let (score, pnorm_3) = self.compare_linear_planar_impl_into(r, g, b, stride, diffmap_out);
+        // Non-cancellable entry point — `Unstoppable` is zero-cost.
+        let (score, pnorm_3) = self.compare_linear_planar_impl_into(
+            r,
+            g,
+            b,
+            stride,
+            diffmap_out,
+            &enough::Unstoppable,
+        )?;
         if !score.is_finite() {
             return Err(ButteraugliError::NonFiniteResult);
         }
@@ -723,6 +770,24 @@ impl ButteraugliReference {
         &self,
         img: imgref::ImgRef<rgb::RGB8>,
     ) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_srgb_with_stop(img, &enough::Unstoppable)
+    }
+
+    /// Cancellable variant of [`Self::compare_srgb`].
+    ///
+    /// `stop` is checked once at the outermost per-scale boundary of the
+    /// warm-reference compute, before any per-pixel work; a cancelled token
+    /// returns [`ButteraugliError::Cancelled`]. [`enough::Unstoppable`] makes
+    /// this behave identically to [`Self::compare_srgb`] at zero cost.
+    ///
+    /// # Errors
+    /// As [`Self::compare_srgb`], plus [`ButteraugliError::Cancelled`] if
+    /// `stop` signals cancellation.
+    pub fn compare_srgb_with_stop(
+        &self,
+        img: imgref::ImgRef<rgb::RGB8>,
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
         if img.width() != self.width || img.height() != self.height {
             return Err(ButteraugliError::DimensionMismatch {
                 w1: self.width,
@@ -732,7 +797,7 @@ impl ButteraugliReference {
             });
         }
         let linear = crate::diff::imgref_srgb_to_linear_f32(img);
-        self.compare_linear(&linear)
+        self.compare_linear_with_stop(&linear, stop)
     }
 
     /// Compare a distorted linear RGB image (as `ImgRef<RGB<f32>>`) against the reference.
@@ -743,6 +808,24 @@ impl ButteraugliReference {
         &self,
         img: imgref::ImgRef<rgb::RGB<f32>>,
     ) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_linear_imgref_with_stop(img, &enough::Unstoppable)
+    }
+
+    /// Cancellable variant of [`Self::compare_linear_imgref`].
+    ///
+    /// `stop` is checked once at the outermost per-scale boundary of the
+    /// warm-reference compute, before any per-pixel work; a cancelled token
+    /// returns [`ButteraugliError::Cancelled`]. [`enough::Unstoppable`] makes
+    /// this behave identically to [`Self::compare_linear_imgref`] at zero cost.
+    ///
+    /// # Errors
+    /// As [`Self::compare_linear_imgref`], plus [`ButteraugliError::Cancelled`]
+    /// if `stop` signals cancellation.
+    pub fn compare_linear_imgref_with_stop(
+        &self,
+        img: imgref::ImgRef<rgb::RGB<f32>>,
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
         if img.width() != self.width || img.height() != self.height {
             return Err(ButteraugliError::DimensionMismatch {
                 w1: self.width,
@@ -752,15 +835,19 @@ impl ButteraugliReference {
             });
         }
         let rgb = crate::diff::imgref_rgbf32_to_f32_vec(img);
-        self.compare_linear(&rgb)
+        self.compare_linear_with_stop(&rgb, stop)
     }
 
     /// Internal comparison implementation for sRGB input.
     ///
     /// Converts sRGB to linear and delegates to the linear path.
-    fn compare_impl(&self, rgb: &[u8]) -> ButteraugliResult {
+    fn compare_impl(
+        &self,
+        rgb: &[u8],
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
         let linear = srgb_u8_to_linear_f32(rgb);
-        self.compare_linear_impl(&linear)
+        self.compare_linear_impl(&linear, stop)
     }
 
     /// Internal comparison implementation for linear RGB input.
@@ -768,7 +855,21 @@ impl ButteraugliReference {
     /// Computes full-resolution diffmap using precomputed reference, then adds
     /// a single half-resolution sub-level via AddSupersampled2x. This matches
     /// C++ `ButteraugliComparator::Diffmap` which only uses one sub-level.
-    fn compare_linear_impl(&self, rgb: &[f32]) -> ButteraugliResult {
+    ///
+    /// The cooperative-cancellation check lives here, at the outermost
+    /// per-scale boundary — *before* the full-res + half-res scale dispatch
+    /// (`maybe_join`) below — so a `cancel()` between warm-ref compares is
+    /// honoured without ever entering the per-pixel kernels in
+    /// `opsin`/`psycho`/`mask`/`malta`/`blur`. Those inner loops carry no check.
+    fn compare_linear_impl(
+        &self,
+        rgb: &[f32],
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        // Cooperative cancellation: outermost per-scale boundary — checked
+        // before the scale dispatch below, never inside the kernels.
+        stop.check().map_err(ButteraugliError::Cancelled)?;
+
         let intensity_target = self.params.intensity_target();
         let width = self.width;
         let height = self.height;
@@ -818,11 +919,11 @@ impl ButteraugliReference {
 
         let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
 
-        ButteraugliResult {
+        Ok(ButteraugliResult {
             score,
             pnorm_3,
             diffmap: Some(diffmap.into_imgvec()),
-        }
+        })
     }
 
     /// Internal comparison implementation for planar linear RGB input,
@@ -838,7 +939,12 @@ impl ButteraugliReference {
         b: &[f32],
         stride: usize,
         diffmap_out: &mut Vec<f32>,
-    ) -> (f64, f64) {
+        stop: &dyn Stop,
+    ) -> Result<(f64, f64), ButteraugliError> {
+        // Cooperative cancellation: outermost per-scale boundary — checked
+        // before the scale dispatch below, never inside the kernels.
+        stop.check().map_err(ButteraugliError::Cancelled)?;
+
         let intensity_target = self.params.intensity_target();
         let width = self.width;
         let height = self.height;
@@ -929,7 +1035,7 @@ impl ButteraugliReference {
         }
         diffmap.recycle(pool);
 
-        (score, pnorm_3)
+        Ok((score, pnorm_3))
     }
 
     /// Internal comparison implementation for planar linear RGB input.
@@ -939,7 +1045,12 @@ impl ButteraugliReference {
         g: &[f32],
         b: &[f32],
         stride: usize,
-    ) -> ButteraugliResult {
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        // Cooperative cancellation: outermost per-scale boundary — checked
+        // before the scale dispatch below, never inside the kernels.
+        stop.check().map_err(ButteraugliError::Cancelled)?;
+
         let intensity_target = self.params.intensity_target();
         let width = self.width;
         let height = self.height;
@@ -1009,11 +1120,11 @@ impl ButteraugliReference {
 
         let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
 
-        ButteraugliResult {
+        Ok(ButteraugliResult {
             score,
             pnorm_3,
             diffmap: Some(diffmap.into_imgvec()),
-        }
+        })
     }
 }
 
