@@ -777,11 +777,10 @@ impl ButteraugliReference {
     /// inside a quantization loop.
     ///
     /// Exact for the planar / linear / sRGB constructors' precompute: equal
-    /// to the full+half [`ScaleData`] byte total an actual reference reports
+    /// to the full+half `ScaleData` byte total an actual reference reports
     /// (validated by the `estimated_reference_bytes_matches_precompute`
-    /// test). It does NOT include the retained strip-walker source
-    /// ([`ReferenceSource`]) or the transient compare-time
-    /// [`BufferPool`](crate::image::BufferPool) — those are not part of the
+    /// test). It does NOT include the retained strip-walker source or the
+    /// transient compare-time buffer pool — those are not part of the
     /// persistent precompute and are accounted separately by
     /// [`Self::memory_bytes`] on a live reference.
     ///
@@ -809,7 +808,7 @@ impl ButteraugliReference {
     }
 
     /// Heap bytes of the **persistent precompute** actually held by this
-    /// live reference (full + optional half [`ScaleData`]). This is what
+    /// live reference (full + optional half `ScaleData`). This is what
     /// [`Self::estimated_reference_bytes`] predicts a-priori.
     #[must_use]
     pub fn precompute_bytes(&self) -> usize {
@@ -819,8 +818,8 @@ impl ButteraugliReference {
     /// Total heap bytes this reference currently retains: the persistent
     /// precompute ([`Self::precompute_bytes`]) plus the retained
     /// strip-walker source and any idle buffers cached in the internal
-    /// [`BufferPool`](crate::image::BufferPool). Useful for memory
-    /// introspection / budget accounting across batches.
+    /// buffer pool. Useful for memory introspection / budget accounting
+    /// across batches.
     #[must_use]
     pub fn memory_bytes(&self) -> usize {
         self.precompute_bytes()
