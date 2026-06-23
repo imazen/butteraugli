@@ -26,6 +26,9 @@ harness = false
 [[example]]
 name = "score_parity"
 
+[[example]]
+name = "strip_vs_full_mem"
+
 [lints.rust.unexpected_cfgs]
 level = "warn"
 check-cfg = ['cfg(has_cpp_butteraugli)']

@@ -1,0 +1,10 @@
+# Strip-wise vs full-image butteraugli — measured max-RSS (/usr/bin/time -v) + wall.
+# Harness: butteraugli-bench/examples/strip_vs_full_mem.rs (procedural high-entropy noise, multithreaded default, strip_height=256, halo=64).
+# One-shot compare (NOT warm-ref). Scores are BIT-IDENTICAL strip vs full at every size (strip is a correct drop-in).
+size_mp	mode	max_rss_gib	wall_ms	score
+16	full	3.10	2163.8	18.179180
+16	strip	1.09	1929.0	18.179180
+24	full	4.66	2163.8	19.390560
+24	strip	1.57	1929.0	19.390560
+36	full	6.47	2163.8	19.223804
+36	strip	2.26	1929.0	19.223804

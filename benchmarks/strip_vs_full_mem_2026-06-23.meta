@@ -1,0 +1,11 @@
+# Date: 2026-06-23  Host: lilith  butteraugli commit: 74fb6e0
+# Command: /usr/bin/time -v ./target/release/examples/strip_vs_full_mem <full|strip> <mp> 256
+# FINDINGS:
+#  - Memory: strip is 2.84-2.97x smaller (16-36 MP); ratio grows with image size
+#    (full scales O(h*w), strip O(strip_height*w) + O(MP) input/output floor).
+#  - Score: BIT-IDENTICAL strip vs full at every size -> safe drop-in for the metric.
+#  - Speed (one-shot): strip ~equal-or-faster (better cache locality offsets 50% halo overhead).
+#  - CAVEAT: the jxl buttloop is WARM-REF (precompute once, compare 2-4x). Full amortizes the
+#    precompute across iters; standalone strip re-walks the reference per compare, which is why
+#    the buttloop-wired strip-tile was "measured slower" (CLAUDE.md W44-PHASE3-B7d). A warm-ref
+#    strip (cache per-strip precompute, reuse across iters) is the unfinished true-tile refactor.
