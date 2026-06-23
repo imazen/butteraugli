@@ -22,3 +22,6 @@ perf.data.old
 
 # Vendored libjxl checkout used by butteraugli-bench (auto-cloned, ~600MB)
 /experiments/libjxl-vendor/
+
+# apidoc (zenutils-apidoc) runner backup — transient, never commit
+Cargo.toml.original.txt
