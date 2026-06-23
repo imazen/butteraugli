@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      Everything below ships with the next publish. -->
 
 ### Added
+- Memory introspection on `ButteraugliReference` (additive, no behavior change):
+  `estimated_reference_bytes(width, height, &params)` returns the a-priori heap cost
+  of a reference's persistent multi-resolution precompute (full + optional half-res
+  psycho pyramid + masks) from dimensions alone, *before* the reference is built;
+  `precompute_bytes(&self)` / `memory_bytes(&self)` report the actual persistent
+  precompute and the full retained footprint (precompute + strip-walker source +
+  idle pool) of a live reference. `estimated_reference_bytes` is pinned exactly to
+  the real allocation by a test across the `need_half` gate and both constructors.
+  Lets a caller (e.g. an encoder's quantization loop) reserve the reference's
+  dominant allocation on a memory budget so an over-cap encode fails gracefully
+  instead of OOM-killing the host (imazen/jxl-encoder#93).
 - Cooperative cancellation: `butteraugli_with_stop`, `butteraugli_linear_with_stop`,
   and `butteraugli_strip_with_stop` mirror `butteraugli` / `butteraugli_linear` /
   `butteraugli_strip` but take a trailing `stop: &dyn enough::Stop` token. The token

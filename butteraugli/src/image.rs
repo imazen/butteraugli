@@ -118,6 +118,19 @@ impl BufferPool {
     pub(crate) fn clear(&self) {
         self.buffers.lock().unwrap().clear();
     }
+
+    /// Heap bytes currently retained by idle pooled buffers (sum of
+    /// capacities). Transient — a freshly-built reference may hold up to
+    /// [`MAX_POOL_BUFFERS`] recycled buffers here. Used by
+    /// [`crate::ButteraugliReference::memory_bytes`].
+    pub(crate) fn retained_bytes(&self) -> usize {
+        self.buffers
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|b| b.capacity() * core::mem::size_of::<f32>())
+            .sum()
+    }
 }
 
 /// Maximum number of cached buffers retained by a single [`BufferPool`].
@@ -252,6 +265,15 @@ impl ImageF {
     #[must_use]
     pub fn stride(&self) -> usize {
         self.stride
+    }
+
+    /// Heap bytes backing this plane (`stride * height * size_of::<f32>()`),
+    /// including SIMD-alignment row padding. Used by
+    /// [`crate::ButteraugliReference::memory_bytes`] for memory introspection.
+    #[inline]
+    #[must_use]
+    pub(crate) fn byte_size(&self) -> usize {
+        self.data.len() * core::mem::size_of::<f32>()
     }
 
     /// Returns a reference to a row.
@@ -503,6 +525,13 @@ impl Image3F {
     #[must_use]
     pub fn height(&self) -> usize {
         self.planes[0].height()
+    }
+
+    /// Heap bytes backing all three planes. See [`ImageF::byte_size`].
+    #[inline]
+    #[must_use]
+    pub(crate) fn byte_size(&self) -> usize {
+        self.planes[0].byte_size() + self.planes[1].byte_size() + self.planes[2].byte_size()
     }
 
     /// Returns a reference to a specific plane.

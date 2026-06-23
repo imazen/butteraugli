@@ -74,6 +74,19 @@ impl PsychoImage {
         }
     }
 
+    /// Heap bytes backing the frequency-decomposed planes (uhf×2 + hf×2 +
+    /// mf×3 + lf×3 = 10 `ImageF` planes at this scale). See
+    /// [`crate::ButteraugliReference::memory_bytes`].
+    #[must_use]
+    pub(crate) fn byte_size(&self) -> usize {
+        self.uhf[0].byte_size()
+            + self.uhf[1].byte_size()
+            + self.hf[0].byte_size()
+            + self.hf[1].byte_size()
+            + self.mf.byte_size()
+            + self.lf.byte_size()
+    }
+
     /// Recycles all internal buffers back to the pool.
     pub(crate) fn recycle(self, pool: &BufferPool) {
         let [uhf0, uhf1] = self.uhf;

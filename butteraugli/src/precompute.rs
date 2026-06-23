@@ -49,6 +49,28 @@ struct ScaleData {
     mask: PrecomputedMask,
 }
 
+impl ScaleData {
+    /// Heap bytes backing one resolution level: the 10-plane psycho
+    /// pyramid + the 2-plane mask = 12 `ImageF` at this scale.
+    #[must_use]
+    fn byte_size(&self) -> usize {
+        self.psycho.byte_size() + self.mask.byte_size()
+    }
+
+    /// A-priori byte estimate for a level at `width × height`, matching the
+    /// layout `byte_size` measures (`stride = round_up(width, 16)`, 12
+    /// planes). Kept in lockstep with [`Self::byte_size`] by
+    /// `estimated_reference_bytes_matches_precompute`.
+    #[must_use]
+    fn estimated_byte_size(width: usize, height: usize) -> usize {
+        // ImageF aligns stride to 16 floats (64 B) — see `ImageF::new`.
+        let stride = (width + 15) & !15;
+        let plane = stride * height * core::mem::size_of::<f32>();
+        // PsychoImage(uhf2 + hf2 + mf3 + lf3 = 10) + PrecomputedMask(2).
+        12 * plane
+    }
+}
+
 /// Retained reference-side source data for the strip walker.
 ///
 /// The strip walker (`compare_strip`, `compare_linear_strip`) needs to
@@ -71,6 +93,17 @@ enum ReferenceSource {
     /// compression opportunity beyond clone elision since the input was
     /// already linear.
     Linear(Vec<f32>),
+}
+
+impl ReferenceSource {
+    /// Heap bytes retained for the strip-walker source copy.
+    #[must_use]
+    fn byte_size(&self) -> usize {
+        match self {
+            ReferenceSource::Srgb(v) => v.capacity(),
+            ReferenceSource::Linear(v) => v.capacity() * core::mem::size_of::<f32>(),
+        }
+    }
 }
 
 /// Precomputed butteraugli reference data for fast repeated comparisons.
@@ -732,6 +765,67 @@ impl ButteraugliReference {
     #[must_use]
     pub fn params(&self) -> &ButteraugliParams {
         &self.params
+    }
+
+    /// A-priori estimate of the heap bytes a reference's **persistent
+    /// precompute** will occupy, computed from dimensions + params alone —
+    /// *before* the reference is built. This is the multi-resolution psycho
+    /// pyramid + masks (full level, plus the half-resolution level when
+    /// `params` enables multi-resolution and the image is large enough); it
+    /// is the dominant, long-lived allocation of a `ButteraugliReference`
+    /// and the figure a memory budget should reserve before constructing one
+    /// inside a quantization loop.
+    ///
+    /// Exact for the planar / linear / sRGB constructors' precompute: equal
+    /// to the full+half [`ScaleData`] byte total an actual reference reports
+    /// (validated by the `estimated_reference_bytes_matches_precompute`
+    /// test). It does NOT include the retained strip-walker source
+    /// ([`ReferenceSource`]) or the transient compare-time
+    /// [`BufferPool`](crate::image::BufferPool) — those are not part of the
+    /// persistent precompute and are accounted separately by
+    /// [`Self::memory_bytes`] on a live reference.
+    ///
+    /// `0` for degenerate sizes (`width == 0 || height == 0`).
+    #[must_use]
+    pub fn estimated_reference_bytes(
+        width: usize,
+        height: usize,
+        params: &ButteraugliParams,
+    ) -> usize {
+        if width == 0 || height == 0 {
+            return 0;
+        }
+        let mut total = ScaleData::estimated_byte_size(width, height);
+        // Mirror the `need_half` gate in `new_linear_planar` /
+        // `new`: a half-resolution level is built unless single-resolution
+        // is requested and only when both dims clear the subsample floor.
+        let need_half = !params.single_resolution()
+            && width >= MIN_SIZE_FOR_SUBSAMPLE
+            && height >= MIN_SIZE_FOR_SUBSAMPLE;
+        if need_half {
+            total += ScaleData::estimated_byte_size(width.div_ceil(2), height.div_ceil(2));
+        }
+        total
+    }
+
+    /// Heap bytes of the **persistent precompute** actually held by this
+    /// live reference (full + optional half [`ScaleData`]). This is what
+    /// [`Self::estimated_reference_bytes`] predicts a-priori.
+    #[must_use]
+    pub fn precompute_bytes(&self) -> usize {
+        self.full.byte_size() + self.half.as_ref().map_or(0, ScaleData::byte_size)
+    }
+
+    /// Total heap bytes this reference currently retains: the persistent
+    /// precompute ([`Self::precompute_bytes`]) plus the retained
+    /// strip-walker source and any idle buffers cached in the internal
+    /// [`BufferPool`](crate::image::BufferPool). Useful for memory
+    /// introspection / budget accounting across batches.
+    #[must_use]
+    pub fn memory_bytes(&self) -> usize {
+        self.precompute_bytes()
+            + self.source.as_ref().map_or(0, ReferenceSource::byte_size)
+            + self.pool.retained_bytes()
     }
 
     /// Precompute reference data from an `ImgRef<RGB8>` (sRGB).
@@ -1796,6 +1890,60 @@ fn subsample_planar_rgb_2x(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The a-priori `estimated_reference_bytes` must EXACTLY equal the
+    /// persistent precompute an actual reference reports, across sizes that
+    /// span the `need_half` gate (small single-res, multi-res, odd dims that
+    /// exercise `div_ceil` + stride alignment) and across both
+    /// constructors. This pins the estimate to the real allocation so the
+    /// jxl-encoder budget guard reserves the right figure (issue
+    /// imazen/jxl-encoder#93) — not a guessed constant.
+    #[test]
+    fn estimated_reference_bytes_matches_precompute() {
+        // (width, height) chosen to hit: below subsample floor (single-res),
+        // just above it, stride-aligned, and odd dims (div_ceil + padding).
+        for &(w, h) in &[(8, 8), (14, 20), (15, 15), (37, 41), (64, 64), (100, 73)] {
+            let params = ButteraugliParams::default();
+            // sRGB constructor (retains a source; precompute is source-free).
+            let rgb: Vec<u8> = (0..w * h * 3).map(|i| (i * 7 % 251) as u8).collect();
+            let reference = ButteraugliReference::new(&rgb, w, h, params.clone())
+                .expect("reference should build");
+            let est = ButteraugliReference::estimated_reference_bytes(w, h, &params);
+            assert_eq!(
+                est,
+                reference.precompute_bytes(),
+                "estimate must equal actual precompute at {w}x{h}",
+            );
+            // memory_bytes includes the retained sRGB source + pool, so it is
+            // strictly >= the precompute-only estimate.
+            assert!(
+                reference.memory_bytes() >= est,
+                "memory_bytes {} must be >= precompute estimate {est} at {w}x{h}",
+                reference.memory_bytes(),
+            );
+            // half-level presence must agree with the estimate's gate.
+            let need_half = w >= MIN_SIZE_FOR_SUBSAMPLE && h >= MIN_SIZE_FOR_SUBSAMPLE;
+            assert_eq!(reference.half.is_some(), need_half, "half gate at {w}x{h}");
+        }
+
+        // single_resolution=true suppresses the half level in both the
+        // estimate and the actual build.
+        let params = ButteraugliParams::new().with_single_resolution(true);
+        let rgb: Vec<u8> = vec![128; 64 * 64 * 3];
+        let reference =
+            ButteraugliReference::new(&rgb, 64, 64, params.clone()).expect("build single-res");
+        assert!(reference.half.is_none());
+        assert_eq!(
+            ButteraugliReference::estimated_reference_bytes(64, 64, &params),
+            reference.precompute_bytes(),
+        );
+
+        // Degenerate dims estimate to 0 without panicking.
+        assert_eq!(
+            ButteraugliReference::estimated_reference_bytes(0, 64, &params),
+            0
+        );
+    }
 
     #[test]
     fn test_precompute_creation() {

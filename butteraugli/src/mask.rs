@@ -417,6 +417,15 @@ pub struct PrecomputedMask {
     pub blurred: ImageF,
 }
 
+impl PrecomputedMask {
+    /// Heap bytes backing the two mask planes. See
+    /// [`crate::ButteraugliReference::memory_bytes`].
+    #[must_use]
+    pub(crate) fn byte_size(&self) -> usize {
+        self.mask.byte_size() + self.blurred.byte_size()
+    }
+}
+
 /// Precomputes the reference-side mask from HF/UHF frequency bands.
 ///
 /// This performs combine_and_precompute + gaussian_blur + fuzzy_erosion on the
