@@ -347,6 +347,38 @@ pub fn butteraugli_linear_strip(
     )
 }
 
+/// Like [`butteraugli_linear_strip`], but cooperatively cancellable via an
+/// [`enough::Stop`] token.
+///
+/// `stop` is checked once per strip, at the top of the strip loop (the
+/// outermost per-strip boundary); the per-strip diffmap kernels are never
+/// interrupted mid-strip. If the token signals a stop, returns
+/// [`ButteraugliError::Cancelled`] carrying the [`enough::StopReason`].
+///
+/// Pass [`enough::Unstoppable`] for a non-cancellable call (this is exactly
+/// what [`butteraugli_linear_strip`] does — it is zero-cost). Uses the default
+/// strip config (halo = [`HALO_ROWS_DEFAULT`]).
+///
+/// # Errors
+/// As [`butteraugli_linear_strip`], plus [`ButteraugliError::Cancelled`] if
+/// `stop` signals cancellation.
+pub fn butteraugli_linear_strip_with_stop(
+    img1: ImgRef<RGB<f32>>,
+    img2: ImgRef<RGB<f32>>,
+    params: &ButteraugliParams,
+    strip_height: u32,
+    stop: &dyn Stop,
+) -> Result<ButteraugliResult, ButteraugliError> {
+    butteraugli_linear_strip_with_config_and_stop(
+        img1,
+        img2,
+        params,
+        strip_height,
+        ButteraugliStripConfig::default(),
+        stop,
+    )
+}
+
 /// Strip-wise butteraugli with linear-RGB f32 inputs and explicit
 /// configuration.
 ///
@@ -358,6 +390,26 @@ pub fn butteraugli_linear_strip_with_config(
     params: &ButteraugliParams,
     strip_height: u32,
     config: ButteraugliStripConfig,
+) -> Result<ButteraugliResult, ButteraugliError> {
+    butteraugli_linear_strip_with_config_and_stop(
+        img1,
+        img2,
+        params,
+        strip_height,
+        config,
+        &enough::Unstoppable,
+    )
+}
+
+/// Shared body for the linear-RGB strip entry points; `stop` is threaded to the
+/// strip walker which checks it once per strip.
+fn butteraugli_linear_strip_with_config_and_stop(
+    img1: ImgRef<RGB<f32>>,
+    img2: ImgRef<RGB<f32>>,
+    params: &ButteraugliParams,
+    strip_height: u32,
+    config: ButteraugliStripConfig,
+    stop: &dyn Stop,
 ) -> Result<ButteraugliResult, ButteraugliError> {
     params.validate()?;
     let (width, height) = (img1.width(), img1.height());
@@ -389,7 +441,6 @@ pub fn butteraugli_linear_strip_with_config(
     check_finite_f32(&linear1, "linear rgb1")?;
     check_finite_f32(&linear2, "linear rgb2")?;
 
-    // No cancellation token on this entry point — `Unstoppable` is zero-cost.
     run_strip_walker_linear(
         &linear1,
         &linear2,
@@ -399,7 +450,7 @@ pub fn butteraugli_linear_strip_with_config(
         params,
         config.halo_rows,
         params.compute_diffmap(),
-        &enough::Unstoppable,
+        stop,
     )
 }
 

@@ -162,8 +162,8 @@ pub use precompute::ButteraugliReference;
 mod strip;
 pub use strip::{
     ButteraugliStripConfig, HALO_ROWS_DEFAULT, MIN_STRIP_HEIGHT, butteraugli_linear_strip,
-    butteraugli_linear_strip_with_config, butteraugli_strip, butteraugli_strip_with_config,
-    butteraugli_strip_with_stop,
+    butteraugli_linear_strip_with_config, butteraugli_linear_strip_with_stop, butteraugli_strip,
+    butteraugli_strip_with_config, butteraugli_strip_with_stop,
 };
 
 #[cfg(feature = "internals")]

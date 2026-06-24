@@ -7,7 +7,8 @@
 
 use butteraugli::{
     ButteraugliError, ButteraugliParams, ButteraugliReference, Img, RGB, RGB8,
-    butteraugli_linear_with_stop, butteraugli_strip_with_stop, butteraugli_with_stop,
+    butteraugli_linear_strip_with_stop, butteraugli_linear_with_stop, butteraugli_strip_with_stop,
+    butteraugli_with_stop,
 };
 
 /// Small deterministic sRGB test image (≥8×8 so the strip API accepts it).
@@ -182,6 +183,63 @@ fn butteraugli_strip_with_stop_unstoppable_matches_plain_strip() {
     let stopped =
         butteraugli_strip_with_stop(a.as_ref(), b.as_ref(), &params, 16, &enough::Unstoppable)
             .unwrap();
+
+    assert_eq!(plain.score, stopped.score);
+}
+
+#[test]
+fn butteraugli_linear_strip_with_stop_cancelled() {
+    let a = linear_image(32, 32, 0);
+    let b = linear_image(32, 32, 5);
+    let params = ButteraugliParams::default();
+
+    let result = butteraugli_linear_strip_with_stop(
+        a.as_ref(),
+        b.as_ref(),
+        &params,
+        16,
+        &almost_enough::Stopper::cancelled(),
+    );
+
+    assert!(
+        matches!(result, Err(ButteraugliError::Cancelled(_))),
+        "expected Cancelled, got {result:?}"
+    );
+}
+
+#[test]
+fn butteraugli_linear_strip_with_stop_unstoppable_ok() {
+    let a = linear_image(32, 32, 0);
+    let b = linear_image(32, 32, 5);
+    let params = ButteraugliParams::default();
+
+    let result = butteraugli_linear_strip_with_stop(
+        a.as_ref(),
+        b.as_ref(),
+        &params,
+        16,
+        &enough::Unstoppable,
+    )
+    .expect("Unstoppable must not cancel");
+
+    assert!(result.score.is_finite());
+}
+
+#[test]
+fn butteraugli_linear_strip_with_stop_unstoppable_matches_plain_strip() {
+    let a = linear_image(32, 32, 0);
+    let b = linear_image(32, 32, 5);
+    let params = ButteraugliParams::default();
+
+    let plain = butteraugli::butteraugli_linear_strip(a.as_ref(), b.as_ref(), &params, 16).unwrap();
+    let stopped = butteraugli_linear_strip_with_stop(
+        a.as_ref(),
+        b.as_ref(),
+        &params,
+        16,
+        &enough::Unstoppable,
+    )
+    .unwrap();
 
     assert_eq!(plain.score, stopped.score);
 }
