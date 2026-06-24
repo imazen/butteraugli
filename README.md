@@ -221,6 +221,7 @@ overhead. When the token fires, the call returns
 | `butteraugli` | `butteraugli_with_stop` |
 | `butteraugli_linear` | `butteraugli_linear_with_stop` |
 | `butteraugli_strip` | `butteraugli_strip_with_stop` |
+| `butteraugli_linear_strip` | `butteraugli_linear_strip_with_stop` |
 | `ButteraugliReference::compare` | `compare_with_stop` |
 | `ButteraugliReference::compare_linear` | `compare_linear_with_stop` |
 | `ButteraugliReference::compare_srgb` | `compare_srgb_with_stop` |
