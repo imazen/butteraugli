@@ -1,4 +1,6 @@
-# butteraugli [![CI](https://img.shields.io/github/actions/workflow/status/imazen/butteraugli/ci.yml?style=flat-square&label=CI)](https://github.com/imazen/butteraugli/actions/workflows/ci.yml) [![crates.io](https://img.shields.io/crates/v/butteraugli?style=flat-square)](https://crates.io/crates/butteraugli) [![lib.rs](https://img.shields.io/crates/v/butteraugli?style=flat-square&label=lib.rs&color=blue)](https://lib.rs/crates/butteraugli) [![docs.rs](https://img.shields.io/docsrs/butteraugli?style=flat-square)](https://docs.rs/butteraugli) ![MSRV](https://img.shields.io/badge/MSRV-1.89-blue?style=flat-square) [![license](https://img.shields.io/crates/l/butteraugli?style=flat-square)](#license) [![codecov](https://img.shields.io/codecov/c/github/imazen/butteraugli?style=flat-square)](https://codecov.io/gh/imazen/butteraugli)
+<!-- GENERATED FROM README.md by zenutils gen-readme-crates.sh — DO NOT EDIT. -->
+
+# butteraugli
 
 A pure-Rust port of **butteraugli**, the perceptual image-difference metric from
 Google's [libjxl](https://github.com/libjxl/libjxl). It models human vision —
@@ -408,56 +410,6 @@ same build is fast everywhere:
 
 No C dependencies. Safe Rust by default (`unsafe-performance` is opt-in).
 
-<!-- crates.io:skip-start -->
-
-### Speed vs libjxl C++
-
-A/B harness ([`butteraugli-bench`](https://github.com/imazen/butteraugli/tree/main/butteraugli-bench),
-[zenbench](https://github.com/imazen/zenbench)) comparing this crate against
-`libjxl::ButteraugliDiffmap` through an FFI shim. Both sides receive identical
-pre-linearized planar f32 buffers — only the butteraugli pipeline is timed, I/O
-and sRGB→linear are outside the measured region. AMD Ryzen 9 7950X (Zen 4),
-synthetic gradient pair, commit `af27826`:
-
-| Image | Rust (rayon, 32T) | Rust (1 thread) | libjxl C++ (1 thread) |
-|-------|:-:|:-:|:-:|
-| 512×512 | 17.8 ms | 23.4 ms | 46.3 ms |
-| 1280×720 | 66.9 ms | 84.6 ms | 255.8 ms |
-| 1920×1080 | 197.1 ms | 228.9 ms | 594.0 ms |
-| 3840×2160 | 998.0 ms | 845.4 ms | 2629.2 ms |
-
-Single-threaded, this crate runs ~2–3× faster than the C++ pipeline on this
-hardware; rayon adds further headroom at HD and below. Full methodology, build
-flags, and reproduction steps are in
-[`benchmarks/README.md`](https://github.com/imazen/butteraugli/blob/main/benchmarks/README.md).
-Numbers were produced **without** `-C target-cpu=native` (runtime dispatch is
-what ships).
-
-## Accuracy
-
-Validated against libjxl's `butteraugli_main` on sRGB photographs (no ICC
-profiles or gAMA/cHRM chunks) across multiple sizes and JPEG quality levels. The
-`tests/reference_parity.rs` suite gates every commit against a corpus of >100
-reference cases; representative samples:
-
-| Image | Size | Quality | C++ libjxl | Rust | Relative diff |
-|-------|------|---------|-----------|------|--------------|
-| baby | 576×576 | Q75 | 3.0873 | 3.0873 | 0.0000% |
-| bulb | 576×576 | Q75 | 2.3174 | 2.3174 | 0.0003% |
-| city | 576×576 | Q75 | 3.8511 | 3.8511 | 0.0000% |
-| guitar | 576×576 | Q75 | 6.5399 | 6.5399 | 0.0000% |
-| photo A | 1024×1024 | Q25 | 11.3686 | 11.3686 | 0.0000% |
-| photo A | 1024×1024 | Q50 | 4.9663 | 4.9663 | 0.0000% |
-| photo A | 1024×1024 | Q90 | 1.8161 | 1.8161 | 0.0007% |
-| photo B | 1024×1024 | Q75 | 2.9628 | 2.9628 | 0.0003% |
-| photo C | 1024×1024 | Q50 | 3.1502 | 3.1502 | 0.0000% |
-| photo D | 1022×818 | Q50 | 5.4199 | 5.4199 | 0.0000% |
-
-**All test pairs: < 0.001% relative difference vs libjxl `butteraugli_main`.**
-Residual differences are FMA rounding noise from hardware fused multiply-add
-instructions.
-
-<!-- crates.io:skip-end -->
 
 > **ICC profiles:** this crate assumes sRGB input. libjxl's `butteraugli_main`
 > applies ICC profile and gAMA/cHRM transforms via its CMS before scoring. Images
