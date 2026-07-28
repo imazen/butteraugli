@@ -18,9 +18,17 @@ imgref = { workspace = true }
 rgb = { workspace = true }
 bytemuck = "1.18"
 zenbench = "0.1.7"
+# `testable_dispatch` lets benches/tier_isolation.rs disable the baseline SIMD
+# token (NEON on aarch64) so the scalar arm is real rather than a second
+# measurement of the SIMD path.
+archmage = { version = "0.9.28", features = ["std", "testable_dispatch"] }
 
 [[bench]]
 name = "bench_compare"
+harness = false
+
+[[bench]]
+name = "tier_isolation"
 harness = false
 
 [[example]]

@@ -1,0 +1,33 @@
+# butteraugli NEON vs forced-scalar — first tier-isolated measurement
+date:    2026-07-28
+host:    Apple M4 Pro (12 core), macOS, aarch64
+command: cargo bench -p butteraugli-bench --bench tier_isolation
+build:   release, NO -C target-cpu=native (native pins the tier at compile time,
+         after which it cannot be disabled and the bench skips)
+threads: 1 (single-thread rayon pool on both arms, so scheduling noise cannot
+         swamp the SIMD delta)
+
+## Why this file exists
+
+`bench_compare` measures this crate against libjxl's C++ butteraugli. That
+answers "are we competitive with C++", not "is our SIMD worth anything" — a
+kernel slower than its own scalar fallback can still look fine next to C++.
+benches/tier_isolation.rs runs the identical Rust pipeline with the native SIMD
+token disabled, which is the comparison that can expose a bad kernel.
+
+## Result
+
+| size       | NEON     | scalar    | speedup |
+|------------|----------|-----------|---------|
+| 256x256    |   6.95ms |   23.69ms |  3.41x  |
+| 512x512    |  24.20ms |   84.33ms |  3.48x  |
+| 1920x1080  | 179.35ms |  657.70ms |  3.67x  |
+| 3840x2160  | 718.25ms | 2619.20ms |  3.65x  |
+
+The strongest NEON payoff measured across the zen crates so far, and stable
+across a 225x range in pixel count — blur/malta/psycho vectorise well and the
+pipeline does not degenerate to bandwidth-bound at 4K. No regression at any
+size.
+
+Whole-pipeline numbers: they bound what NEON contributes overall but do not
+attribute it per kernel. Narrowing a specific kernel needs a targeted bench.

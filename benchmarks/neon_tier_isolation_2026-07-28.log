@@ -1,0 +1,129 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling libc v0.2.183
+   Compiling crossbeam-utils v0.8.21
+   Compiling bitflags v2.11.0
+   Compiling utf8parse v0.2.2
+   Compiling serde_core v1.0.228
+   Compiling rustversion v1.0.22
+   Compiling rustix v1.1.4
+   Compiling anstyle-parse v1.0.0
+   Compiling zmij v1.0.21
+   Compiling colorchoice v1.0.5
+   Compiling safe_unaligned_simd v0.2.5
+   Compiling autocfg v1.5.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling libm v0.2.16
+   Compiling anstyle v1.0.14
+   Compiling rayon-core v1.13.0
+   Compiling crossbeam-epoch v0.9.18
+   Compiling crossbeam-deque v0.8.6
+   Compiling anstream v1.0.0
+   Compiling syn v2.0.117
+   Compiling errno v0.3.14
+   Compiling num-traits v0.2.19
+   Compiling objc2-core-foundation v0.3.2
+   Compiling serde_json v1.0.150
+   Compiling bytemuck v1.25.0
+   Compiling heck v0.5.0
+   Compiling clap_lex v1.1.0
+   Compiling memchr v2.8.0
+   Compiling shlex v1.3.0
+   Compiling serde v1.0.228
+   Compiling strsim v0.11.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling clap_builder v4.6.0
+   Compiling cc v1.2.57
+   Compiling objc2-io-kit v0.3.2
+   Compiling either v1.15.0
+   Compiling itoa v1.0.18
+   Compiling butteraugli-bench v0.0.0 (/Users/lilith/work/zen/butteraugli/butteraugli-bench)
+   Compiling rayon v1.11.0
+   Compiling sysinfo v0.36.1
+   Compiling terminal_size v0.4.4
+   Compiling fs4 v0.13.1
+   Compiling archmage-macros v0.9.28
+   Compiling clap_derive v4.6.0
+   Compiling serde_derive v1.0.228
+   Compiling rgb v0.8.53
+   Compiling imgref v1.12.0
+   Compiling enough v0.4.4
+   Compiling archmage v0.9.28
+   Compiling clap v4.6.0
+   Compiling magetypes v0.9.26
+warning: butteraugli-bench@0.0.0: In file included from ffi/butteraugli_ffi.cpp:8:
+warning: butteraugli-bench@0.0.0: In file included from /Users/lilith/work/zen/butteraugli/experiments/libjxl-vendor/lib/jxl/base/status.h:18:
+warning: butteraugli-bench@0.0.0: /Users/lilith/work/zen/butteraugli/experiments/libjxl-vendor/lib/jxl/base/common.h:133:40: warning: unused parameter 'other' [-Wunused-parameter]
+warning: butteraugli-bench@0.0.0:   133 |       const UninitializedAllocator<U>& other) noexcept {}
+warning: butteraugli-bench@0.0.0:       |                                        ^
+warning: butteraugli-bench@0.0.0: /Users/lilith/work/zen/butteraugli/experiments/libjxl-vendor/lib/jxl/base/common.h:141:21: warning: unused parameter 'place' [-Wunused-parameter]
+warning: butteraugli-bench@0.0.0:   141 |   void construct(U* place, Args&&... args) {}
+warning: butteraugli-bench@0.0.0:       |                     ^
+warning: butteraugli-bench@0.0.0: /Users/lilith/work/zen/butteraugli/experiments/libjxl-vendor/lib/jxl/base/common.h:141:38: warning: unused parameter 'args' [-Wunused-parameter]
+warning: butteraugli-bench@0.0.0:   141 |   void construct(U* place, Args&&... args) {}
+warning: butteraugli-bench@0.0.0:       |                                      ^
+warning: butteraugli-bench@0.0.0: /Users/lilith/work/zen/butteraugli/experiments/libjxl-vendor/lib/jxl/base/common.h:144:19: warning: unused parameter 'place' [-Wunused-parameter]
+warning: butteraugli-bench@0.0.0:   144 |   void destroy(U* place) {}
+warning: butteraugli-bench@0.0.0:       |                   ^
+warning: butteraugli-bench@0.0.0: 4 warnings generated.
+   Compiling zenbench v0.1.7
+   Compiling butteraugli v0.9.4 (/Users/lilith/work/zen/butteraugli/butteraugli)
+   Compiling linear-srgb v0.6.12
+warning: function `load_16` is never used
+  --> butteraugli/src/malta.rs:74:4
+   |
+74 | fn load_16(data: &[f32], start: usize) -> &[f32; 16] {
+   |    ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `butteraugli` (lib) generated 1 warning
+    Finished `bench` profile [optimized] target(s) in 6.68s
+     Running benches/tier_isolation.rs (target/release/deps/tier_isolation-e812fa129d9e2d4d)
+[tier_isolation] comparing neon vs forced scalar (1 thread)
+[zenbench] calibration: int=0.30ns/iter mem_bw=105.6GiB/s mem_lat=7.6ns
+[zenbench] timer resolution: 41ns, loop overhead: 0.25ns/iter, TSC: 1.000 ticks/ns (invariant)
+[zenbench] results → /var/folders/sc/m9jbk0qj0jz4w09h7gg8v3p80000gn/T/zenbench/zenbench-1785242047-12b4.txt
+
+═══════════════════════════════════════════════════════════════
+  zenbench  1785242047-12b4
+  git: 43950f5e058883f1e88a3aa9d0bdacc12e2b110b
+═══════════════════════════════════════════════════════════════
+
+  butteraugli_256x256  30 rounds × 1 calls
+             mean ±mad ms  95% CI vs base     
+  ├─ neon      6.9 ±0.8ms  [6.7–7.2]ms        
+  ╰─ scalar   23.7 ±0.8ms  [+235.2%–+246.8%]  
+
+  neon    ██████████████████ 6.95ms
+  scalar  ██████████████████████████████████████████████████████████████ 23.69ms
+
+  butteraugli_512x512  30 rounds × 1 calls
+             mean ±mad ms  95% CI vs base     
+  ├─ neon     24.2 ±1.2ms  [23.8–24.6]ms      
+  ╰─ scalar   84.3 ±1.5ms  [+245.5%–+251.5%]  
+
+  neon    ██████████████████ 24.20ms
+  scalar  ██████████████████████████████████████████████████████████████ 84.33ms
+
+  butteraugli_1920x1080  12 rounds × 1 calls
+              mean ±mad ms  95% CI vs base     
+  ├─ neon     179.3 ±1.2ms  [178.9–179.8]ms    
+  ╰─ scalar   657.7 ±4.0ms  [+264.8%–+269.0%]  
+
+  neon    █████████████████ 179.35ms
+  scalar  █████████████████████████████████████████████████████████████ 657.70ms
+
+  butteraugli_3840x2160  5 rounds × 1 calls ⚠ only 5 rounds
+                mean ±mad ms  95% CI vs base     
+  ├─ neon       718.3 ±1.0ms  [716.9–719.5]ms    
+  ╰─ scalar   2619.2 ±17.2ms  [+262.3%–+264.5%]  
+
+  neon    █████████████████ 718.25ms
+  scalar  █████████████████████████████████████████████████████████████ 2.62s
+
+  total: 49.2s  (28 noisy rounds)
+═══════════════════════════════════════════════════════════════
+  filter: cargo bench -- --group=NAME  format: --format=llm|csv|md|json
