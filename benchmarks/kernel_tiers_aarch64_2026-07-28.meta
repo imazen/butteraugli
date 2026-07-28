@@ -1,0 +1,35 @@
+Host:    Apple Silicon (aarch64), darwin 25.5.0
+Command: cargo bench -p butteraugli-bench --bench kernel_tiers  (no -C target-cpu=native)
+Method:  archmage NeonToken::dangerously_disable_token_process_wide toggles the
+         tier inside the timed closure (zenbench interleaves arms, so the
+         toggle must be per-iteration; it costs one atomic store and applies
+         to both arms equally).
+
+WHY THIS EXISTS
+  benches/tier_isolation.rs measures the whole `compare` end-to-end. That
+  cannot reveal a single kernel SLOWER than its own fallback -- the faster
+  kernels average it away. That failure mode was found and fixed in garb,
+  zensim, zentone, zenpng and zenresize during the same 2026-07-28 aarch64
+  sweep. It matters more here than most places: butteraugli is the inner loop
+  of jxl-encoder's quantization loop, which runs it 2-4x per encode.
+
+RESULT: no losers, and NEON coverage is complete.
+  Every kernel has a hand-written NEON variant -- malta.rs:2200
+  (malta_diff_map_dispatch_neon), blur.rs:969 / :1136 / :1599 -- not a generic
+  path riding autovectorization. Ratios 3.66x-9.25x.
+
+NOTE ON THE UNUSUALLY HIGH RATIOS
+  These are larger than the 1.7-2.7x seen in fast-ssim2 because the incant!
+  tier lists here are [v4, v3, neon, wasm128] with NO magetypes `scalar` tier,
+  so the disabled-NEON arm lands on the hand-written *_dispatch_scalar
+  fallback rather than an autovectorized magetypes scalar body. The ratio is
+  therefore "NEON vs hand-written scalar", not "NEON vs autovectorized
+  scalar" -- a different (and easier) baseline than the other crates in this
+  sweep. It does not indicate butteraugli is better optimized than they are;
+  it indicates its fallback is plainer. Do not compare these numbers
+  cross-crate.
+
+  Corollary worth knowing but NOT acted on here: blur_mirrored_5x5's fallback
+  is 8-9x off its NEON path, so a target with no SIMD tier at all pays that.
+  Irrelevant on aarch64 (NEON is baseline, dispatch cannot fail) and out of
+  scope for a NEON sweep.

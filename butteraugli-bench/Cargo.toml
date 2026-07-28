@@ -11,7 +11,10 @@ default = []
 cc = "1"
 
 [dependencies]
-butteraugli = { workspace = true }
+# `internals` exposes blur/malta/image so benches/kernel_tiers.rs can measure
+# individual kernels. The end-to-end bench cannot show a single kernel losing
+# to its own scalar fallback -- the faster kernels average it away.
+butteraugli = { workspace = true, features = ["internals"] }
 rayon = { workspace = true }
 linear-srgb = "0.6.12"
 imgref = { workspace = true }
@@ -40,3 +43,7 @@ name = "strip_vs_full_mem"
 [lints.rust.unexpected_cfgs]
 level = "warn"
 check-cfg = ['cfg(has_cpp_butteraugli)']
+
+[[bench]]
+name = "kernel_tiers"
+harness = false

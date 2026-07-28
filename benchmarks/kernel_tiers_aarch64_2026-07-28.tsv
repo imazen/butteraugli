@@ -1,0 +1,13 @@
+# butteraugli per-kernel NEON-vs-forced-scalar, aarch64 (Apple Silicon)
+# harness: butteraugli-bench/benches/kernel_tiers.rs (zenbench, interleaved arms)
+kernel	size	neon	scalar	ratio
+malta_diff_map	512x512	1.4ms	5.5ms	3.93
+malta_diff_map	1920x1080	6.5ms	23.8ms	3.66
+gaussian_blur_s1.2	512x512	281.8us	1336.0us	4.74
+gaussian_blur_s1.2	1920x1080	1.7ms	7.8ms	4.59
+gaussian_blur_s3	512x512	608.7us	2720.3us	4.47
+gaussian_blur_s3	1920x1080	2.8ms	12.9ms	4.61
+gaussian_blur_s7	512x512	1.7ms	6.5ms	3.82
+gaussian_blur_s7	1920x1080	7.0ms	27.1ms	3.87
+blur_mirrored_5x5	512x512	187.6us	1735.5us	9.25
+blur_mirrored_5x5	1920x1080	1.1ms	9.0ms	8.18
