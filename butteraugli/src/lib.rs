@@ -86,11 +86,9 @@
 // Allow mul_add style from C++ (may affect numerical parity)
 #![allow(clippy::suboptimal_flops)]
 // Allow common patterns in numerical code ported from C++
-#![allow(clippy::many_single_char_names)]
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::items_after_statements)]
-#![allow(clippy::manual_saturating_arithmetic)]
 #![allow(clippy::cast_lossless)]
 #![allow(clippy::cast_possible_wrap)]
 // These are nice-to-have but not critical for initial release
@@ -98,11 +96,8 @@
 #![allow(clippy::missing_const_for_fn)]
 #![allow(clippy::missing_panics_doc)]
 #![allow(clippy::too_many_lines)]
-#![allow(clippy::collapsible_else_if)]
-#![allow(clippy::if_not_else)]
 #![allow(clippy::imprecise_flops)]
 #![allow(clippy::implicit_saturating_sub)]
-#![allow(clippy::useless_let_if_seq)]
 // archmage uses _token parameters implicitly via proc macros
 #![allow(clippy::used_underscore_binding)]
 // archmage 0.9.20 deprecates the SimdToken parameter on #[autoversion] functions
