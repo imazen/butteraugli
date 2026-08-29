@@ -85,15 +85,7 @@ zenbench::main!(|suite| {
                         // store per iteration and applies to both arms
                         // equally, so it cannot bias the comparison.
                         set_simd(simd);
-                        malta_diff_map(
-                            black_box(&a),
-                            black_box(&c),
-                            1.0,
-                            1.0,
-                            2.0,
-                            false,
-                            &pool,
-                        )
+                        malta_diff_map(black_box(&a), black_box(&c), 1.0, 1.0, 2.0, false, &pool)
                     })
                 });
             }
