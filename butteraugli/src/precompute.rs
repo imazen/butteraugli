@@ -1069,7 +1069,13 @@ impl ButteraugliReference {
     /// Mirrors `compare_linear_planar_impl` but recycles the final diffmap
     /// buffer via the persistent `BufferPool` and copies the result into the
     /// caller's Vec. The caller's Vec is resized to `width * height`.
-    fn compare_linear_planar_impl_into(
+    /// Crate-internal: the compare body with **no** buffer-size or finiteness
+    /// validation. Callers must have already established that each plane holds
+    /// at least `stride * self.height` finite samples.
+    /// [`crate::linear_planes::Scorer`] does exactly that at `LinearPlanes`
+    /// construction, so routing through here avoids re-scanning every sample
+    /// on every score call (+3.6% at 1024x1024, measured 2026-08-28).
+    pub(crate) fn compare_linear_planar_impl_into(
         &self,
         r: &[f32],
         g: &[f32],
@@ -1176,7 +1182,9 @@ impl ButteraugliReference {
     }
 
     /// Internal comparison implementation for planar linear RGB input.
-    fn compare_linear_planar_impl(
+    /// Crate-internal: see [`Self::compare_linear_planar_impl_into`] for the
+    /// precondition the caller must have already established.
+    pub(crate) fn compare_linear_planar_impl(
         &self,
         r: &[f32],
         g: &[f32],

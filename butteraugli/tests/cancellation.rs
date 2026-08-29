@@ -328,3 +328,73 @@ fn reference_compare_strip_with_stop_unstoppable_matches_plain() {
 
     assert_eq!(plain.score, stopped.score);
 }
+
+// ----------------------------------------------------------------------------
+// Warm-reference planar path (`compare_linear_planar_with_stop`, 0.9.4).
+// ----------------------------------------------------------------------------
+
+/// Three tightly packed linear-f32 planes with a deterministic pattern.
+fn linear_planes(w: usize, h: usize, seed: u32) -> Vec<f32> {
+    let mut v = vec![0.0f32; w * h];
+    let mut s = seed.wrapping_mul(2_654_435_761).wrapping_add(1);
+    for px in &mut v {
+        s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        *px = ((s >> 16) & 0xff) as f32 / 255.0 * 0.8;
+    }
+    v
+}
+
+#[test]
+fn reference_compare_linear_planar_with_stop_cancelled() {
+    let r = linear_planes(16, 16, 0);
+    let reference = ButteraugliReference::new_linear_planar(
+        &r,
+        &r,
+        &r,
+        16,
+        16,
+        16,
+        ButteraugliParams::default(),
+    )
+    .unwrap();
+    let d = linear_planes(16, 16, 5);
+
+    let result = reference.compare_linear_planar_with_stop(
+        &d,
+        &d,
+        &d,
+        16,
+        &almost_enough::Stopper::cancelled(),
+    );
+
+    assert!(
+        matches!(result, Err(ButteraugliError::Cancelled(_))),
+        "expected Cancelled, got {result:?}"
+    );
+}
+
+/// `Unstoppable` must make the cancellable planar compare byte-for-byte
+/// equivalent to the non-cancellable one.
+#[test]
+fn reference_compare_linear_planar_with_stop_unstoppable_matches_plain() {
+    let r = linear_planes(16, 16, 0);
+    let reference = ButteraugliReference::new_linear_planar(
+        &r,
+        &r,
+        &r,
+        16,
+        16,
+        16,
+        ButteraugliParams::default(),
+    )
+    .unwrap();
+    let d = linear_planes(16, 16, 5);
+
+    let plain = reference.compare_linear_planar(&d, &d, &d, 16).unwrap();
+    let stopped = reference
+        .compare_linear_planar_with_stop(&d, &d, &d, 16, &enough::Unstoppable)
+        .unwrap();
+
+    assert_eq!(plain.score, stopped.score);
+    assert_eq!(plain.pnorm_3, stopped.pnorm_3);
+}

@@ -87,8 +87,8 @@
 //!   [`Walk::WholeImage`] (default) allocates image-sized working planes.
 //!   [`Walk::Strip`] bounds peak working memory to
 //!   `O(strip_rows × width)` by walking horizontal strips with a halo, at
-//!   the cost of recomputing the halo rows per strip. Both aggregate to the
-//!   same [`Scores`]; see *Parity*.
+//!   the cost of recomputing the halo rows per strip. The two walks agree to
+//!   within f64 summation noise — see *Parity*.
 //!
 //! # Outputs
 //!
@@ -112,10 +112,17 @@
 //!
 //! `tests/linear_planes_parity.rs` asserts exactly that, with no tolerance.
 //!
-//! Strip mode versus whole-image mode is a *different* question: the strip
-//! walker's halo makes each strip's interior diffmap bit-identical to the
-//! whole-image diffmap, and the max-norm / 3-norm reductions aggregate to the
-//! same values. That equivalence is covered by `tests/strip_parity.rs`.
+//! Strip mode versus whole-image mode is a *different* question, and the
+//! answer is "equal, but not by construction". The FIR blurs have finite
+//! support, so with the default halo each strip's interior diffmap is
+//! bit-identical to the whole-image diffmap — but the reductions run in a
+//! different order, so only the max-norm is exactly equal; the 3-norm carries
+//! f64 summation-associativity noise. Measured on this API at
+//! 64×128 / 128×256 / 256×512 with 16/32/64-row strips:
+//! [`max_norm`](Scores::max_norm) relative difference `0.0` (exact),
+//! [`pnorm_3`](Scores::pnorm_3) relative difference `1e-12` to `6e-12`. The
+//! default-API equivalent is covered by `tests/strip_parity.rs`. Do not rely
+//! on strip and whole-image 3-norms comparing `==`.
 //!
 //! # Memory
 //!
@@ -718,14 +725,28 @@ impl Scorer {
     ) -> Result<Scores, ButteraugliError> {
         self.check_compatible(distorted)?;
         match &self.backing {
+            // `compare_linear_planar_impl` skips the buffer-size and
+            // finiteness validation that the public `compare_linear_planar*`
+            // methods perform. That is sound here and deliberate:
+            // `LinearPlanes` already proved every plane holds `stride * height`
+            // finite samples at construction, and `check_compatible` above
+            // proved the dimensions match. Re-scanning 3 * w * h samples per
+            // score call cost +3.6% at 1024x1024 (measured 2026-08-28).
             Backing::Warm(reference) => reference
-                .compare_linear_planar_with_stop(
+                .compare_linear_planar_impl(
                     distorted.r,
                     distorted.g,
                     distorted.b,
                     distorted.stride,
                     stop,
                 )
+                .and_then(|r| {
+                    if r.score.is_finite() {
+                        Ok(r)
+                    } else {
+                        Err(ButteraugliError::NonFiniteResult)
+                    }
+                })
                 .map(|r| {
                     // The warm-reference path always materialises a diffmap
                     // internally and hands it back regardless of
@@ -776,14 +797,19 @@ impl Scorer {
     ) -> Result<Scores, ButteraugliError> {
         self.check_compatible(distorted)?;
         match &self.backing {
+            // Same reasoning as `score_with_stop`: validation already done.
             Backing::Warm(reference) => {
-                let (max_norm, pnorm_3) = reference.compare_linear_planar_into(
+                let (max_norm, pnorm_3) = reference.compare_linear_planar_impl_into(
                     distorted.r,
                     distorted.g,
                     distorted.b,
                     distorted.stride,
                     diffmap_out,
+                    &enough::Unstoppable,
                 )?;
+                if !max_norm.is_finite() {
+                    return Err(ButteraugliError::NonFiniteResult);
+                }
                 Ok(Scores {
                     max_norm,
                     pnorm_3,

@@ -35,16 +35,30 @@ aarch64-apple-darwin unless stated.
 | what | command | result |
 |---|---|---|
 | default suite | `cargo test -p butteraugli` | 129 tests, 0 failures |
+| suite with `linear-planes` | `cargo test -p butteraugli --features linear-planes` | 162 tests, 0 failures (debug and `--release`) |
 | every gated combination | `cargo test -p butteraugli --features <internals \| unsafe-performance \| linear-planes,internals,unsafe-performance>` | 0 failures in each |
 | doctests | `cargo test -p butteraugli --doc --features linear-planes` | 6 passed |
 | `linear-planes` unit tests | `cargo test -p butteraugli --lib --features linear-planes` | 98 passed (12 new) |
-| `linear-planes` parity | `cargo test -p butteraugli --features linear-planes --test linear_planes_parity` | 17 passed |
+| `linear-planes` parity | `cargo test -p butteraugli --features linear-planes --test linear_planes_parity` | 18 passed |
 
 The parity suite is the one that matters for this release: it asserts, with
 `assert_eq!` on `f64` and no tolerance, that every `linear_planes` mode
 reproduces the corresponding default-API call bit for bit — max-norm, 3-norm,
 and the diffmap pixel for pixel — across default params, padded stride,
-single-scale, HDR intensity target, and both strip variants.
+single-scale, HDR intensity target, and both strip variants. It holds in
+`--release` as well as debug, so the bit-identity is not an artifact of
+unoptimised codegen.
+
+One assertion in that file carries a tolerance, and only one:
+`strip_walk_agrees_with_whole_image_walk` compares strip-mode against
+whole-image mode *within* this API. The max-norm is still asserted with `==`
+(max is exact and order-independent); the 3-norm gets `< 1e-9` relative,
+because the strip walker's per-strip reduction associates the f64 sums
+differently. Measured worst case across 64x128/128x256/256x512 at
+16/32/64-row strips: `6e-12`.
+
+Throughput: `Scorer` is within noise of the equivalent default-API calls
+(-0.7% at 1024x1024, 8 iterations, release build, aarch64-apple-darwin).
 
 ### 2.2 Lint / docs
 

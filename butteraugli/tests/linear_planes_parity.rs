@@ -413,3 +413,44 @@ fn scorer_scores_concurrently_through_shared_ref() {
         assert_eq!(h.join().unwrap(), expected);
     }
 }
+
+/// Strip walk vs whole-image walk, *within* this API — the claim the module
+/// docs make about the two modes agreeing.
+///
+/// Unlike every other assertion in this file, the 3-norm gets a tolerance, and
+/// deliberately so: the strip walker reduces per strip and combines, so the f64
+/// sums associate differently from the whole-image reduction. The max-norm has
+/// no such freedom (max is associative and exact) and is asserted with `==`.
+/// The 1e-9 relative bound is ~150x looser than the worst value measured while
+/// writing this (6e-12 at 128x256/32 rows) and ~1e7 times tighter than any
+/// difference a real divergence would produce.
+#[test]
+fn strip_walk_agrees_with_whole_image_walk() {
+    for &(w, h, rows) in &[(64usize, 128usize, 16u32), (128, 256, 32), (256, 512, 64)] {
+        let p = Pair::new(w, h, w);
+        let whole = Scorer::new(&p.reference())
+            .unwrap()
+            .score(&p.distorted())
+            .unwrap();
+        let strip = Scorer::builder()
+            .with_walk(Walk::Strip(StripMode::new(rows)))
+            .build(&p.reference())
+            .unwrap()
+            .score(&p.distorted())
+            .unwrap();
+
+        assert_eq!(
+            whole.max_norm, strip.max_norm,
+            "max-norm must be exactly equal across walks at {w}x{h} rows={rows}"
+        );
+        let rel = (whole.pnorm_3 - strip.pnorm_3).abs() / whole.pnorm_3;
+        assert!(
+            rel < 1e-9,
+            "3-norm relative difference {rel:.3e} exceeds f64-associativity noise at {w}x{h} rows={rows} \
+             (whole {whole_p3}, strip {strip_p3})",
+            whole_p3 = whole.pnorm_3,
+            strip_p3 = strip.pnorm_3,
+        );
+        assert!(whole.max_norm > 0.0, "test images must actually differ");
+    }
+}
