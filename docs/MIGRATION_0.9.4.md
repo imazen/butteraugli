@@ -170,22 +170,41 @@ and the field type:
 +    reference: Option<butteraugli::linear_planes::Scorer>,
 ```
 
-### 3.2 `compare_with_reference` — production path
+### 3.2 `compare_with_reference` — wrap the distorted planes once
+
+The `JXL_W44_B7_DISABLE` A/B branch comes *before* the production path in the
+function body, and both need the wrapped planes, so build them once above the
+branch — right after the `self.reference` lookup:
+
+```diff
+         let bref = self
+             .reference
+             .as_ref()
+             .ok_or_else(|| crate::error::Error::InvalidInput("CPU backend: no reference".into()))?;
++        let dist = butteraugli::linear_planes::LinearPlanes::with_stride(
++            dist_r, dist_g, dist_b, width, height, padded_width,
++        )
++        .map_err(|e| crate::error::Error::InvalidInput(format!("butteraugli compare: {e}")))?;
+```
+
+Then the production path becomes:
 
 ```diff
 -        let (score, _pnorm_3) = bref
 -            .compare_linear_planar_into(dist_r, dist_g, dist_b, padded_width, diffmap_out)
 -            .map_err(|e| crate::error::Error::InvalidInput(format!("butteraugli compare: {e}")))?;
-+        let dist = butteraugli::linear_planes::LinearPlanes::with_stride(
-+            dist_r, dist_g, dist_b, width, height, padded_width,
-+        )
-+        .map_err(|e| crate::error::Error::InvalidInput(format!("butteraugli compare: {e}")))?;
-+        let scores = bref
++        let score = bref
 +            .score_into(&dist, diffmap_out)
-+            .map_err(|e| crate::error::Error::InvalidInput(format!("butteraugli compare: {e}")))?;
-+        let score = scores.max_norm;
++            .map_err(|e| crate::error::Error::InvalidInput(format!("butteraugli compare: {e}")))?
++            .max_norm;
          debug_assert_eq!(diffmap_out.len(), width * height);
 ```
+
+Note that `padded_width` is the distorted side's stride; the reference was
+built tight (`stride == width`) in `set_reference`. `Scorer` only requires the
+two to agree on `width`/`height`, not on stride, so this is correct — and it is
+covered by `whole_image_matches_reference_api_padded_stride` in the parity
+suite.
 
 ### 3.3 `compare_with_reference` — the `JXL_W44_B7_DISABLE` A/B path
 
