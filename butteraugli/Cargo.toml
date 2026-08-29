@@ -23,7 +23,21 @@ exclude = [
 
 [features]
 default = ["rayon", "avx512"]
-# Expose internal modules for testing/benchmarking. Not a stable API.
+# The `linear_planes` module: a small, documented, SUPPORTED API for callers
+# that already hold planar linear-light f32 image data (encoders scoring a
+# reconstruction, GPU backends checking parity, batch scorers reusing one
+# reference). Typed strided inputs with a stated colour space, a builder for
+# reference precompute + repeated distorted scoring, explicit
+# resolution/strip modes, and {max_norm, pnorm_3, optional diffmap} outputs.
+# Off by default so the default surface stays exactly as published; additive
+# when enabled. Scores are bit-identical to the equivalent default-API calls
+# (tests/linear_planes_parity.rs).
+linear-planes = []
+# Expose internal modules (blur/consts/image/malta/mask/opsin/psycho) for
+# testing/benchmarking. UNSTABLE — no compatibility promise, contents change
+# with any internal refactor. Prefer `linear-planes`, which covers the planar
+# linear-light use case with a documented contract. See CHANGELOG
+# "QUEUED BREAKING CHANGES".
 internals = []
 # Use unchecked indexing in hot loops (Malta filters) for ~6% fewer instructions.
 # Safety: each function pre-validates the full access range with an assert!().

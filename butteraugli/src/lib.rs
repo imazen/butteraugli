@@ -65,7 +65,12 @@
 //! - **`iir-blur`**: O(N) recursive Gaussian instead of FIR convolution — faster on
 //!   non-AVX-512 hardware but NOT score-parity with libjxl; off by default
 //! - **`unsafe-performance`**: unchecked indexing in hot loops (pre-validated ranges)
-//! - **`internals`**: expose internal modules for testing/benchmarking (unstable API)
+//! - **`linear-planes`**: the [`linear_planes`] module — a small, documented,
+//!   supported API for callers holding planar linear-light `f32` planes
+//!   (typed strided inputs, a reference builder for repeated scoring,
+//!   explicit resolution/strip modes, max-norm + 3-norm + optional diffmap)
+//! - **`internals`**: expose internal modules for testing/benchmarking
+//!   (unstable, no compatibility promise — prefer `linear-planes`)
 //!
 //! ## References
 //!
@@ -153,6 +158,12 @@ pub(crate) mod opsin;
 
 pub mod precompute;
 pub use precompute::ButteraugliReference;
+
+/// Planar linear-light scoring API — the supported surface for callers that
+/// already hold planar `f32` linear RGB (encoders, GPU-parity harnesses,
+/// batch scorers). Enable the `linear-planes` cargo feature.
+#[cfg(feature = "linear-planes")]
+pub mod linear_planes;
 
 mod strip;
 pub use strip::{

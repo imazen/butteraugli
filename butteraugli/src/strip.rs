@@ -488,7 +488,7 @@ fn validate_image_pair(
 /// outermost per-strip boundary) — never inside the per-strip diffmap
 /// kernels. A `cancel()` is therefore honoured at strip granularity.
 #[allow(clippy::too_many_arguments)]
-fn run_strip_walker_linear(
+pub(crate) fn run_strip_walker_linear(
     rgb1: &[f32],
     rgb2: &[f32],
     width: usize,

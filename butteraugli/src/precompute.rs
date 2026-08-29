@@ -599,6 +599,50 @@ impl ButteraugliReference {
         Ok(result)
     }
 
+    /// Cancellable variant of [`Self::compare_linear_planar`].
+    ///
+    /// `stop` is checked once at the outermost per-scale boundary of the
+    /// warm-reference compute, before any per-pixel work; a cancelled token
+    /// returns [`ButteraugliError::Cancelled`]. [`enough::Unstoppable`] makes
+    /// this behave identically to [`Self::compare_linear_planar`] at zero
+    /// cost.
+    ///
+    /// # Errors
+    /// As [`Self::compare_linear_planar`], plus [`ButteraugliError::Cancelled`]
+    /// if `stop` signals cancellation.
+    pub fn compare_linear_planar_with_stop(
+        &self,
+        r: &[f32],
+        g: &[f32],
+        b: &[f32],
+        stride: usize,
+        stop: &dyn enough::Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        let min_size =
+            stride
+                .checked_mul(self.height)
+                .ok_or(ButteraugliError::DimensionOverflow {
+                    width: self.width,
+                    height: self.height,
+                })?;
+        if r.len() < min_size || g.len() < min_size || b.len() < min_size {
+            return Err(ButteraugliError::InvalidBufferSize {
+                expected: min_size,
+                actual: r.len().min(g.len()).min(b.len()),
+            });
+        }
+
+        check_finite_f32(&r[..min_size], "compare planar r")?;
+        check_finite_f32(&g[..min_size], "compare planar g")?;
+        check_finite_f32(&b[..min_size], "compare planar b")?;
+
+        let result = self.compare_linear_planar_impl(r, g, b, stride, stop)?;
+        if !result.score.is_finite() {
+            return Err(ButteraugliError::NonFiniteResult);
+        }
+        Ok(result)
+    }
+
     /// Compare a distorted planar linear RGB image, writing the diffmap
     /// into a caller-owned `Vec<f32>`.
     ///
