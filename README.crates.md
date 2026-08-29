@@ -106,6 +106,11 @@ Both APIs support stride (padding). Images smaller than 8×8 (down to 1×1) are
 reflect (mirror)-padded up to butteraugli's 8×8 floor and scored; the diffmap is
 cropped back to the input size. The strip APIs below still require at least 8×8.
 
+If your pixels are **planar** linear-light `f32` (three separate R/G/B planes)
+rather than interleaved, see [Planar linear-light
+input](#planar-linear-light-input) — the `linear-planes` feature scores them
+directly, with no interleave step.
+
 **Scaling contract:** linear `1.0` maps to `intensity_target` nits (default
 `80.0` — the SDR convention used by libjxl's `butteraugli_main`). Values above
 `1.0` are accepted and map proportionally above `intensity_target`. For HDR,
@@ -239,6 +244,11 @@ candidate — the reference-side XYB pyramid and masks are reused.
 | `new_linear_planar(r, g, b, w, h, stride, params)` | `compare_linear_planar(r, g, b, stride)` |
 | `from_srgb(ImgRef<RGB8>, params)` | `compare_srgb(ImgRef<RGB8>)` |
 | `from_linear(ImgRef<RGB<f32>>, params)` | `compare_linear_imgref(ImgRef<RGB<f32>>)` |
+
+For the planar row, the `linear-planes` feature wraps the same code path in a
+typed builder that validates dimensions, stride and finiteness up front and
+makes the resolution/strip modes explicit — see [Planar linear-light
+input](#planar-linear-light-input). Scores are bit-identical either way.
 
 ```rust
 use butteraugli::{ButteraugliParams, ButteraugliReference};

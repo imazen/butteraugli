@@ -64,8 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   drives, with identical arguments. `tests/linear_planes_parity.rs` pins that
   with `assert_eq!` on `f64` — bit-identity, not a tolerance — across default
   params, padded stride, single-scale, HDR intensity target, both strip
-  variants, and pixel-for-pixel diffmap equality (15 tests, plus 12 unit tests
-  in the module). (96fd4a9)
+  variants, and pixel-for-pixel diffmap equality (17 tests, plus 12 unit tests
+  in the module). (96fd4a9, fa0792a)
 - `ButteraugliReference::compare_linear_planar_with_stop` — cancellable variant
   of `compare_linear_planar`, completing the `*_with_stop` family. The planar
   compare was the only one without one. Additive to the default surface. (96fd4a9)

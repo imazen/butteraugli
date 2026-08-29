@@ -35,9 +35,10 @@ aarch64-apple-darwin unless stated.
 | what | command | result |
 |---|---|---|
 | default suite | `cargo test -p butteraugli` | 129 tests, 0 failures |
+| every gated combination | `cargo test -p butteraugli --features <internals \| unsafe-performance \| linear-planes,internals,unsafe-performance>` | 0 failures in each |
 | doctests | `cargo test -p butteraugli --doc --features linear-planes` | 6 passed |
 | `linear-planes` unit tests | `cargo test -p butteraugli --lib --features linear-planes` | 98 passed (12 new) |
-| `linear-planes` parity | `cargo test -p butteraugli --features linear-planes --test linear_planes_parity` | 15 passed |
+| `linear-planes` parity | `cargo test -p butteraugli --features linear-planes --test linear_planes_parity` | 17 passed |
 
 The parity suite is the one that matters for this release: it asserts, with
 `assert_eq!` on `f64` and no tolerance, that every `linear_planes` mode
@@ -54,6 +55,14 @@ single-scale, HDR intensity target, and both strip variants.
 | rustdoc, default | `RUSTDOCFLAGS=-D warnings cargo doc --workspace --no-deps` | clean |
 | rustdoc, gated | `RUSTDOCFLAGS=-D warnings cargo doc -p butteraugli --no-deps --features linear-planes,internals,unsafe-performance` | clean |
 | API snapshots | `just api-doc` (`cargo test --manifest-path apidoc/Cargo.toml`) | regenerated, committed |
+| API snapshots current | `just api-doc-check` (`ZEN_API_DOC=check`) | pass |
+| MSRV (README badge claims 1.89) | `cargo +1.89 build -p butteraugli --features linear-planes` | builds |
+
+CI has no MSRV job — it was disabled because the `image` crate's dev-dependency
+chain carries broken `rust-version` metadata (`zune-jpeg 0.5.8` claims 1.87).
+The library itself, including the new `linear-planes` module, does build on
+1.89, so the badge is accurate for consumers; only the dev/test graph is what
+blocks a CI lane.
 
 The snapshots in `docs/public-api/` were stale before this pass — they predated
 4e78d6d and were missing `butteraugli_linear_strip_with_stop`. They are current
