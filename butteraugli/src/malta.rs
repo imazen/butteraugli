@@ -39,7 +39,19 @@ fn data_at(data: &[f32], idx: usize) -> f32 {
 ///
 /// With `unsafe-performance`: pointer cast (caller must pre-validate range).
 /// Without: slice + try_into with bounds check.
-#[cfg(feature = "unsafe-performance")]
+///
+/// Only the 8-wide Malta paths call this, and every one of them is gated to
+/// x86_64 (v3/AVX2), aarch64 (NEON) or wasm32 (simd128) — so the helper
+/// carries the same gate rather than sitting dead on i686 and armv7, both of
+/// which are supported CI targets.
+#[cfg(all(
+    any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "wasm32"
+    ),
+    feature = "unsafe-performance"
+))]
 #[allow(clippy::inline_always)]
 #[inline(always)]
 fn load_8(data: &[f32], start: usize) -> &[f32; 8] {
@@ -47,7 +59,14 @@ fn load_8(data: &[f32], start: usize) -> &[f32; 8] {
     unsafe { &*data.as_ptr().add(start).cast::<[f32; 8]>() }
 }
 
-#[cfg(not(feature = "unsafe-performance"))]
+#[cfg(all(
+    any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "wasm32"
+    ),
+    not(feature = "unsafe-performance")
+))]
 #[inline]
 fn load_8(data: &[f32], start: usize) -> &[f32; 8] {
     data[start..start + 8].try_into().unwrap()

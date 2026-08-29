@@ -417,15 +417,36 @@ fn scorer_scores_concurrently_through_shared_ref() {
 /// Strip walk vs whole-image walk, *within* this API — the claim the module
 /// docs make about the two modes agreeing.
 ///
-/// Unlike every other assertion in this file, the 3-norm gets a tolerance, and
-/// deliberately so: the strip walker reduces per strip and combines, so the f64
-/// sums associate differently from the whole-image reduction. The max-norm has
-/// no such freedom (max is associative and exact) and is asserted with `==`.
-/// The 1e-9 relative bound is ~150x looser than the worst value measured while
-/// writing this (6e-12 at 128x256/32 rows) and ~1e7 times tighter than any
-/// difference a real divergence would produce.
+/// The bounds are per blur kernel, because the guarantee is:
+///
+/// - **FIR (default).** The kernels have finite support, so with the default
+///   halo each strip's interior diffmap is bit-identical to the whole-image
+///   one. Max is order-independent, so the max-norm must be exactly `==`. Only
+///   the 3-norm has any freedom, from f64 sum associativity across the
+///   per-strip reductions; `1e-9` is ~150x looser than the worst measured
+///   value (`6e-12` at 128x256/32 rows) and ~1e7 tighter than a real
+///   divergence.
+/// - **`iir-blur`.** The recursive Gaussian's impulse response is infinite, so
+///   no halo bounds it and each strip's filter state differs from the
+///   whole-image state. Neither norm is exact. Worst measured on this grid
+///   (2026-08-28): max-norm `1.2e-5`, 3-norm `5.2e-6` relative. The bounds
+///   below are 4x that. This is a property of the strip walker itself — the
+///   default-API `butteraugli_linear_strip` shows the same numbers — and it is
+///   documented in the *Parity* section of `strip.rs` and on the `iir-blur`
+///   feature.
+///
+/// Neither branch is a relaxation of the other: this test previously covered
+/// only the FIR configuration, and `--features linear-planes,iir-blur` had no
+/// coverage at all until the CI Features matrix gained that combination.
 #[test]
 fn strip_walk_agrees_with_whole_image_walk() {
+    // (max-norm bound, 3-norm bound). FIR: max is exact.
+    let (max_bound, p3_bound) = if cfg!(feature = "iir-blur") {
+        (5e-5_f64, 2e-5_f64)
+    } else {
+        (0.0_f64, 1e-9_f64)
+    };
+
     for &(w, h, rows) in &[(64usize, 128usize, 16u32), (128, 256, 32), (256, 512, 64)] {
         let p = Pair::new(w, h, w);
         let whole = Scorer::new(&p.reference())
@@ -439,18 +460,95 @@ fn strip_walk_agrees_with_whole_image_walk() {
             .score(&p.distorted())
             .unwrap();
 
-        assert_eq!(
-            whole.max_norm, strip.max_norm,
-            "max-norm must be exactly equal across walks at {w}x{h} rows={rows}"
-        );
-        let rel = (whole.pnorm_3 - strip.pnorm_3).abs() / whole.pnorm_3;
+        assert!(whole.max_norm > 0.0, "test images must actually differ");
+
+        let max_rel = (whole.max_norm - strip.max_norm).abs() / whole.max_norm;
+        if max_bound == 0.0 {
+            assert_eq!(
+                whole.max_norm, strip.max_norm,
+                "FIR max-norm must be exactly equal across walks at {w}x{h} rows={rows}"
+            );
+        } else {
+            assert!(
+                max_rel < max_bound,
+                "max-norm relative difference {max_rel:.3e} exceeds the iir-blur bound \
+                 {max_bound:.1e} at {w}x{h} rows={rows} (whole {whole_max}, strip {strip_max})",
+                whole_max = whole.max_norm,
+                strip_max = strip.max_norm,
+            );
+        }
+
+        let p3_rel = (whole.pnorm_3 - strip.pnorm_3).abs() / whole.pnorm_3;
         assert!(
-            rel < 1e-9,
-            "3-norm relative difference {rel:.3e} exceeds f64-associativity noise at {w}x{h} rows={rows} \
-             (whole {whole_p3}, strip {strip_p3})",
+            p3_rel < p3_bound,
+            "3-norm relative difference {p3_rel:.3e} exceeds the bound {p3_bound:.1e} at \
+             {w}x{h} rows={rows} (whole {whole_p3}, strip {strip_p3})",
             whole_p3 = whole.pnorm_3,
             strip_p3 = strip.pnorm_3,
         );
-        assert!(whole.max_norm > 0.0, "test images must actually differ");
+    }
+}
+
+/// Parity at and just above the 8x8 floor, and at odd / non-square shapes.
+///
+/// The other cases in this file are comfortably large. These are the ones where
+/// the `need_half` gate (`MIN_SIZE_FOR_SUBSAMPLE`) flips, where a dimension is
+/// odd so the 2x subsample truncates, and where the image is wider than it is
+/// tall — all places a wrapper that got stride or dimension handling subtly
+/// wrong would diverge without any of the large cases noticing.
+#[test]
+fn parity_holds_at_minimum_and_odd_dimensions() {
+    for &(w, h) in &[
+        (8usize, 8usize),
+        (8, 9),
+        (9, 8),
+        (9, 9),
+        (15, 15),
+        (16, 16),
+        (31, 33),
+        (33, 31),
+    ] {
+        let p = Pair::new(w, h, w);
+        let new = Scorer::new(&p.reference())
+            .unwrap()
+            .score(&p.distorted())
+            .unwrap();
+        let old = ButteraugliReference::new_linear_planar(
+            &p.r_ref,
+            &p.g_ref,
+            &p.b_ref,
+            w,
+            h,
+            w,
+            ButteraugliParams::default(),
+        )
+        .unwrap()
+        .compare_linear_planar(&p.r_dis, &p.g_dis, &p.b_dis, w)
+        .unwrap();
+
+        assert_eq!(new.max_norm, old.score, "max-norm diverged at {w}x{h}");
+        assert_eq!(new.pnorm_3, old.pnorm_3, "3-norm diverged at {w}x{h}");
+        assert!(
+            new.max_norm > 0.0,
+            "test images must actually differ at {w}x{h}"
+        );
+    }
+}
+
+/// Below the 8px floor the API rejects rather than reflect-padding, on either
+/// axis — the documented difference from [`butteraugli::butteraugli`].
+#[test]
+fn sub_minimum_dimensions_are_rejected_not_padded() {
+    for &(w, h) in &[(7usize, 8usize), (8, 7), (1, 1), (100, 7)] {
+        let buf = vec![0.5f32; w.max(1) * h.max(1)];
+        let err = LinearPlanes::new(&buf, &buf, &buf, w, h).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                butteraugli::ButteraugliError::ImageTooSmall { width, height, .. }
+                    if width == w && height == h
+            ),
+            "expected ImageTooSmall({w}, {h}), got {err:?}"
+        );
     }
 }

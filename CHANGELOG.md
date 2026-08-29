@@ -134,6 +134,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ButteraugliReference::shrink_to_fit(&mut self)` — drains the persistent `BufferPool`, releasing any cached transient buffers held between `compare` calls at the cost of one re-allocation on the next `compare` call. Cached XYB pyramid / mask / source data is retained (the warm-ref speedup over a cold `butteraugli()` call still applies). (3e41f32)
 - Versioned public-API surface snapshot at `docs/public-api/butteraugli.txt`, regenerated on every `cargo test` by `butteraugli/tests/public_api_doc.rs` (`ZEN_API_DOC=check` verifies in the CI lint job, `=off` skips); `justfile` recipes `fmt` / `api-doc` / `api-doc-check`. Dev-only — not part of the published package.
 
+### Documentation (0.9.4 audit findings)
+- **`iir-blur` + strip mode is not interior-exact, and was never documented as
+  such.** `strip.rs`'s Parity section claimed unconditionally that "strip-mode
+  produces a diffmap that is bit-identical to the full-image diffmap inside the
+  strip's interior region", justified by butteraugli's blurs being FIR (finite
+  impulse response). That justification silently fails under `iir-blur`: the
+  Charalampidis recursive Gaussian has an *infinite* impulse response, so no
+  halo bounds it and each strip's filter state differs from the whole-image
+  state. Measured with the default 64-row halo on synthetic 64x128 / 128x256 /
+  256x512 pairs at 16/32/64-row strips, via the **default API**
+  (`butteraugli_linear` vs `butteraugli_linear_strip`, so this is a property of
+  the strip walker, not of any new code):
+
+  | blur | max-norm rel. diff | 3-norm rel. diff |
+  | --- | --- | --- |
+  | FIR (default) | `0.0` (exact) | `1.3e-12` – `9.0e-12` |
+  | `iir-blur` | `2.7e-7` – `1.2e-5` | `8.9e-7` – `5.2e-6` |
+
+  The divergence shrinks as the strip grows, as an IIR tail truncation should.
+  No behaviour changed — the docs on `strip.rs`, `HALO_ROWS_DEFAULT` and the
+  `iir-blur` feature now state the FIR precondition and carry the numbers, and
+  `linear-planes,iir-blur` joined the CI Features matrix (the combination had no
+  coverage at all, which is why nothing caught this; `strip_parity.rs`'s ~1e-2
+  tolerance is far too loose to see it). Whether the strip walker should reject
+  or warn under `iir-blur` is left to the maintainer.
+
 ### Changed
 - Exclude `tests/` directories from published packages for both `butteraugli` and `butteraugli-cli`; local `cargo test` is unaffected (3b7afe7)
 - `ButteraugliReference::source_linear_rgb` (`#[doc(hidden)]`) now returns `None` for `new()`-built references — they store sRGB u8 instead of linear f32 after the memory fix below. The strip walker uses the new `source_linear_rgb_owned` accessor (also `#[doc(hidden)]`) which materialises the linear bytes from whichever storage form was retained — clones when `new_linear()`-built, LUT-converts when `new()`-built. External callers should not depend on either accessor's signature. (3e41f32)
@@ -178,6 +204,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `chunks_exact` sites are the callgrind-tuned SIMD inner loops. (e5ffd22,
   209360c)
 - 7 clippy `allow` attributes that suppressed nothing were removed. (791d08d)
+- `dead_code` on `malta::load_8`: its callers are all gated to x86_64 (AVX2),
+  aarch64 (NEON) or wasm32 (simd128), so the helper now carries the same gate
+  instead of sitting dead on i686 and armv7 — both supported CI targets. Same
+  fix as `load_16` above; i686, armv7, x86_64, aarch64 and both wasm targets now
+  compile the library warning-free with every feature combination.
 - Repo hygiene: the transient `Cargo.toml.original.txt` apidoc-runner backup is
   gone and gitignored; CI cancels superseded runs via a concurrency group.
   (2f91e77, cd7254b)

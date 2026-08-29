@@ -124,6 +124,14 @@
 //! default-API equivalent is covered by `tests/strip_parity.rs`. Do not rely
 //! on strip and whole-image 3-norms comparing `==`.
 //!
+//! Under the `iir-blur` feature not even the max-norm is exact: the recursive
+//! Gaussian's impulse response is infinite, so no halo bounds it and each
+//! strip's filter state differs from the whole-image state. Measured max-norm
+//! divergence `2.7e-7` – `1.2e-5` relative on the same grid. This is a
+//! property of the strip walker itself, not of this wrapper — the default-API
+//! `butteraugli_linear_strip` shows the same numbers. See the *Parity*
+//! section of `strip.rs`.
+//!
 //! # Memory
 //!
 //! [`Walk::WholeImage`] keeps only the reference precompute — no copy of the

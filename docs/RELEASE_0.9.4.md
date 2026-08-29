@@ -24,6 +24,9 @@ release-shaped summary:
   stable across architectures.
 - **Behaviour change to the `internals` surface only:** three `consts::XYB_*`
   items removed in c645a39. See §2.3.
+- **Documentation correction, no behaviour change:** `iir-blur` + strip mode is
+  not interior-exact against the whole-image path, which `strip.rs` previously
+  claimed unconditionally. See §4b.
 
 ## 2. Verification — done
 
@@ -35,11 +38,11 @@ aarch64-apple-darwin unless stated.
 | what | command | result |
 |---|---|---|
 | default suite | `cargo test -p butteraugli` | 129 tests, 0 failures |
-| suite with `linear-planes` | `cargo test -p butteraugli --features linear-planes` | 162 tests, 0 failures (debug and `--release`) |
+| suite with `linear-planes` | `cargo test -p butteraugli --features linear-planes` | 164 tests, 0 failures (debug and `--release`) |
 | every gated combination | `cargo test -p butteraugli --features <internals \| unsafe-performance \| linear-planes,internals,unsafe-performance>` | 0 failures in each |
 | doctests | `cargo test -p butteraugli --doc --features linear-planes` | 6 passed |
 | `linear-planes` unit tests | `cargo test -p butteraugli --lib --features linear-planes` | 98 passed (12 new) |
-| `linear-planes` parity | `cargo test -p butteraugli --features linear-planes --test linear_planes_parity` | 18 passed |
+| `linear-planes` parity | `cargo test -p butteraugli --features linear-planes --test linear_planes_parity` | 20 passed (and 20 under `linear-planes,iir-blur`) |
 
 The parity suite is the one that matters for this release: it asserts, with
 `assert_eq!` on `f64` and no tolerance, that every `linear_planes` mode
@@ -234,6 +237,36 @@ tagging/releasing is a maintainer decision.
    existing call sites keep working unchanged.
 
 ---
+
+## 4b. Second finding: `iir-blur` + strip mode
+
+Surfaced while adding cross-mode coverage for the new API, then reproduced with
+the **default API alone** (`butteraugli_linear` vs `butteraugli_linear_strip`),
+so it is a property of the strip walker and not of anything added in 0.9.4.
+
+`strip.rs` claimed, unconditionally, that strip mode produces a diffmap
+bit-identical to the full-image diffmap inside each strip's interior — resting
+on butteraugli's blurs being FIR. Under `iir-blur` the recursive Gaussian's
+impulse response is infinite, so no halo bounds it. Measured with the default
+64-row halo on synthetic 64x128 / 128x256 / 256x512 pairs at 16/32/64-row
+strips:
+
+| blur | max-norm rel. diff | 3-norm rel. diff |
+|---|---|---|
+| FIR (default) | `0.0` (exact) | `1.3e-12` – `9.0e-12` |
+| `iir-blur` | `2.7e-7` – `1.2e-5` | `8.9e-7` – `5.2e-6` |
+
+Nothing was changed except documentation and coverage: `strip.rs`,
+`HALO_ROWS_DEFAULT` and the `iir-blur` feature comment now state the FIR
+precondition and carry these numbers; `linear-planes,iir-blur` joined the CI
+Features matrix (the combination previously had none, which is why nothing
+caught it — `strip_parity.rs` runs at a ~1e-2 tolerance, far too loose to see
+`1e-5`).
+
+**Maintainer decision, not a release blocker:** whether
+`butteraugli_strip*` should reject or warn when built with `iir-blur`, given the
+two features' guarantees are mutually inconsistent. The default FIR path, which
+is what ships, is unaffected and still exact.
 
 ## 4. Open item for the maintainer, unrelated to the release gate
 

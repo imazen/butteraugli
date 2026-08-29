@@ -37,12 +37,34 @@
 //!
 //! ## Parity
 //!
-//! With the default halo, strip-mode produces a diffmap that is
-//! bit-identical to the full-image diffmap inside the strip's
-//! interior region (modulo the image-edge boundary handling, which
-//! is the same whether the strip touches the image edge or not). The
-//! max-norm score and libjxl 3-norm aggregate to the same values as
-//! the full-image path.
+//! With the default halo **and the default FIR blur**, strip-mode
+//! produces a diffmap that is bit-identical to the full-image
+//! diffmap inside the strip's interior region (modulo the image-edge
+//! boundary handling, which is the same whether the strip touches the
+//! image edge or not). The max-norm score comes out exactly equal to
+//! the full-image path; the libjxl 3-norm carries f64
+//! summation-associativity noise from the per-strip reduction — on
+//! the order of `1e-12` relative.
+//!
+//! **This guarantee does not hold under the `iir-blur` feature.** The
+//! halo argument above rests entirely on the FIR kernels having finite
+//! support. The Charalampidis recursive Gaussian in `blur_iir.rs` is
+//! infinite-impulse-response: its tail extends past any halo, so each
+//! strip's state differs from the whole-image state and the interiors
+//! are no longer bit-identical. Measured with the default halo on
+//! synthetic 64×128 / 128×256 / 256×512 pairs at 16/32/64-row strips
+//! (2026-08-28):
+//!
+//! | blur | max-norm rel. diff | 3-norm rel. diff |
+//! |---|---|---|
+//! | FIR (default) | `0.0` (exact) | `1.3e-12` – `9.0e-12` |
+//! | `iir-blur` | `2.7e-7` – `1.2e-5` | `8.9e-7` – `5.2e-6` |
+//!
+//! The divergence shrinks as the strip grows, as an IIR tail
+//! truncation should. `iir-blur` is already documented as not
+//! score-parity with libjxl; combining it with strip mode adds this
+//! second, separate inexactness. Do not use `iir-blur` + strip mode
+//! where strip and whole-image scores must agree.
 //!
 //! ## Example
 //!
@@ -83,7 +105,9 @@ use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite
 /// 64 rows comfortably covers the chained-blur halo (~25 rows at
 /// full-res) plus the multi-resolution sub-level halo (~50 rows at
 /// full-res) with margin. Inside a strip's interior the per-pixel
-/// diffmap is bit-identical to the full-image path.
+/// diffmap is then bit-identical to the full-image path — with the
+/// default FIR blur. Under `iir-blur` no halo achieves that; see the
+/// module-level *Parity* section.
 pub const HALO_ROWS_DEFAULT: usize = 64;
 
 /// Strip boundaries align to a multiple of this value so the 2x

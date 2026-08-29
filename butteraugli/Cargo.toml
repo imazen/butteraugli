@@ -58,6 +58,11 @@ avx512 = ["archmage/avx512", "magetypes/avx512"]
 # 4-10× faster on the blur (~40% of total runtime), but NOT bit-exact with the
 # FIR path. Score deviation vs `butteraugli_main` reference is small but non-zero —
 # unsuitable for parity-sensitive workflows. Off by default. See blur_iir.rs.
+#
+# Second, separate inexactness: with `iir-blur` the strip API is no longer
+# interior-exact against the whole-image path either, because the strip halo
+# only bounds a FINITE impulse response. Measured max-norm divergence 2.7e-7 to
+# 1.2e-5 relative (2026-08-28) — see the Parity section of strip.rs.
 iir-blur = []
 # Test-only: compile the conformance tests that need the local jpegli test
 # corpus (JPEGLI_TESTDATA). Off in CI — the feature gate is the explicit,

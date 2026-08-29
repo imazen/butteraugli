@@ -107,6 +107,10 @@ jobs:
           - internals
           - unsafe-performance
           - iir-blur
+          # iir-blur x linear-planes had no coverage until 2026-08-28, and it is
+          # the combination where the strip walker stops being interior-exact
+          # (the halo argument needs FIR finite support). See strip.rs Parity.
+          - linear-planes,iir-blur
           - linear-planes,internals,unsafe-performance
     steps:
       - uses: actions/checkout@v6
