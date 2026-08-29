@@ -380,3 +380,36 @@ fn cancellation_is_reported() {
         .unwrap_err();
     assert!(matches!(err, butteraugli::ButteraugliError::Cancelled(_)));
 }
+
+/// The module docs promise `Scorer` is `Send + Sync` so one scorer can serve
+/// concurrent callers through `&self`. That holds only because
+/// `ButteraugliReference`'s persistent `BufferPool` is a `Mutex`; pin it so a
+/// future change to that type fails here instead of at a consumer's build.
+#[test]
+fn scorer_is_send_and_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Scorer>();
+    assert_send_sync::<butteraugli::linear_planes::Scores>();
+    assert_send_sync::<butteraugli::linear_planes::ScorerBuilder>();
+}
+
+/// One `Scorer`, many threads, `&self` scoring — same answer every time.
+#[test]
+fn scorer_scores_concurrently_through_shared_ref() {
+    use std::sync::Arc;
+
+    let p = Arc::new(Pair::new(64, 48, 64));
+    let scorer = Arc::new(Scorer::new(&p.reference()).unwrap());
+    let expected = scorer.score(&p.distorted()).unwrap().max_norm;
+
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            let scorer = Arc::clone(&scorer);
+            let p = Arc::clone(&p);
+            std::thread::spawn(move || scorer.score(&p.distorted()).unwrap().max_norm)
+        })
+        .collect();
+    for h in handles {
+        assert_eq!(h.join().unwrap(), expected);
+    }
+}

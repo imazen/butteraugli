@@ -124,8 +124,12 @@
 //! [`Walk::Strip`] additionally retains an interleaved linear copy of the
 //! reference planes (`width * height * 3 * 4` bytes), because the strip
 //! walker re-derives reference-side data per strip rather than holding a
-//! whole-image precompute. Choose strip mode when the whole-image working
-//! set, not the retained reference, is what you are bounding.
+//! whole-image precompute, and it interleaves the *distorted* planes into a
+//! second buffer of the same size on **every** [`Scorer::score`] call. What
+//! strip mode bounds is the transient working set — the psycho pyramid, masks
+//! and accumulators — which is the term that dominates at large sizes; it does
+//! not reduce, and slightly increases, the per-call input footprint. Choose it
+//! when the whole-image working set is what you are bounding.
 
 use enough::Stop;
 use imgref::ImgVec;
