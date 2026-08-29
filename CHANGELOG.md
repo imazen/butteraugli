@@ -7,11 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- NOTE: the workspace version was bumped to 0.9.4 (3e41f32) but 0.9.4 was
-     never published to crates.io — the latest published release is 0.9.3.
-     Everything below ships with the next publish. -->
+### QUEUED BREAKING CHANGES
+
+<!-- Breaking changes that will ship together in the next major (0.10) release.
+     Add items here as you discover them. Do NOT ship these piecemeal. -->
+
+- Remove the `internals` cargo feature. It exports seven whole modules
+  (`blur`, `consts`, `image`, `malta`, `mask`, `opsin`, `psycho` — 125 public
+  items of implementation detail) with no compatibility promise. A 2026-08-28
+  audit of every repository that path-patches this crate (`jxl-encoder`,
+  `zenmetrics`, `zenpipe`) found **zero** external consumers: the only
+  `features = ["internals"]` anywhere is this repo's own `butteraugli-bench`,
+  and the `internals` feature that `zenmetrics-api` / `zenmetrics-cli` /
+  `jxl-encoder` enable belongs to `butteraugli-gpu`, a different crate. The
+  planar linear-light use case it was standing in for is now served by
+  `linear-planes` (see below). Plan: keep `internals` through the 0.9.x line,
+  move `butteraugli-bench` onto a crate-private path or a `__bench` feature,
+  then drop it. See `docs/MIGRATION_0.9.4.md` §1.1 and §6.
+
+## [0.9.4] - unreleased
+
+<!-- NOTE: the workspace version was bumped to 0.9.4 (3e41f32) but 0.9.4 has
+     never been published to crates.io — the latest published release is 0.9.3.
+     Everything in this section ships with that publish. `zenmetrics` already
+     pins `butteraugli = "0.9.4"` behind a `[patch.crates-io]` path entry, so
+     publishing is what makes that manifest resolvable unpatched. -->
 
 ### Added
+- **`linear-planes` cargo feature** (off by default) — `butteraugli::linear_planes`,
+  a small, documented, *supported* API for callers that already hold planar
+  linear-light `f32` planes: encoders scoring a reconstruction against a source,
+  GPU backends checking parity against the CPU reference, batch harnesses
+  scoring many distorted images against one reference. Six types:
+  - `LinearPlanes` — a borrowed three-plane strided view. Construction
+    (`new` / `with_stride`) validates dimensions (≥ 8 px per axis), stride
+    (measured in **pixels**, ≥ width), per-plane buffer length and finiteness,
+    so a constructed value is always scorable. Carries a `LinearColorSpace`
+    that states the contract explicitly: linear-light, sRGB / Rec.709
+    primaries, D65 white point, `1.0` ↦ `intensity_target` nits, values above
+    `1.0` allowed for HDR.
+  - `ScorerBuilder` / `Scorer` — precompute the reference once, score many
+    distorted images. `score`, `score_with_stop` (cooperative cancellation),
+    `score_into` (recycles a caller-owned diffmap `Vec<f32>`), plus
+    `reference_bytes` / `width` / `height` / `params` introspection. `Scorer`
+    is `Send + Sync` and scores through `&self`.
+  - `Resolution::{MultiScale, SingleScale}` and
+    `Walk::{WholeImage, Strip(StripMode)}` — the multi-resolution and
+    strip-walk modes as explicit, documented options instead of a boolean and
+    a separate function family. `StripMode` carries `rows` and `halo_rows`.
+  - `Scores { max_norm, pnorm_3, diffmap }` — both aggregations always
+    populated, per-pixel diffmap only when requested.
+
+  The module adds no arithmetic of its own: `Walk::WholeImage` forwards to
+  `ButteraugliReference::new_linear_planar` + `compare_linear_planar`, and
+  `Walk::Strip` to the same strip walker `butteraugli_linear_strip_with_config`
+  drives, with identical arguments. `tests/linear_planes_parity.rs` pins that
+  with `assert_eq!` on `f64` — bit-identity, not a tolerance — across default
+  params, padded stride, single-scale, HDR intensity target, both strip
+  variants, and pixel-for-pixel diffmap equality (15 tests, plus 12 unit tests
+  in the module). (96fd4a9)
+- `ButteraugliReference::compare_linear_planar_with_stop` — cancellable variant
+  of `compare_linear_planar`, completing the `*_with_stop` family. The planar
+  compare was the only one without one. Additive to the default surface. (96fd4a9)
+- CI: a `Features` matrix job that clippy-lints (`-D warnings`) and tests each
+  gated feature combination (`linear-planes`, `internals`, `unsafe-performance`,
+  `iir-blur`, and the three-way combination), and a `linear-planes parity` job
+  that runs the parity suite on ubuntu / macOS ARM / macOS Intel / Windows /
+  windows-11-arm plus the i686 and armv7 QEMU cross lanes (32-bit pointer width
+  exercises `LinearPlanes`' `checked_mul` stride arithmetic). The `test` matrix
+  only ever built the default feature set, which is how the 0.9.3 `iir-blur`
+  regression shipped undetected.
+- `docs/MIGRATION_0.9.4.md` — full inventory of what `jxl-encoder`, `zenmetrics`
+  and `zenpipe` import from this crate, and the exact (optional) diffs to move
+  `jxl-encoder`'s `CpuButteraugliBackend` onto `linear_planes`.
+- `docs/RELEASE_0.9.4.md` — the release checklist and the maintainer-only steps
+  (tag, GitHub release, publish order).
+
+### Added (earlier in the 0.9.4 line)
+- `butteraugli_linear_strip_with_stop` — the linear-RGB strip entry point gained
+  the cancellable variant its sRGB sibling already had, so every strip function
+  now has one. (4e78d6d, #14)
+- `benchmarks/` — committed strip-vs-full memory/speed harness with a 16-36 MP
+  A/B, and a per-kernel NEON-vs-scalar SIMD tier-isolation bench in
+  `butteraugli-bench/benches/kernel_tiers.rs` (every NEON kernel measured against
+  a forced-scalar arm; no losers). Dev-only, not published. (cda3b66, e0fea53,
+  e49085e)
 - Memory introspection on `ButteraugliReference` (additive, no behavior change):
   `estimated_reference_bytes(width, height, &params)` returns the a-priori heap cost
   of a reference's persistent multi-resolution precompute (full + optional half-res
@@ -77,6 +157,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | 40 MP  | 7.79 GB   | 8.71 GB   (+11.8 %) | **7.83 GB**   | **+0.5 %** |
 
   Wall time is unchanged from 0.9.3 (within run-to-run variance). The warm-ref path remains slower than cold-path on a single compare (the precompute cost is wasted on N=1) and faster per-amortized-call at N ≥ 2, as designed.
+- rustdoc: dropped two `precompute` doc links that pointed at private items and
+  failed the Documentation job. (74fb6e0)
+- clippy + rustdoc green on current stable across architectures: 12
+  `needless_borrow` in the aarch64 NEON gaussian paths (invisible to CI's x86
+  lint), `dead_code` on `malta::load_16` (its only callers are the
+  `#[cfg(target_arch = "x86_64")]` 16-wide Malta paths, so the helper now
+  carries the same gate), `chunks_exact_to_as_chunks` in the cold example/test
+  PNG→RGB8 conversions, and an unresolved intra-doc link to the
+  feature-gated `linear_planes` module. `manual_midpoint` and the library's
+  `chunks_exact_to_as_chunks` sites carry crate-level allows with the reason
+  inline: `f32::midpoint` is not bit-identical to `(a + b) * 0.5` below
+  `2 * f32::MIN_POSITIVE` and these are the libjxl-parity formulas, and the
+  `chunks_exact` sites are the callgrind-tuned SIMD inner loops. (e5ffd22,
+  209360c)
+- 7 clippy `allow` attributes that suppressed nothing were removed. (791d08d)
+- Repo hygiene: the transient `Cargo.toml.original.txt` apidoc-runner backup is
+  gone and gitignored; CI cancels superseded runs via a concurrency group.
+  (2f91e77, cd7254b)
 
 ## [0.9.3] - 2026-05-28
 

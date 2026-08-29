@@ -9,16 +9,17 @@
 
 ## summary
 #
-#   inherent methods                            2
+#   inherent methods                            6
 #   struct fields                               4
 #   enum variants                               2
-#   trait roster entries (type × trait)         1
+#   trait roster entries (type × trait)         6
 #
 # per-module pub lines:
 #   (root)                            6
+#   linear_planes                     4
 #   precompute                        2
 
-## items (8 lines)
+## items (12 lines)
 
 #[non_exhaustive] pub ButteraugliError::InvalidBufferSize
 #[non_exhaustive] pub ButteraugliError::InvalidDimensions
@@ -26,9 +27,18 @@ pub ButteraugliError::InvalidBufferSize::actual: usize
 pub ButteraugliError::InvalidBufferSize::expected: usize
 pub ButteraugliError::InvalidDimensions::height: usize
 pub ButteraugliError::InvalidDimensions::width: usize
+pub fn linear_planes::LinearColorSpace::assert_fields_are_eq(&self)
+pub fn linear_planes::Resolution::assert_fields_are_eq(&self)
+pub fn linear_planes::StripMode::assert_fields_are_eq(&self)
+pub fn linear_planes::Walk::assert_fields_are_eq(&self)
 pub fn precompute::ButteraugliReference::source_linear_rgb(&self) -> core::option::Option<&[f32]>
 pub fn precompute::ButteraugliReference::source_linear_rgb_owned(&self) -> core::option::Option<alloc::vec::Vec<f32>>
 
-## trait impls (1 types)
+## trait impls (6 types)
 
 ButteraugliStripConfig: TrivialClone
+linear_planes::LinearColorSpace: TrivialClone
+linear_planes::LinearPlanes<'a>: TrivialClone
+linear_planes::Resolution: TrivialClone
+linear_planes::StripMode: TrivialClone
+linear_planes::Walk: TrivialClone

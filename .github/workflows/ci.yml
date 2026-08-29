@@ -89,6 +89,67 @@ jobs:
         run: cargo test -p butteraugli --test strip_parity
 
   # ==========================================================================
+  # Non-default cargo features. The `test` matrix above only ever exercises
+  # the default set, so gated code (`linear-planes`, `internals`,
+  # `unsafe-performance`, `iir-blur`) rotted repeatedly — see the 0.9.3
+  # iir-blur incident in CLAUDE.md. This job builds, tests and lints each
+  # gated combination so a broken feature fails here instead of at a
+  # consumer's build.
+  # ==========================================================================
+  features:
+    name: Features (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - linear-planes
+          - internals
+          - unsafe-performance
+          - iir-blur
+          - linear-planes,internals,unsafe-performance
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        run: cargo clippy -p butteraugli --lib --tests --features ${{ matrix.features }} -- -D warnings
+      - name: Test
+        run: cargo test -p butteraugli --features ${{ matrix.features }}
+      # The `Documentation` job only builds default features, so a broken
+      # intra-doc link inside a gated module reaches docs.rs unnoticed.
+      - name: Build documentation
+        run: cargo doc -p butteraugli --no-deps --features ${{ matrix.features }}
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  # The `linear-planes` surface is score-parity-critical: it must reproduce
+  # the default API bit for bit. Run its parity suite on every platform the
+  # main matrix covers, not just Linux.
+  linear-planes-parity:
+    name: linear-planes parity (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - macos-26-intel
+          - windows-latest
+          - windows-11-arm
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run linear-planes parity tests
+        run: cargo test -p butteraugli --features linear-planes --test linear_planes_parity
+
+  # ==========================================================================
   # Cross-compiled testing via QEMU
   # ==========================================================================
   test-cross:
@@ -116,6 +177,11 @@ jobs:
         run: cross test -p butteraugli --lib --target ${{ matrix.target }}
       - name: Cross-arch parity (cross/QEMU)
         run: cross test -p butteraugli --test cross_arch_parity --target ${{ matrix.target }}
+      # `LinearPlanes` validates `stride * height` with checked_mul and reports
+      # DimensionOverflow — a 32-bit-only path on i686/armv7. Run the parity
+      # suite here so that arithmetic is exercised at 32-bit pointer width.
+      - name: linear-planes parity (cross/QEMU)
+        run: cross test -p butteraugli --features linear-planes --test linear_planes_parity --target ${{ matrix.target }}
 
   # ==========================================================================
   # WASM compilation check (archmage supports wasm32-simd128)

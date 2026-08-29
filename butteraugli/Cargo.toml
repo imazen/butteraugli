@@ -21,6 +21,14 @@ exclude = [
     "tests/",
 ]
 
+# docs.rs builds the default feature set unless told otherwise, which would
+# hide the `linear-planes` module from published docs. `internals` is left off
+# — it is unstable by contract and 125 items of implementation detail would
+# drown the supported surface.
+[package.metadata.docs.rs]
+features = ["linear-planes"]
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = ["rayon", "avx512"]
 # The `linear_planes` module: a small, documented, SUPPORTED API for callers

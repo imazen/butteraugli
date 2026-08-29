@@ -175,9 +175,14 @@ pub(crate) mod opsin;
 pub mod precompute;
 pub use precompute::ButteraugliReference;
 
-/// Planar linear-light scoring API — the supported surface for callers that
-/// already hold planar `f32` linear RGB (encoders, GPU-parity harnesses,
-/// batch scorers). Enable the `linear-planes` cargo feature.
+// Planar linear-light scoring API — the supported surface for callers that
+// already hold planar `f32` linear RGB (encoders, GPU-parity harnesses, batch
+// scorers). Enable the `linear-planes` cargo feature.
+//
+// Deliberately NOT documented here with `///`: rustdoc merges an outer doc on
+// a `pub mod` declaration with the module's own `//!` docs and resolves the
+// whole merged block in the *parent* scope, which breaks every intra-doc link
+// the module makes to its own items. The docs live in linear_planes.rs.
 #[cfg(feature = "linear-planes")]
 pub mod linear_planes;
 

@@ -392,7 +392,55 @@ functions, and read it by field/method.
   non-AVX-512 hardware but not score-parity with libjxl — off by default.
 - **`unsafe-performance`**: unchecked indexing in hot loops (~6% fewer
   instructions; each function pre-validates the full access range).
-- **`internals`**: expose internal modules for testing/benchmarking (unstable API).
+- **`linear-planes`**: the [`linear_planes`](https://docs.rs/butteraugli/latest/butteraugli/linear_planes/)
+  module — a documented, supported API for callers that already hold planar
+  linear-light `f32` planes. See [Planar linear-light input](#planar-linear-light-input).
+- **`internals`**: expose the internal `blur` / `consts` / `image` / `malta` /
+  `mask` / `opsin` / `psycho` modules for testing and benchmarking. **Unstable**
+  — no compatibility promise, contents change with any internal refactor. If you
+  are reaching for it to score planar linear-light data, use `linear-planes`
+  instead.
+
+## Planar linear-light input
+
+If you already hold three `f32` planes of linear-light RGB — an encoder scoring
+a reconstruction, a GPU backend checking parity, a harness scoring many
+distorted images against one reference — enable `linear-planes` and use
+`butteraugli::linear_planes` rather than interleaving into `ImgRef<RGB<f32>>`.
+
+```toml
+butteraugli = { version = "0.9.4", features = ["linear-planes"] }
+```
+
+```rust
+use butteraugli::linear_planes::{LinearPlanes, Resolution, Scorer, StripMode, Walk};
+
+// Strided planes: `stride` is in pixels, >= width. Construction validates
+// dimensions, stride, buffer lengths and finiteness, and states the colour
+// space (linear-light, sRGB/Rec.709 primaries, D65, 1.0 -> intensity_target nits).
+let reference = LinearPlanes::with_stride(&r, &g, &b, width, height, stride)?;
+
+// Precompute the reference once; score many distorted images against it.
+let scorer = Scorer::builder()
+    .with_intensity_target(80.0)          // nits that linear 1.0 maps to
+    .with_resolution(Resolution::MultiScale) // libjxl butteraugli_main parity
+    .with_walk(Walk::WholeImage)          // or Walk::Strip(StripMode::new(256))
+    .with_diffmap(true)
+    .build(&reference)?;
+
+let distorted = LinearPlanes::with_stride(&dr, &dg, &db, width, height, stride)?;
+let scores = scorer.score(&distorted)?;
+println!("max-norm {} / 3-norm {}", scores.max_norm, scores.pnorm_3);
+
+// Recycle the diffmap buffer across iterations instead of allocating per call:
+let mut diffmap = Vec::new();
+let scores = scorer.score_into(&distorted, &mut diffmap)?;
+```
+
+Scores are bit-identical to the equivalent default-API calls
+(`ButteraugliReference::new_linear_planar` + `compare_linear_planar` for
+`Walk::WholeImage`, `butteraugli_linear_strip_with_config` for `Walk::Strip`) —
+`tests/linear_planes_parity.rs` asserts exact `f64` equality, not a tolerance.
 
 ## Performance
 

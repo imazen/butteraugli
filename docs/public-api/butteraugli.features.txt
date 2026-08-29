@@ -1,5 +1,5 @@
 # butteraugli public API — additions from non-default features
-# features: avx512,corpus-tests,iir-blur,internals,rayon,unsafe-performance
+# features: avx512,corpus-tests,iir-blur,internals,linear-planes,rayon,unsafe-performance
 # (regenerated on every `cargo test` by zenutils-apidoc; ZEN_API_DOC=check verifies, =off skips).
 # Encodings: crate-name prefix stripped; auto traits collapse to a
 # count + exceptions; trait impls collapse to one roster line per
@@ -9,27 +9,29 @@
 
 ## summary
 #
-#   pub modules                                 7
-#   pub types (struct/enum/trait/alias)         5
-#   pub consts/statics                         45
+#   pub modules                                 8
+#   pub types (struct/enum/trait/alias)        13
+#   pub consts/statics                         46
 #   free functions                             27
-#   inherent methods                           35
-#   struct fields                               6
-#   trait roster entries (type × trait)        14
-#   auto-trait-complete types                   4
+#   inherent methods                           69
+#   struct fields                               9
+#   enum variants                               5
+#   trait roster entries (type × trait)        51
+#   auto-trait-complete types                  12
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
-#   (root)                            7
+#   (root)                            8
 #   blur                              7
 #   consts                           45
 #   image                            36
+#   linear_planes                    51
 #   malta                             1
 #   mask                             13
 #   opsin                             8
 #   psycho                            8
 
-## items (125 lines)
+## items (177 lines)
 
 pub mod blur
 pub fn blur::blur_5x5(&image::ImageF, &[f32; 3], &image::BufferPool) -> image::ImageF
@@ -122,6 +124,58 @@ pub fn image::ImageF::same_size(&self, &Self) -> bool
 pub fn image::ImageF::set(&mut self, usize, usize, f32)
 pub fn image::ImageF::stride(&self) -> usize
 pub fn image::ImageF::width(&self) -> usize
+pub mod linear_planes
+#[non_exhaustive] pub enum linear_planes::LinearColorSpace
+pub linear_planes::LinearColorSpace::LinearSrgb
+#[non_exhaustive] pub enum linear_planes::Resolution
+pub linear_planes::Resolution::MultiScale
+pub linear_planes::Resolution::SingleScale
+#[non_exhaustive] pub enum linear_planes::Walk
+pub linear_planes::Walk::Strip(linear_planes::StripMode)
+pub linear_planes::Walk::WholeImage
+pub struct linear_planes::LinearPlanes<'a>
+pub fn linear_planes::LinearPlanes<'a>::blue(&self) -> &'a [f32]
+pub fn linear_planes::LinearPlanes<'a>::color_space(&self) -> linear_planes::LinearColorSpace
+pub fn linear_planes::LinearPlanes<'a>::green(&self) -> &'a [f32]
+pub fn linear_planes::LinearPlanes<'a>::height(&self) -> usize
+pub fn linear_planes::LinearPlanes<'a>::new(&'a [f32], &'a [f32], &'a [f32], usize, usize) -> core::result::Result<Self, ButteraugliError>
+pub fn linear_planes::LinearPlanes<'a>::red(&self) -> &'a [f32]
+pub fn linear_planes::LinearPlanes<'a>::stride(&self) -> usize
+pub fn linear_planes::LinearPlanes<'a>::width(&self) -> usize
+pub fn linear_planes::LinearPlanes<'a>::with_color_space(self, linear_planes::LinearColorSpace) -> Self
+pub fn linear_planes::LinearPlanes<'a>::with_stride(&'a [f32], &'a [f32], &'a [f32], usize, usize, usize) -> core::result::Result<Self, ButteraugliError>
+pub struct linear_planes::Scorer
+pub fn linear_planes::Scorer::builder() -> linear_planes::ScorerBuilder
+pub fn linear_planes::Scorer::color_space(&self) -> linear_planes::LinearColorSpace
+pub fn linear_planes::Scorer::height(&self) -> usize
+pub fn linear_planes::Scorer::new(&linear_planes::LinearPlanes<'_>) -> core::result::Result<Self, ButteraugliError>
+pub fn linear_planes::Scorer::params(&self) -> &ButteraugliParams
+pub fn linear_planes::Scorer::reference_bytes(&self) -> usize
+pub fn linear_planes::Scorer::score(&self, &linear_planes::LinearPlanes<'_>) -> core::result::Result<linear_planes::Scores, ButteraugliError>
+pub fn linear_planes::Scorer::score_into(&self, &linear_planes::LinearPlanes<'_>, &mut alloc::vec::Vec<f32>) -> core::result::Result<linear_planes::Scores, ButteraugliError>
+pub fn linear_planes::Scorer::score_with_stop(&self, &linear_planes::LinearPlanes<'_>, &dyn enough::Stop) -> core::result::Result<linear_planes::Scores, ButteraugliError>
+pub fn linear_planes::Scorer::walk(&self) -> linear_planes::Walk
+pub fn linear_planes::Scorer::width(&self) -> usize
+pub struct linear_planes::ScorerBuilder
+pub fn linear_planes::ScorerBuilder::build(&self, &linear_planes::LinearPlanes<'_>) -> core::result::Result<linear_planes::Scorer, ButteraugliError>
+pub fn linear_planes::ScorerBuilder::new() -> Self
+pub fn linear_planes::ScorerBuilder::to_params(&self) -> ButteraugliParams
+pub fn linear_planes::ScorerBuilder::with_diffmap(self, bool) -> Self
+pub fn linear_planes::ScorerBuilder::with_hf_asymmetry(self, f32) -> Self
+pub fn linear_planes::ScorerBuilder::with_intensity_target(self, f32) -> Self
+pub fn linear_planes::ScorerBuilder::with_resolution(self, linear_planes::Resolution) -> Self
+pub fn linear_planes::ScorerBuilder::with_walk(self, linear_planes::Walk) -> Self
+pub fn linear_planes::ScorerBuilder::with_xmul(self, f32) -> Self
+#[non_exhaustive] pub struct linear_planes::Scores
+pub linear_planes::Scores::diffmap: core::option::Option<imgref::ImgVec<f32>>
+pub linear_planes::Scores::max_norm: f64
+pub linear_planes::Scores::pnorm_3: f64
+pub struct linear_planes::StripMode
+pub fn linear_planes::StripMode::halo_rows(&self) -> usize
+pub fn linear_planes::StripMode::new(u32) -> Self
+pub fn linear_planes::StripMode::rows(&self) -> u32
+pub fn linear_planes::StripMode::with_halo_rows(self, usize) -> Self
+pub const linear_planes::MIN_DIMENSION: usize
 pub mod malta
 pub fn malta::malta_diff_map(&image::ImageF, &image::ImageF, f64, f64, f64, bool, &image::BufferPool) -> image::ImageF
 pub mod mask
@@ -157,15 +211,24 @@ pub fn psycho::PsychoImage::height(&self) -> usize
 pub fn psycho::PsychoImage::width(&self) -> usize
 pub fn psycho::separate_frequencies(&image::Image3F, &image::BufferPool) -> psycho::PsychoImage
 
-## trait impls (5 types)
+## trait impls (14 types)
 
+ButteraugliStripConfig: From<linear_planes::StripMode>
 image::BufferPool: Clone, Debug, Default
 image::Image3F: Clone, Debug, Index<usize>, IndexMut<usize>
 image::ImageF: Clone, Debug, Index<(usize, usize)>, IndexMut<(usize, usize)>
+linear_planes::LinearColorSpace: Clone, Copy, Debug, Default, Eq, Hash, PartialEq
+linear_planes::LinearPlanes<'a>: Clone, Copy, Debug
+linear_planes::Resolution: Clone, Copy, Debug, Default, Eq, Hash, PartialEq
+linear_planes::Scorer: Debug
+linear_planes::ScorerBuilder: Clone, Debug, Default
+linear_planes::Scores: Clone, Debug
+linear_planes::StripMode: Clone, Copy, Debug, Eq, Hash, PartialEq
+linear_planes::Walk: Clone, Copy, Debug, Default, Eq, Hash, PartialEq
 mask::PrecomputedMask: Clone
 psycho::PsychoImage: Clone, Debug
 
 ## auto traits
 
-4 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
+12 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
 image::BufferPool: !Freeze
