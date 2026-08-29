@@ -83,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/RELEASE_0.9.4.md` — the release checklist and the maintainer-only steps
   (tag, GitHub release, publish order).
 
-### Added (earlier in the 0.9.4 line)
+<!-- everything below landed earlier in the 0.9.4 line -->
 - `butteraugli_linear_strip_with_stop` — the linear-RGB strip entry point gained
   the cancellable variant its sRGB sibling already had, so every strip function
   now has one. (4e78d6d, #14)
