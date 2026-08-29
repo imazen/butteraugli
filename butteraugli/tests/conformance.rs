@@ -21,7 +21,9 @@ use std::path::Path;
 
 /// Convert RGB byte slice to Vec<RGB8>
 fn rgb_bytes_to_pixels(rgb: &[u8]) -> Vec<RGB8> {
-    rgb.chunks_exact(3)
+    rgb.as_chunks::<3>()
+        .0
+        .iter()
         .map(|c| RGB8::new(c[0], c[1], c[2]))
         .collect()
 }

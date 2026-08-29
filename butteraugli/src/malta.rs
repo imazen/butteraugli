@@ -57,7 +57,11 @@ fn load_8(data: &[f32], start: usize) -> &[f32; 8] {
 ///
 /// With `unsafe-performance`: pointer cast (caller must pre-validate range).
 /// Without: slice + try_into with bounds check.
-#[cfg(feature = "unsafe-performance")]
+///
+/// Only the 16-wide (AVX-512) Malta paths call this, and those are
+/// `#[cfg(target_arch = "x86_64")]` — so the helper is gated identically
+/// rather than sitting dead on aarch64 / wasm / i686.
+#[cfg(all(target_arch = "x86_64", feature = "unsafe-performance"))]
 #[allow(clippy::inline_always)]
 #[inline(always)]
 fn load_16(data: &[f32], start: usize) -> &[f32; 16] {
@@ -65,7 +69,7 @@ fn load_16(data: &[f32], start: usize) -> &[f32; 16] {
     unsafe { &*data.as_ptr().add(start).cast::<[f32; 16]>() }
 }
 
-#[cfg(not(feature = "unsafe-performance"))]
+#[cfg(all(target_arch = "x86_64", not(feature = "unsafe-performance")))]
 #[inline]
 fn load_16(data: &[f32], start: usize) -> &[f32; 16] {
     data[start..start + 16].try_into().unwrap()

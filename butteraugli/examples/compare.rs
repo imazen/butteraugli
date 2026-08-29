@@ -14,11 +14,15 @@ fn load_png(path: &str) -> (Vec<RGB8>, usize, usize) {
     let (w, h) = (info.width as usize, info.height as usize);
     let pixels = match info.color_type {
         png::ColorType::Rgb => bytes
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| RGB8::new(c[0], c[1], c[2]))
             .collect(),
         png::ColorType::Rgba => bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|c| RGB8::new(c[0], c[1], c[2]))
             .collect(),
         png::ColorType::Grayscale => bytes.iter().map(|&v| RGB8::new(v, v, v)).collect(),
@@ -37,7 +41,9 @@ fn load_jpeg(path: &str) -> (Vec<RGB8>, usize, usize) {
 
     let pixels = match info.pixel_format {
         jpeg_decoder::PixelFormat::RGB24 => bytes
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| RGB8::new(c[0], c[1], c[2]))
             .collect(),
         jpeg_decoder::PixelFormat::L8 => bytes.iter().map(|&v| RGB8::new(v, v, v)).collect(),

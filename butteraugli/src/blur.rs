@@ -976,20 +976,20 @@ fn gaussian_blur_dispatch_neon(
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false);
     if border2 > border1 {
-        convolve_horizontal_interior_neon(token, input, &scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_neon(token, input, scaled, border1, border2, half, &mut temp);
     }
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_neon(token, &temp, &kernel, &scaled, 0.0, &mut output);
+    convolve_vertical_neon(token, &temp, kernel, scaled, 0.0, &mut output);
     temp.recycle(pool);
     output
 }
@@ -1006,14 +1006,14 @@ fn gaussian_blur_dispatch_wasm128(
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, 0.0, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false);
     if border2 > border1 {
         convolve_horizontal_interior_wasm128(
             token, input, &scaled, border1, border2, half, &mut temp,
@@ -1144,20 +1144,20 @@ fn blur_with_border_dispatch_neon(
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false);
     if border2 > border1 {
-        convolve_horizontal_interior_neon(token, input, &scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_neon(token, input, scaled, border1, border2, half, &mut temp);
     }
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_neon(token, &temp, &kernel, &scaled, border_ratio, &mut output);
+    convolve_vertical_neon(token, &temp, kernel, scaled, border_ratio, &mut output);
     temp.recycle(pool);
     output
 }
@@ -1175,14 +1175,14 @@ fn blur_with_border_dispatch_wasm128(
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
-    let scaled = compute_scaled_kernel(&kernel, &mut scaled_buf);
+    let scaled = compute_scaled_kernel(kernel, &mut scaled_buf);
     let width = input.width();
     let height = input.height();
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, &kernel, &scaled, border_ratio, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false);
     if border2 > border1 {
         convolve_horizontal_interior_wasm128(
             token, input, &scaled, border1, border2, half, &mut temp,

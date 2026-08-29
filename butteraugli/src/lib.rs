@@ -65,7 +65,7 @@
 //! - **`iir-blur`**: O(N) recursive Gaussian instead of FIR convolution — faster on
 //!   non-AVX-512 hardware but NOT score-parity with libjxl; off by default
 //! - **`unsafe-performance`**: unchecked indexing in hot loops (pre-validated ranges)
-//! - **`linear-planes`**: the [`linear_planes`] module — a small, documented,
+//! - **`linear-planes`**: the `linear_planes` module — a small, documented,
 //!   supported API for callers holding planar linear-light `f32` planes
 //!   (typed strided inputs, a reference builder for repeated scoring,
 //!   explicit resolution/strip modes, max-norm + 3-norm + optional diffmap)
@@ -79,6 +79,22 @@
 
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
+// `(a + b) * 0.5` is the literal libjxl formula at every site that trips this
+// lint (subsample, blur, supersample). `f32::midpoint` is NOT a bit-identical
+// substitute: for arguments below `2 * f32::MIN_POSITIVE` it evaluates
+// `a + b / 2.0` rather than `(a + b) / 2.0`, and blurred residuals do reach
+// that range. Parity with `butteraugli_main` is the whole point of this crate,
+// so the arithmetic stays literal. Removing this allow requires proving
+// bit-identity per site, not a mechanical rewrite.
+#![allow(clippy::manual_midpoint)]
+// The `chunks_exact(N)` call sites this lint targets are the hand-tuned SIMD
+// inner loops (8-wide f32 lanes, 2-wide pair loops) whose codegen was measured
+// under callgrind across optimization sessions 2-7 — see CLAUDE.md. Switching
+// them to `as_chunks::<N>()` is plausibly neutral-to-better for bounds-check
+// elimination, but it is an unmeasured rewrite of the crate's hottest code and
+// does not belong in a release-prep pass. Removing this allow requires a
+// callgrind A/B, not a `--fix` run.
+#![allow(clippy::chunks_exact_to_as_chunks)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::similar_names)]
 #![allow(clippy::cast_precision_loss)]
