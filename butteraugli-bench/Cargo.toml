@@ -8,7 +8,7 @@ publish = false
 default = []
 
 [build-dependencies]
-cc = "1"
+cc = "1.4.4"
 
 [dependencies]
 # `internals` exposes blur/malta/image so benches/kernel_tiers.rs can measure
@@ -19,7 +19,7 @@ rayon = { workspace = true }
 linear-srgb = "0.6.12"
 imgref = { workspace = true }
 rgb = { workspace = true }
-bytemuck = "1.18"
+bytemuck = "1.25.2"
 zenbench = "0.1.7"
 # `testable_dispatch` lets benches/tier_isolation.rs disable the baseline SIMD
 # token (NEON on aarch64) so the scalar arm is real rather than a second

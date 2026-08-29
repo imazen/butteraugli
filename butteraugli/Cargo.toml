@@ -93,22 +93,22 @@ enough = "0.4.4"
 
 [dev-dependencies]
 # Image I/O for testing
-png = "0.18"
+png = "0.18.1"
 
 # Testing utilities
-approx = "0.5"
+approx = "0.5.1"
 
 # Ergonomic cancellation tokens (`Stopper::cancelled()`) for cancellation tests
 almost-enough = "0.4.4"
 
 # Date/time for reference data generation
-chrono = "0.4"
+chrono = "0.4.45"
 
 # These don't compile on wasm32 — gate them to non-wasm targets
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # JPEG encoding/decoding for roundtrip tests
-mozjpeg = "0.10"
-jpeg-decoder = "0.3"
+mozjpeg = "0.10.13"
+jpeg-decoder = "0.3.2"
 
 # Property-based testing
-proptest = "1.4"
+proptest = "1.11.0"
