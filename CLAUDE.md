@@ -7,16 +7,56 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 None currently known. Parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 
-## Release state (2026-06-10 audit)
+## Release state (2026-08-28 audit — supersedes the 2026-06-10 one)
 
 - **Latest published = 0.9.3** (crates.io + GH release v0.9.3). The in-tree workspace
-  version is 0.9.4 (bumped in 3e41f32) but 0.9.4 was NEVER published — no tag, no GH
-  release, not on crates.io. zenmetrics already pins `butteraugli = "0.9.4"` with a
+  version is 0.9.4 (bumped in 3e41f32) but 0.9.4 has NEVER been published — no tag, no
+  GH release, not on crates.io. zenmetrics already pins `butteraugli = "0.9.4"` with a
   path patch, so publishing 0.9.4 unblocks its crates.io resolution.
-- cargo-semver-checks vs 0.9.3: no semver update required (additive only).
-- CHANGELOG: [Unreleased] holds everything since 0.9.3 (the phantom `[0.9.4]` release
-  heading was folded back in). Sections for 0.7.0–0.9.1 were never written; GH release
-  notes exist for those tags if backfill is ever wanted.
+- **0.9.4 is prepped but not released.** Full checklist, every verification command with
+  its measured result, and the maintainer-only steps: `docs/RELEASE_0.9.4.md`.
+- **cargo-semver-checks vs 0.9.3 is NOT unconditionally clean** — the 2026-06-10 note
+  claiming "additive only" was measured on the default feature set only:
+  - `--default-features`: 196/196 pass, "no semver update required". The default
+    surface is compatible.
+  - all features: 1 major failure, `pub_module_level_const_missing` —
+    `consts::XYB_OPSIN_ABSORBANCE_MATRIX`, `XYB_OPSIN_ABSORBANCE_BIAS`,
+    `XYB_NEG_OPSIN_ABSORBANCE_BIAS_CBRT`, removed by c645a39. They were `pub` in
+    `consts` and reachable under `internals`. Ship/restore/0.10.0 options are laid out
+    in `docs/RELEASE_0.9.4.md` §2.3; the maintainer decides.
+  - **Always run semver-checks BOTH ways on this crate.** The gated surface is where
+    the breaks are.
+- CHANGELOG: `[Unreleased]` now holds only `QUEUED BREAKING CHANGES`; everything since
+  0.9.3 lives under `[0.9.4] - unreleased`. Sections for 0.7.0–0.9.1 were never written;
+  GH release notes exist for those tags if backfill is ever wanted.
+
+## `linear-planes` vs `internals` (2026-08-28)
+
+- **No external consumer enables this crate's `internals` feature.** Verified by
+  read-only grep of `~/work/zen/jxl-encoder`, `~/work/zen/zenmetrics` and
+  `~/work/zen/zenpipe`. The only `features = ["internals"]` anywhere is this repo's own
+  `butteraugli-bench`. The `internals` that zenmetrics-api / zenmetrics-cli /
+  jxl-encoder enable is **butteraugli-gpu's** feature of the same name — a different
+  crate. Don't conflate them; the full inventory is `docs/MIGRATION_0.9.4.md` §1.
+- `linear-planes` (new in 0.9.4, off by default) is the supported replacement for the
+  planar linear-light use case: `butteraugli::linear_planes` — `LinearPlanes`
+  (typed strided view + stated colour space), `ScorerBuilder`/`Scorer`,
+  `Resolution`, `Walk`/`StripMode`, `Scores`. It adds **no arithmetic**; every mode
+  forwards to an existing path with identical arguments.
+  `tests/linear_planes_parity.rs` pins bit-identity with `assert_eq!` on `f64` — if you
+  touch that module, those 15 tests are the contract, and a tolerance is never the fix.
+- `internals` is queued for removal in 0.10 (CHANGELOG `QUEUED BREAKING CHANGES`).
+  Moving `butteraugli-bench` off it is the prerequisite.
+
+## Gotcha: outer `///` docs on a `pub mod` declaration break the module's intra-doc links
+
+`lib.rs` declares `pub mod linear_planes;` with a `//` comment, not `///`, on purpose.
+rustdoc merges an outer doc written at the `pub mod X;` declaration with the module's
+own `//!` block and resolves the **whole merged block in the parent scope** — so every
+`[`Walk`]` / `[`Scorer`]` link inside `linear_planes.rs`'s module docs became
+"no item named ... in scope" (24 of them). Caught by the apidoc runner, not by
+`cargo doc` on default features (the module is feature-gated off). If you add docs to a
+gated module, put them in the module file.
 
 ## Incident: 0.9.3 merge dropped the iir-blur stride fix (found+fixed 2026-06-10)
 
@@ -37,8 +77,21 @@ a vanished fix is exactly what `git log --oneline <merge>..<branch>` won't show.
   `src/` in 601bd9a — it shipped 290 KB of dead weight in the published crate).
   Regenerate via `cargo test --test capture_cpp_scores -- --ignored`.
 - clippy `-D warnings` is green across default / iir-blur / internals /
-  unsafe-performance / all-combined (58c665d). CI only lints the default set, so
-  re-run the matrix locally when touching gated code.
+  linear-planes / unsafe-performance / all-combined. CI now has a **`Features`
+  matrix job** that lints (`-D warnings`), tests, and `cargo doc`s each combination,
+  plus a **`linear-planes parity`** job on all five OS runners and the i686/armv7 QEMU
+  lanes — so gated code no longer rots between releases (that gap is how the 0.9.3
+  iir-blur regression shipped). Still worth running locally when touching gated code.
+- **Cross-arch clippy matters here.** CI's Lint job runs on x86 only, so aarch64-only
+  lints (12 `needless_borrow` in the NEON gaussian paths) went unseen. Cross-check with
+  `cargo clippy -p butteraugli --lib --features internals,linear-planes,unsafe-performance
+  --target x86_64-unknown-linux-gnu` from an ARM box, and plain
+  `cargo clippy --workspace --all-targets` natively.
+- `manual_midpoint` and (library-only) `chunks_exact_to_as_chunks` are allowed
+  crate-wide with the reason inline in `lib.rs`. `f32::midpoint` is **not** bit-identical
+  to `(a + b) * 0.5` below `2 * f32::MIN_POSITIVE`, and those sites are the
+  libjxl-parity formulas; the `chunks_exact` sites are the callgrind-tuned SIMD inner
+  loops. Neither allow should be removed without per-site proof / a callgrind A/B.
 
 ## FIR Blur — At LLVM Ceiling (2026-04-17)
 
