@@ -165,9 +165,10 @@ there.
   (`cargo publish --dry-run` for both packages).
 - **New `Features` matrix**: clippy `-D warnings` + test + `cargo doc -D
   warnings` for `linear-planes`, `internals`, `unsafe-performance`,
-  `iir-blur`, and the three-way combination. The old matrix only ever built the
-  default feature set, which is how the 0.9.3 `iir-blur` regression shipped
-  undetected (CLAUDE.md records the incident).
+  `iir-blur`, `linear-planes,iir-blur`, and the three-way combination. The old
+  matrix only ever built the default feature set, which is how the 0.9.3
+  `iir-blur` regression shipped undetected (CLAUDE.md records the incident) and
+  how the `iir-blur` x strip inexactness in §4b went unnoticed.
 - **New `linear-planes parity` matrix**: the parity suite on all five OS
   runners.
 
