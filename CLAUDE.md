@@ -7,6 +7,20 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 None currently known. Parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 
+## Planar pre-allocation accounting (2026-09-08)
+
+`ButteraugliReference::estimated_planar_peak_bytes` covers a planar reference's
+construction and sequential warm comparisons, including concurrent scales,
+six concurrent Malta filters, row/border padding, and oversized pooled capacity.
+The source-derived envelope counts 25 active scratch planes per scale (3 XYB,
+10 psycho, six two-buffer Malta calls), plus the pool cap and reference planes.
+It excludes caller input/output and allocator overhead/retained freed pages;
+it is an image-buffer admission estimate, not a hard RSS ceiling.
+`estimated_reference_bytes` still describes only persistent precompute, and
+`memory_bytes` only currently retained storage. Neither measures active scratch.
+`planar_memory_estimate` tests resolution boundaries, overflow and repeated
+strided comparisons; these retained-storage tests do not measure transient RSS.
+
 ## Release state (2026-08-28 audit — supersedes the 2026-06-10 one)
 
 - **Latest published = 0.9.3** (crates.io + GH release v0.9.3). The in-tree workspace

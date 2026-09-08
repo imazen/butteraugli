@@ -824,9 +824,9 @@ impl ButteraugliReference {
     /// to the full+half `ScaleData` byte total an actual reference reports
     /// (validated by the `estimated_reference_bytes_matches_precompute`
     /// test). It does NOT include the retained strip-walker source or the
-    /// transient compare-time buffer pool — those are not part of the
-    /// persistent precompute and are accounted separately by
-    /// [`Self::memory_bytes`] on a live reference.
+    /// comparison scratch or idle buffer pool. Use
+    /// [`Self::estimated_planar_peak_bytes`] for pre-allocation admission of
+    /// planar comparisons; [`Self::memory_bytes`] reports retained storage only.
     ///
     /// `0` for degenerate sizes (`width == 0 || height == 0`).
     #[must_use]
@@ -849,6 +849,70 @@ impl ButteraugliReference {
             total += ScaleData::estimated_byte_size(width.div_ceil(2), height.div_ceil(2));
         }
         total
+    }
+
+    /// Conservative image-buffer estimate for a planar reference and one
+    /// planar comparison at a time, including reference construction scratch.
+    ///
+    /// Reserve this **before** [`Self::new_linear_planar`] and keep the
+    /// reservation through the last comparison. It includes the reference
+    /// pyramid, active scratch and idle pool buffers, with both resolution
+    /// levels and all six Malta filters allowed to execute concurrently.
+    /// Input planes, the caller's output vector, allocator bookkeeping and
+    /// retained freed pages are excluded: this is not a process RSS limit.
+    /// Concurrent comparisons on the same reference need separate accounting.
+    /// Interleaved constructors and strip comparisons are outside this contract.
+    ///
+    /// Pool reuse can give a half-resolution buffer full-resolution capacity.
+    /// Consequently scratch is charged at the largest plane size, including
+    /// Malta's four-pixel border and SIMD row padding. This deliberately favors
+    /// safe admission over a tight prediction of typical memory use.
+    /// Returns `None` on arithmetic overflow, and `Some(0)` for empty dimensions.
+    #[must_use]
+    pub fn estimated_planar_peak_bytes(
+        width: usize,
+        height: usize,
+        params: &ButteraugliParams,
+    ) -> Option<usize> {
+        if width == 0 || height == 0 {
+            return Some(0);
+        }
+        // All ImageF buffers align rows to 16 floats. Include transposed blur
+        // scratch as well as Malta's PAD=4 border on each edge.
+        let plane = |w: usize, h: usize| -> Option<usize> {
+            let w = w.checked_add(8)?;
+            let h = h.checked_add(8)?;
+            let rows = (w.checked_add(15)? & !15).checked_mul(h)?;
+            let transposed = (h.checked_add(15)? & !15).checked_mul(w)?;
+            rows.max(transposed)
+                .checked_mul(core::mem::size_of::<f32>())
+        };
+        let full = plane(width, height)?;
+        let half = if !params.single_resolution()
+            && width >= MIN_SIZE_FOR_SUBSAMPLE
+            && height >= MIN_SIZE_FOR_SUBSAMPLE
+        {
+            plane(width.div_ceil(2), height.div_ceil(2))?
+        } else {
+            0
+        };
+        // ScaleData: ten PsychoImage planes and two PrecomputedMask planes.
+        let reference = full.checked_add(half)?.checked_mul(12)?;
+        // Per scale, the compare peak retains XYB(3) + PsychoImage(10),
+        // alongside six concurrent Malta calls with two live buffers each
+        // (diffs+padded OR padded+output). Other phases fit below this:
+        // frequency separation adds at most three two-buffer blurs; opsin
+        // holds RGB(3), blurred RGB(3), XYB(3), and half input RGB(3).
+        // Construction's separate pools are also covered by this envelope.
+        let scales = if half == 0 { 1usize } else { 2 };
+        let scratch_planes = scales.checked_mul(3 + 10 + 6 * 2)?;
+        let scratch = full.checked_mul(scratch_planes + crate::image::MAX_POOL_BUFFERS)?;
+        // Each construction scale owns a pool of at most MAX_POOL_BUFFERS
+        // Vec descriptors; compare shares the full scale's pool.
+        let pool_metadata = scales
+            .checked_mul(crate::image::MAX_POOL_BUFFERS)?
+            .checked_mul(core::mem::size_of::<Vec<f32>>())?;
+        reference.checked_add(scratch)?.checked_add(pool_metadata)
     }
 
     /// Heap bytes of the **persistent precompute** actually held by this
