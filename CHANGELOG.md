@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.4] - unreleased
 
+### Added
+- Pre-allocation planar-reference and comparison storage estimate, including concurrent scratch and retained pool buffers (`eab74f26`).
+
+
 <!-- NOTE: the workspace version was bumped to 0.9.4 (3e41f32) but 0.9.4 has
      never been published to crates.io — the latest published release is 0.9.3.
      Everything in this section ships with that publish. `zenmetrics` already
