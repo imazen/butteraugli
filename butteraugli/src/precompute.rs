@@ -863,10 +863,10 @@ impl ButteraugliReference {
     /// Concurrent comparisons on the same reference need separate accounting.
     /// Interleaved constructors and strip comparisons are outside this contract.
     ///
-    /// Pool reuse can give a half-resolution buffer full-resolution capacity.
-    /// Consequently scratch is charged at the largest plane size, including
-    /// Malta's four-pixel border and SIMD row padding. This deliberately favors
-    /// safe admission over a tight prediction of typical memory use.
+    /// Pool reuse preserves exact capacity, so each active scale is charged
+    /// at its own largest plane size, including Malta's four-pixel border and
+    /// SIMD row padding. Idle buffers are charged at full resolution. This
+    /// favors safe admission over a tight prediction of typical memory use.
     /// Returns `None` on arithmetic overflow, and `Some(0)` for empty dimensions.
     #[must_use]
     pub fn estimated_planar_peak_bytes(
@@ -905,8 +905,10 @@ impl ButteraugliReference {
         // holds RGB(3), blurred RGB(3), XYB(3), and half input RGB(3).
         // Construction's separate pools are also covered by this envelope.
         let scales = if half == 0 { 1usize } else { 2 };
-        let scratch_planes = scales.checked_mul(3 + 10 + 6 * 2)?;
-        let scratch = full.checked_mul(scratch_planes + crate::image::MAX_POOL_BUFFERS)?;
+        let scratch = full
+            .checked_add(half)?
+            .checked_mul(3 + 10 + 6 * 2)?
+            .checked_add(full.checked_mul(crate::image::MAX_POOL_BUFFERS)?)?;
         // Each construction scale owns a pool of at most MAX_POOL_BUFFERS
         // Vec descriptors; compare shares the full scale's pool.
         let pool_metadata = scales

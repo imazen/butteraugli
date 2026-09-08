@@ -41,21 +41,16 @@ impl BufferPool {
         Self::default()
     }
 
-    /// Takes a buffer of at least `needed` elements from the pool (best-fit).
+    /// Takes a buffer with exactly `needed` capacity, allocating if absent.
     /// Returns stale data — caller must zero-fill if needed.
     ///
     /// With `unsafe-performance`, new allocations skip zero-fill entirely.
     pub(crate) fn take(&self, needed: usize) -> Vec<f32> {
         let mut pool = self.buffers.lock().unwrap();
-        let mut best_idx = None;
-        let mut best_excess = usize::MAX;
-        for (i, buf) in pool.iter().enumerate() {
-            let cap = buf.len();
-            if cap >= needed && cap - needed < best_excess {
-                best_idx = Some(i);
-                best_excess = cap - needed;
-            }
-        }
+        // Keep capacities tied to the requested shape. Lending a full-size
+        // buffer to a half-size plane makes pre-allocation accounting depend
+        // on the interleaving of both scales and every previous comparison.
+        let best_idx = pool.iter().position(|buf| buf.capacity() == needed);
         if let Some(idx) = best_idx {
             let mut buf = pool.swap_remove(idx);
             drop(pool); // release lock before potential realloc
@@ -587,6 +582,18 @@ impl IndexMut<usize> for Image3F {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pool_reuse_preserves_requested_capacity() {
+        let pool = super::BufferPool::new();
+        pool.put(vec![0.0; 4096]);
+        let small = pool.take(1024);
+        assert_eq!(small.capacity(), 1024);
+        pool.put(small);
+        let large = pool.take(4096);
+        assert_eq!(large.capacity(), 4096);
+        assert_eq!(pool.retained_bytes(), 1024 * core::mem::size_of::<f32>());
+    }
+
     use super::*;
 
     #[test]

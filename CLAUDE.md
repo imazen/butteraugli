@@ -11,7 +11,8 @@ None currently known. Parity with libjxl `butteraugli_main` verified at <0.0003%
 
 `ButteraugliReference::estimated_planar_peak_bytes` covers a planar reference's
 construction and sequential warm comparisons, including concurrent scales,
-six concurrent Malta filters, row/border padding, and oversized pooled capacity.
+six concurrent Malta filters and row/border padding. The pool reuses only exact
+capacities, so half-scale active buffers cannot retain full-scale allocations.
 The source-derived envelope counts 25 active scratch planes per scale (3 XYB,
 10 psycho, six two-buffer Malta calls), plus the pool cap and reference planes.
 It excludes caller input/output and allocator overhead/retained freed pages;
