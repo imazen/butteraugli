@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.4] - unreleased
 
+### Fixed
+- Reuse only matching buffer capacities so half-resolution comparisons cannot retain full-resolution planes; tighten the pre-allocation estimate without changing scores (`d2466a4e`).
+
 ### Added
 - Pre-allocation planar-reference and comparison storage estimate, including concurrent scratch and retained pool buffers (`eab74f26`).
 
