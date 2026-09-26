@@ -70,6 +70,10 @@ def parse_score(stdout, mode, dimensions, map_path):
         raise ValueError("invalid metric output")
     if map_path.stat().st_size != dimensions[0] * dimensions[1] * 4:
         raise ValueError("wrong diffmap byte count")
+    with map_path.open("rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            if any(not math.isfinite(v) or v < 0 for (v,) in struct.iter_unpack("<f", block)):
+                raise ValueError("nonfinite or negative diffmap sample")
     return scores
 
 
@@ -79,10 +83,11 @@ def main():
     parser.add_argument("binaries", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--build-commit", required=True)
+    parser.add_argument("--ingress", choices=("aic-rgb8", "cid22-srgb"), default="aic-rgb8")
     args = parser.parse_args()
     with args.manifest.open() as f:
         reader = csv.DictReader(f, delimiter="\t")
-        if reader.fieldnames != FIELDS:
+        if reader.fieldnames not in (FIELDS, FIELDS + ["bpp", "setting"]):
             raise ValueError(f"expected manifest header: {FIELDS}")
         rows = list(reader)
     if not rows or len({(r['dataset'], r['pair']) for r in rows}) != len(rows):
@@ -101,18 +106,24 @@ def main():
                 ("margarine-score", "margarine-box3", "margarine-eval")}
     provenance = dict(build_commit=args.build_commit, pairs_sha256=digest(args.manifest),
                       binaries={n: digest(p) for n, p in binaries.items()},
-                      ingress="untagged RGB8 PNG interpreted as sRGB in both arms",
+                      ingress=args.ingress,
                       n_pairs=len(rows), images={}, status="running")
     shutil.copyfile(args.manifest, args.output / "input_pairs.tsv")
     manifest_path = args.output / "_MANIFEST.json"
     manifest_path.write_text(json.dumps(provenance, indent=2) + "\n")
+    if args.ingress == "cid22-srgb":
+        from cid22_manifest import audit as audit_image
+    else:
+        audit_image = audit_png
     dimensions = {}
     for row in rows:
         for name in ("reference", "distorted"):
             path = Path(row[name])
             if str(path) not in dimensions:
-                dimensions[str(path)] = audit_png(path)
+                dimensions[str(path)] = audit_image(path)
                 provenance["images"][str(path)] = digest(path)
+                if len(dimensions) % 100 == 0:
+                    report(f"Audited {len(dimensions)} images")
         if dimensions[row["reference"]] != dimensions[row["distorted"]]:
             raise ValueError(f"mismatched dimensions: {row['pair']}")
     manifest_path.write_text(json.dumps(provenance, indent=2) + "\n")
