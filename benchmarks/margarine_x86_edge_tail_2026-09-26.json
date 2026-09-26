@@ -1,0 +1,26 @@
+{
+  "source_commit": "9c0635f1ceb9a07fbaa2f1b975f17c617669c8bc",
+  "host": "dev",
+  "cpu": "AMD Ryzen 9 9950X3D",
+  "test": "resources_rgb8::tests::native_features_accept_strided_rows",
+  "cause": "x86 scalar H-blur tails group sum+(add-remove) in edge path versus (sum+add)-remove in full path",
+  "different_features": 30,
+  "max_absolute_difference": 5.960464477539063e-08,
+  "baseline": "53 passed, 1 failed in box3 target; first tight/strided assertion passed",
+  "proposed": "six arithmetic-expression replacements across v4/v4x/v3 tails; no test edits",
+  "patched_tests": "54 box3, 4 eval, 4 score passed",
+  "artifacts": {
+    "patched-tests.log": "0186c9f1616a1a268a543bc04b3a3e1649517b78cba83e1265055bda6b020e1e",
+    "patched-clippy.log": "33b382c3da71887f46a9b8ff96260f01b3daf120ab9a76997b61c517730eb298",
+    "baseline-tests.log": "4732e44abc96d065b1d9dd98a308857913ac189e04d612014e1e263d98d61295",
+    "proposed.patch": "578ab7cc8fe6777d1a867a513933a740b6db4abc19eb9f1fdc3522e65386ee42"
+  },
+  "status": "isolated source-copy repair verified; sibling checkout unchanged; pending cross-repository authorization",
+  "artifact_root": "/Users/lilith/work/codec-artifacts/margarine/zensim-edge-tail-diagnostic-2026-09-26",
+  "margarine_base_commit": "c0f31291",
+  "margarine_tested_source_sha256": {
+    "experiments/margarine/learned.rs": "e384360bac77a6bf0eb485cc63a2b0ec7a0edb7a9c24b93f8f570d07bc1d7b7c",
+    "experiments/margarine/box3.rs": "a072ef2540b09eaab97d2323444981abbb7381ec56db854015472e20e933387c",
+    "experiments/margarine/resources_rgb8.rs": "334f4db0ef8c5f6fcde0b02bd78581de9e48e59a5b17d43a8becd844dd0be528"
+  }
+}

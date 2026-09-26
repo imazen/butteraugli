@@ -14,6 +14,18 @@ last reference strip is padded from 41 to 64 rows while distorted storage stays
 minimum halo and tests that bottom-tail case. Production Butteraugli is not
 involved; no sibling source was changed.
 
+Margarine x86 ablation check (2026-09-26): on dev/Zen 5, the pinned zensim
+edge-only extractor differs from the retained full-extractor features at
+`resources_rgb8::tests::native_features_accept_strided_rows` (second assertion;
+the tight/strided assertion passes). Thirty values differ, maximum absolute
+5.960464477539063e-8. The x86 H-blur scalar tails use `sum += add - remove`
+while the full-feature path uses `(sum + add) - remove`. An isolated source
+copy with six replacements across v3/v4/v4x passes the unchanged lab suite
+and clippy. No sibling checkout changes or test relaxations were made.
+[Diagnostic provenance](benchmarks/margarine_x86_edge_tail_2026-09-26.json)
+pins logs and the proposed patch. Landing that dependency repair awaits the
+explicit cross-repository exception; fitted-score runtime changes remain local.
+
 ## Planar pre-allocation accounting (2026-09-08)
 
 `ButteraugliReference::estimated_planar_peak_bytes` covers a planar reference's
