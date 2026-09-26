@@ -1211,3 +1211,12 @@ peak RSS is 1.007602 of the teacher, so the small-image memory condition
 also fails this run. The source, binary, inputs, full raw outputs and fitted
 time intercepts/slopes are pinned in the adjacent metadata. This is a resource
 improvement experiment, not a goal pass or independent content coverage.
+
+The explicit SIMD full-Malta replay retains identical map hashes and all five
+scalar scores on [all 344 LIVE Release 1 pairs](benchmarks/margarine_simd_malta_live1_parity_2026-09-26.json),
+relative to fixed build `2d9d736a`. Thus this replay preserves that candidate's
+LIVE rankings and zero harmful observed-budget choices. No equivalent replay
+on the other corpora is implied. The same SIMD implementation combined with
+alternate-row sampling measures 3.629637×/3.804872× at 1 MP/8.44 MP and
+18.1818%/8.0119% process RSS; [the resource curve](benchmarks/margarine_simd_row_malta_resources_2026-09-26.tsv)
+passes the small-image taper but still misses the larger-image speed target.
