@@ -1201,3 +1201,13 @@ include the zenstats statistics and composites. Primary max SROCC changes
 are −0.000113683 on CID22 and +0.000120502 on KADID; KROCC changes are
 −0.000100361 and +0.000174987. These point rankings meet the 0.01 screen.
 This does not qualify encoder-choice uncertainty, missing corpora, or speed.
+
+Explicit SIMD full-Malta build `404280ba` has a complete four-size
+[resource sweep](benchmarks/margarine_simd_malta_resources_2026-09-26.tsv)
+on r5900xt with two threads. At 1 MP and 8.44 MP its metric speedups are
+3.369577× and 3.621800×; total-process peak RSS fractions are 18.0387% and
+8.0432%. Decode-inclusive speedups are 2.925812× and 3.082626×. At 64²,
+peak RSS is 1.007602 of the teacher, so the small-image memory condition
+also fails this run. The source, binary, inputs, full raw outputs and fitted
+time intercepts/slopes are pinned in the adjacent metadata. This is a resource
+improvement experiment, not a goal pass or independent content coverage.
