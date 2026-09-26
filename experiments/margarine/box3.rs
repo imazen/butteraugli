@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "full-malta") {
+const CANDIDATE: &str = if cfg!(feature = "row-malta") {
+    "row-malta"
+} else if cfg!(feature = "full-malta") {
     if cfg!(feature = "coarse-gaussian") {
         "coarse-full-malta"
     } else {
@@ -113,11 +115,16 @@ mod shared_malta;
     feature = "physical"
 )))]
 use shared_malta as malta;
+#[cfg(feature = "full-malta")]
+mod full_malta;
 #[cfg(feature = "physical")]
 mod half_malta_bank;
-#[cfg(feature = "full-malta")]
-#[path = "full_malta.rs"]
-mod malta;
+#[cfg(all(feature = "full-malta", not(feature = "row-malta")))]
+use full_malta as malta;
+#[cfg(feature = "row-malta")]
+mod malta {
+    pub(crate) use crate::full_malta::sampled_rows_diff_map as malta_diff_map;
+}
 #[cfg(all(
     feature = "compact4",
     not(any(feature = "sparse", feature = "lattice", feature = "physical"))

@@ -1151,3 +1151,12 @@ qualify resources. Full artifacts live in r5900xt
 `malta-uniform-{live1,resources}-2026-09-26/`, with compact records on the Mac.
 The old `malta-windows-*` and `coarse-full-*` runs from `f6cbfe73` retain the
 incorrect tail path and must not be used as accepted candidate results.
+
+## Malta row-sampling control
+
+The `row-malta` experiment keeps the complete native input lattice and all
+six sixteen-orientation Malta banks. It evaluates all columns on alternating
+rows, then linearly reconstructs the missing response rows before the shared
+scoring pipeline. The full-Malta entry point and its exact assertions remain
+separate. This analytical ablation has no fitted constants and no quality or
+resource qualification before corpus scoring and measurements.

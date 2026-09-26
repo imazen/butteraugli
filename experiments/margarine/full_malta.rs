@@ -33,15 +33,15 @@ pub(crate) fn malta_diff_map(
     let padded =
         crate::shared_malta::malta_scaled_differences(a, b, greater, smaller, norm, lf, pool);
     let mut out = ImageF::from_pool_dirty(a.width(), a.height(), pool);
-    evaluate(&padded, lf, &mut out);
+    evaluate(&padded, lf, 1, &mut out);
     padded.recycle(pool);
     out
 }
 
 #[archmage::autoversion]
-fn evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, out: &mut ImageF) {
+fn evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, step: usize, out: &mut ImageF) {
     let width = out.width();
-    for y in 0..out.height() {
+    for y in (0..out.height()).step_by(step) {
         let row = out.row_mut(y);
         for block in 0..width.div_ceil(8) {
             // The last block overlaps when width is not divisible by eight.
@@ -61,9 +61,81 @@ fn evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, out: &mut Im
     }
 }
 
+/// Sample every second output row, retaining every native input and column.
+#[cfg(feature = "row-malta")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sampled_rows_diff_map(
+    a: &ImageF,
+    b: &ImageF,
+    greater: f64,
+    smaller: f64,
+    norm: f64,
+    lf: bool,
+    pool: &BufferPool,
+) -> ImageF {
+    let mut out = if a.width() < 8 {
+        malta_diff_map(a, b, greater, smaller, norm, lf, pool)
+    } else {
+        let padded =
+            crate::shared_malta::malta_scaled_differences(a, b, greater, smaller, norm, lf, pool);
+        let mut out = ImageF::from_pool_dirty(a.width(), a.height(), pool);
+        evaluate(&padded, lf, 2, &mut out);
+        padded.recycle(pool);
+        out
+    };
+    interpolate_rows(&mut out);
+    out
+}
+
+#[cfg(feature = "row-malta")]
+#[archmage::autoversion]
+fn interpolate_rows(_token: archmage::SimdToken, out: &mut ImageF) {
+    let (width, height, stride) = (out.width(), out.height(), out.stride());
+    for y in (1..height).step_by(2) {
+        let (before, rest) = out.data_mut().split_at_mut(y * stride);
+        let a = &before[(y - 1) * stride..(y - 1) * stride + width];
+        let (row, after) = rest.split_at_mut(stride);
+        let b = if y + 1 < height { &after[..width] } else { a };
+        for ((dst, &a), &b) in row[..width].iter_mut().zip(a).zip(b) {
+            *dst = a + 0.5 * (b - a);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "row-malta")]
+    #[test]
+    fn sampled_rows_keep_native_nodes_and_interpolate_only_missing_rows() {
+        let pool = BufferPool::new();
+        for (w, h) in [(1, 1), (3, 5), (8, 10), (17, 18), (33, 37), (634, 17)] {
+            let mut a = ImageF::new(w, h);
+            let mut b = ImageF::new(w, h);
+            for y in 0..h {
+                for x in 0..w {
+                    a.row_mut(y)[x] = ((x * 31 + y * 97 + x * y) % 101) as f32 * 0.13 - 5.0;
+                    b.row_mut(y)[x] = a.row(y)[x] * 0.91 + ((x + y) % 3) as f32 * 0.1;
+                }
+            }
+            for lf in [false, true] {
+                let full = crate::shared_malta::malta_diff_map(&a, &b, 0.5, 1.7, 1.2, lf, &pool);
+                let sampled = sampled_rows_diff_map(&a, &b, 0.5, 1.7, 1.2, lf, &pool);
+                for y in 0..h {
+                    for x in 0..w {
+                        let expected = if y % 2 == 0 {
+                            full.row(y)[x]
+                        } else {
+                            let a = full.row(y - 1)[x];
+                            let b = full.row(if y + 1 < h { y + 1 } else { y - 1 })[x];
+                            a + 0.5 * (b - a)
+                        };
+                        assert_eq!(sampled.row(y)[x], expected, "{w}x{h}, ({x},{y}), lf={lf}");
+                    }
+                }
+            }
+        }
+    }
     #[test]
     fn every_native_response_matches_shared_bank_at_borders_and_vector_tails() {
         let pool = BufferPool::new();
