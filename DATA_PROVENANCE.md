@@ -715,3 +715,12 @@ peak RSS 1.57 GiB, minimum available 56,807 MiB and peak load 2.53;
 [metadata](benchmarks/margarine_planar_resources_2026-09-26.meta.json)
 retains timing fits, inputs, binary identity and configuration. Full records
 remain on r5900xt and the Mac in `planar-resources-2026-09-26/`.
+
+The lattice [human-quality rank-band diagnostics](benchmarks/margarine_lattice_quality_bands_2026-09-26.tsv)
+cover five bands for each norm on AIC4, CID22, CSIQ and KADID, retaining tied
+targets together and every row once. The largest observed SROCC loss is
+0.04101139 in the lowest-quality AIC4 max band (60 pairs). Other conditional
+panels also exceed 0.01, despite all four pooled screens passing. These are
+narrow-range point diagnostics without source-cluster confidence intervals;
+they do not establish a new acceptance rule. Complete six-stat/composite panels
+are in Mac `lattice-quality-bands-2026-09-26/`, with [hashes and evaluator identity](benchmarks/margarine_lattice_quality_bands_2026-09-26.meta.json).
