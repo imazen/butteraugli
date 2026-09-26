@@ -5,9 +5,70 @@ import csv
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 from evaluate_manifest import load_scores
-from score_manifest import FIELDS, NORMS, digest
+from score_manifest import FIELDS, NORMS, digest, evaluate_panels
+
+
+def live1(args, cells, scored):
+    opinion_manifest = args.opinions / '_MANIFEST.json'
+    opinions = json.loads(opinion_manifest.read_text())
+    audit_path = Path(scored['input_audit'])
+    if digest(audit_path) != scored['input_audit_sha256']:
+        raise ValueError('scored input audit has changed')
+    audit = json.loads(audit_path.read_text())
+    if (opinions['status'] != 'images-audited' or opinions['labels'] != audit['labels']
+            or opinions['pairs_sha256'] != scored['pairs_sha256']
+            or opinions['n_pairs'] != len(cells)):
+        raise ValueError('LIVE opinion and score provenance differ')
+    cohorts = opinions['cohorts']
+    if len(cohorts) != 4 or set(cohorts) != {r['dataset'] for r in cells}:
+        raise ValueError('requires all four declared LIVE Release 1 cohorts')
+    args.output.mkdir(parents=True, exist_ok=False)
+    participants = args.output / 'participants'
+    participants.mkdir()
+    manifest = dict(build_commit=args.build_commit, candidate=args.candidate,
+                    scored_build_commit=scored['build_commit'], cells_sha256=scored['cells_sha256'],
+                    opinions_manifest_sha256=digest(opinion_manifest),
+                    evaluator_sha256=digest(args.evaluator), draws=args.draws, seed=args.seed,
+                    scope='within each codec/session; no cross-cohort calibration',
+                    uncertainty='conditional on published normalization and outlier selection',
+                    status='running')
+    path = args.output / '_MANIFEST.json'
+    path.write_text(json.dumps(manifest, indent=2) + '\n')
+    with (args.output / 'progress.log').open('x', buffering=1) as progress:
+        def report(message):
+            print(message, flush=True)
+            print(message, file=progress, flush=True)
+        for dataset, metadata in cohorts.items():
+            rows = [r for r in cells if r['dataset'] == dataset]
+            opinion_path = args.opinions / f'opinions-{dataset}.tsv'
+            if len(rows) != metadata['pairs'] or digest(opinion_path) != metadata['opinions_sha256']:
+                raise ValueError('LIVE cohort coverage or opinion hash differs')
+            source = args.output / dataset
+            source.mkdir()
+            evaluate_panels(rows, args.candidate, args.evaluator.resolve(), source, report)
+            report(f'{dataset}: starting {args.draws} observer-column draws')
+            with (args.output / f'{dataset}-bootstrap.log').open('x') as log:
+                subprocess.run([str(args.evaluator.resolve()), '--live1-participant-pairs',
+                                str(source), str(opinion_path), str(participants / dataset),
+                                str(args.draws), str(args.seed)],
+                               stdout=log, stderr=subprocess.STDOUT, check=True)
+            report(f'{dataset}: participant bounds persisted')
+        report('Evaluating fixed choices at every observed bitrate budget')
+        with (args.output / 'choices.log').open('x') as log:
+            subprocess.run([sys.executable, str(Path(__file__).with_name('choice_eval.py')),
+                            str(args.scored / 'cells.jsonl'), str(args.output / 'choices'),
+                            '--candidate', args.candidate, '--build-commit', args.build_commit,
+                            '--participant-panels', str(participants), '--human-loss-threshold', '0'],
+                           stdout=log, stderr=subprocess.STDOUT, check=True)
+        manifest['status'] = 'complete'
+        manifest['outputs'] = {str(p.relative_to(args.output)): digest(p)
+                               for p in sorted(args.output.rglob('*'))
+                               if p.is_file() and p.name != '_MANIFEST.json' and p.name != 'progress.log'}
+        path.write_text(json.dumps(manifest, indent=2) + '\n')
+        report('Complete: cohort-scoped quality and participant-supported bitrate-choice panels')
 
 
 def main():
@@ -20,10 +81,13 @@ def main():
     parser.add_argument('--build-commit', required=True)
     parser.add_argument('--draws', type=int, required=True)
     parser.add_argument('--seed', type=int, required=True)
+    parser.add_argument('--live1', action='store_true', help='separate published Release 1 observer cohorts')
     args = parser.parse_args()
     if args.draws < 100 or not 0 <= args.seed < 2**64:
         parser.error('at least 100 draws and an unsigned 64-bit seed are required')
     cells, scored = load_scores(args.scored, args.candidate)
+    if args.live1:
+        return live1(args, cells, scored)
     opinions = json.loads((args.opinions / '_MANIFEST.json').read_text())
     opinion_path = args.opinions / 'opinions.tsv'
     if not opinions['all_label_means_and_std_match'] or digest(opinion_path) != opinions['opinions_sha256']:

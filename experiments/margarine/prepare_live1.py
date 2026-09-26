@@ -107,7 +107,8 @@ def main():
                     writer.writerow(['image', 'worker', 'rating', 'dist_url', 'ref_url'])
                     writer.writerows(opinions)
                 cohorts[dataset] = dict(pairs=included, lossless_controls=lossless,
-                                        processed_workers=m['scores'].shape[1], observations=observations)
+                                        processed_workers=m['scores'].shape[1], observations=observations,
+                                        opinions_sha256=digest(args.output / f'opinions-{dataset}.tsv'))
                 report(f'{dataset}: {included} pairs, {observations} retained opinions; {lossless} lossless controls')
                 offset += length
         if len(rows) != 344:
