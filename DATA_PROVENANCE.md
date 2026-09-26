@@ -1335,3 +1335,18 @@ The [AIC4 interval diagnosis](benchmarks/margarine_vector_expand_row_aic4_interv
 finds 64 harmful and 51 beneficial primary reversals with separated published
 intervals among 8,850 pairs. AIC4 has no original byte-budget table here, so this
 also remains a pairwise diagnostic rather than the encoder-choice gate.
+
+The [independent content resource checks](benchmarks/margarine_vector_row_content_resources_2026-09-26.tsv)
+use four held-out q50 JPEG pilot pairs. At 1 MP, line art, mixed and photo
+measure 4.524022×, 4.214074× and 4.023647×; the native 12.19 MP photo measures
+4.343482×. The 1440×900 screenshot misses the speed target at 3.467011×,
+although its RSS fraction is 16.3576%. This prevents a content-wide resource
+pass for 128-row/512-column execution. These diagnostic cases do not replace
+a dense content/quality sweep or establish guarantees at unmeasured geometries.
+
+TID2013 is scored completely (3,000 pairs, 25 sources) in WSL
+`vector-expand-row-streamed-tid-container-2026-09-26/`. Primary SROCC improves
+by 0.000840982 and KROCC by 0.000376725. The [default-teacher comparison](benchmarks/margarine_vector_row_primary_comparison_2026-09-26.tsv)
+now reports every candidate norm against Butteraugli max on each completed
+corpus. Alternative norms improve AIC4/CID22 but exceed the allowed rank loss
+on CSIQ/KADID, so these measurements do not justify replacing primary max.

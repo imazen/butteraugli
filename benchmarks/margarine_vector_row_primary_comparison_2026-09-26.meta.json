@@ -1,0 +1,41 @@
+{
+  "build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+  "candidate": "simd-row-malta",
+  "geometry": {
+    "rows": 128,
+    "columns": 512
+  },
+  "comparison": "All candidate pooling variants against Butteraugli default max; primary remains max",
+  "inputs": {
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-aic4-2026-09-26/panel-max.tsv": "ea6dc5a3f109dfdc8173076efd00db4d3e63f97690a905f55cd4afdd11ad2357",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-aic4-2026-09-26/panel-p1.tsv": "bf06442e25ab2b229a97758549e108c8f211ff87c9c4ce4be8eced73dc9b7ba2",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-aic4-2026-09-26/panel-p2.tsv": "77d8efc667cf14bcf5629d01ddfb4c40402397f5fb75ec357eeae822035c0449",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-aic4-2026-09-26/panel-p3.tsv": "00766612b3e803e97249746400aa48f7f4db175b6e7960ba8102c0403b5c420a",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-aic4-2026-09-26/panel-p6.tsv": "97e35532c0e53cba2446eae223d9574e313fe6b29a04604836f0d7481326ffb1",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-cid22-2026-09-26/panel-max.tsv": "0242cdc02e7a91f2e1f687bfdeb3023b1ad7e59e7eb30f804913391435b42acf",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-cid22-2026-09-26/panel-p1.tsv": "60ac95766420192d7c7065113dd80e25472a42e8303e6276d149caa7f23145c3",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-cid22-2026-09-26/panel-p2.tsv": "70555f8313306126ea21e26733eb6e5b84ab3c1eded352c6ccbddb2e20a28201",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-cid22-2026-09-26/panel-p3.tsv": "876bd4ce208a89db5c18b9530aada7410c19cad591fb24a083b4a0d4d23bdd59",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-cid22-2026-09-26/panel-p6.tsv": "93edb4c4e02ffd9380d19bbbd461dd4af2478f9b2c13c6126c9386a027c017c1",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-csiq-2026-09-26/panel-max.tsv": "a6433e9c955f89341bbb1e99d11f6cb0bceee779e1e31a0c295660aede5f8be8",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-csiq-2026-09-26/panel-p1.tsv": "5bd4c37c5c5eb886fc1c72a2c7bf4cc9be8c55e46f9c47f0084bf34cd2222d7a",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-csiq-2026-09-26/panel-p2.tsv": "193de0cbcc5fdc11456d4703421d2dc3f502095933c13f9f7b494c2b4e4f8f90",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-csiq-2026-09-26/panel-p3.tsv": "c131299dad29b79f3ec2e0a24fdf3c18d0a431ea4c8deccc695c5728c158d8c1",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-csiq-2026-09-26/panel-p6.tsv": "8ba5f5b7a2e01639b01ebcb606614821ac6622cf7ab6d64763b8e380593b01ed",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-kadid-2026-09-26/panel-max.tsv": "ed44dc04c613b022214466775bb2a8d01e926f857d2f573bc180288e94195016",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-kadid-2026-09-26/panel-p1.tsv": "2416b24ebefa6c3b58d1ebf715343f259bf6bcfb17cb3b19749cbf122824f220",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-kadid-2026-09-26/panel-p2.tsv": "97e961bdbba957aa85e1adff8d486c27f5039fd017961fa8065a3c03f3ffd36b",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-kadid-2026-09-26/panel-p3.tsv": "1b2e450c17aa1385d042a7331b39688fa831fa7695fbb465add6ecb928ed9776",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-kadid-2026-09-26/panel-p6.tsv": "0c40638cea2d9bb82e6450a3259ea008ac25590da0f7d3d924eee9143bb35ca2",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-live1-2026-09-26/panel-max.tsv": "0e3fc7604edaf52ae3c18faa36454894e2b8514746f4732c52ee9794d5608469",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-live1-2026-09-26/panel-p1.tsv": "750ed5351441585433bbec1fedf70f79fffa1854038bdd40acb67f82d2d0c78e",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-live1-2026-09-26/panel-p2.tsv": "48d9ad5041fc01dd428669079a35f8fdfe030178a660d1d7cc86872dda4be029",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-live1-2026-09-26/panel-p3.tsv": "c6fbeab6014a22cca115c23582a1983fdd32d81d5a2456a6f8fea8beaf7402e5",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-live1-2026-09-26/panel-p6.tsv": "a636ff51ac37a357f699fcaa1113d63af1a23a6294757c8c505dfccc6c4ea461",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-tid-container-2026-09-26/panel-max.tsv": "4c8b67efede0e9d06b9fc6a97dc475e8063360104270c068f972cd712b55471c",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-tid-container-2026-09-26/panel-p1.tsv": "33afd42556b117c3e0507a19d597ff3712e244c89d80b40a53430a9bf908d7a6",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-tid-container-2026-09-26/panel-p2.tsv": "54d23620627bce2fd94a093e44cfa995e8fbb91202929bd42b41175ad453abe7",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-tid-container-2026-09-26/panel-p3.tsv": "4c90bccf6e1b989fe929883165a11eb77d3462a5bcec76ed3618e282c2f61f5f",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-tid-container-2026-09-26/panel-p6.tsv": "a4909eba78542f255e57e1b0eda60f88057c48c126ee365880530bff2570f878"
+  }
+}
