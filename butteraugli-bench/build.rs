@@ -22,9 +22,19 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=ffi/");
+    println!("cargo:rerun-if-env-changed=FMETRICS_LIB_DIR");
     println!("cargo:rerun-if-env-changed=LIBJXL_DIR");
     println!("cargo:rerun-if-env-changed=LIBJXL_BUILD_DIR");
     println!("cargo:rerun-if-env-changed=BUTTERAUGLI_BENCH_NO_CPP");
+
+    if std::env::var_os("CARGO_FEATURE_FMETRICS_FFI").is_some() {
+        let dir = std::env::var("FMETRICS_LIB_DIR")
+            .expect("set FMETRICS_LIB_DIR to fmetrics/zig-out/lib");
+        assert!(Path::new(&dir).join("libfmetrics.a").exists());
+        println!("cargo:rustc-link-search=native={dir}");
+        println!("cargo:rustc-link-lib=static=fmetrics");
+        println!("cargo:rustc-link-lib=m");
+    }
 
     if std::env::var_os("BUTTERAUGLI_BENCH_NO_CPP").is_some() {
         println!("cargo:warning=BUTTERAUGLI_BENCH_NO_CPP set — skipping C++ butteraugli FFI build");

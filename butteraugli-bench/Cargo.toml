@@ -6,6 +6,7 @@ publish = false
 
 [features]
 default = []
+fmetrics-ffi = []
 
 [build-dependencies]
 cc = "1.4.4"
@@ -17,10 +18,12 @@ cc = "1.4.4"
 butteraugli = { workspace = true, features = ["internals"] }
 rayon = { workspace = true }
 linear-srgb = "0.6.12"
+image = { workspace = true }
 imgref = { workspace = true }
 rgb = { workspace = true }
 bytemuck = "1.25.2"
 zenbench = "0.1.7"
+iai-callgrind = "0.16.1"
 # `testable_dispatch` lets benches/tier_isolation.rs disable the baseline SIMD
 # token (NEON on aarch64) so the scalar arm is real rather than a second
 # measurement of the SIMD path.
@@ -40,10 +43,17 @@ name = "score_parity"
 [[example]]
 name = "strip_vs_full_mem"
 
+[[example]]
+name = "fmetrics_compare"
+
 [lints.rust.unexpected_cfgs]
 level = "warn"
 check-cfg = ['cfg(has_cpp_butteraugli)']
 
 [[bench]]
 name = "kernel_tiers"
+harness = false
+
+[[bench]]
+name = "malta_callgrind"
 harness = false

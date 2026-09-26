@@ -18,6 +18,13 @@ double butteraugli_from_linear_planes(const float* src0, const float* src1,
                                       const float* dst1, const float* dst2,
                                       size_t width, size_t height);
 
+// Same comparison with an explicit intensity target; returns the average of
+// normalized p=3, 6, and 12 diffmap norms (libjxl-style pnorm3).
+double butteraugli_pnorm3_from_linear_planes(
+    const float* src0, const float* src1, const float* src2,
+    const float* dst0, const float* dst1, const float* dst2,
+    size_t width, size_t height, float intensity_target);
+
 #ifdef __cplusplus
 }
 #endif

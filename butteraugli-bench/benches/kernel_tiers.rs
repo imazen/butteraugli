@@ -24,11 +24,6 @@ use butteraugli::image::{BufferPool, ImageF};
 use butteraugli::malta::malta_diff_map;
 use zenbench::black_box;
 
-#[cfg(target_arch = "aarch64")]
-type TierToken = archmage::NeonToken;
-#[cfg(target_arch = "x86_64")]
-type TierToken = archmage::X64V3Token;
-
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const TIER_NAME: &str = if cfg!(target_arch = "aarch64") {
     "neon"
@@ -36,13 +31,32 @@ const TIER_NAME: &str = if cfg!(target_arch = "aarch64") {
     "v3(avx2)"
 };
 
-#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+#[cfg(target_arch = "aarch64")]
 fn set_simd(enabled: bool) -> bool {
-    TierToken::dangerously_disable_token_process_wide(!enabled).is_ok()
+    archmage::NeonToken::dangerously_disable_token_process_wide(!enabled).is_ok()
+}
+#[cfg(target_arch = "x86_64")]
+fn set_simd(enabled: bool) -> bool {
+    // V4 is available on AVX-512 hosts and otherwise wins dispatch even when
+    // V3 is enabled. Keep it disabled in both arms to measure V3 vs scalar.
+    let v3_set = archmage::X64V3Token::dangerously_disable_token_process_wide(!enabled).is_ok();
+    // Re-enabling V3 also re-enables its descendants, so disable V4 last.
+    let v4_disabled = archmage::X64V4Token::dangerously_disable_token_process_wide(true).is_ok();
+    v4_disabled && v3_set
 }
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 fn set_simd(_enabled: bool) -> bool {
     false
+}
+
+#[cfg(target_arch = "x86_64")]
+fn tier_isolated(simd: bool) -> bool {
+    use archmage::SimdToken as _;
+    archmage::X64V4Token::summon().is_none() && (archmage::X64V3Token::summon().is_some() == simd)
+}
+#[cfg(not(target_arch = "x86_64"))]
+fn tier_isolated(_simd: bool) -> bool {
+    true
 }
 
 /// Structured noise. A flat or gradient fill would give the Malta filter
@@ -61,7 +75,7 @@ fn img(w: usize, h: usize, seed: u32) -> ImageF {
 }
 
 zenbench::main!(|suite| {
-    if !set_simd(true) || !set_simd(false) {
+    if !set_simd(true) || !tier_isolated(true) || !set_simd(false) || !tier_isolated(false) {
         eprintln!(
             "[kernel_tiers] no toggleable SIMD tier here, or the tier is \
              compile-time guaranteed (drop -C target-cpu=native). Skipping."
@@ -81,9 +95,9 @@ zenbench::main!(|suite| {
                     let pool = BufferPool::new();
                     b.iter(|| {
                         // Toggling inside the closure is required because
-                        // zenbench interleaves the arms. It costs one atomic
-                        // store per iteration and applies to both arms
-                        // equally, so it cannot bias the comparison.
+                        // zenbench interleaves the arms. Tier toggling adds a
+                        // few atomic stores to both arms; it is negligible
+                        // next to the image-wide kernel.
                         set_simd(simd);
                         malta_diff_map(black_box(&a), black_box(&c), 1.0, 1.0, 2.0, false, &pool)
                     })

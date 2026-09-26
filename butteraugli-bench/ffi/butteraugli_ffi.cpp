@@ -4,16 +4,17 @@
 #include "butteraugli_ffi.h"
 
 #include <cstddef>
+#include <cmath>
 
 #include "lib/jxl/base/status.h"
 #include "lib/jxl/butteraugli/butteraugli.h"
 #include "lib/jxl/image.h"
 #include "tools/no_memory_manager.h"
 
-extern "C" double butteraugli_from_linear_planes(
+static double ButteraugliFromLinearPlanes(
     const float* src0, const float* src1, const float* src2,
     const float* dst0, const float* dst1, const float* dst2, size_t width,
-    size_t height) {
+    size_t height, float intensity_target, bool pnorm3) {
   JxlMemoryManager* memory_manager = jpegxl::tools::NoMemoryManager();
 
   auto make_image = [&](const float* p0, const float* p1,
@@ -48,9 +49,45 @@ extern "C" double butteraugli_from_linear_planes(
                        jxl::ImageF::Create(memory_manager, width, height));
 
   jxl::ButteraugliParams params;
+  params.intensity_target = intensity_target;
   if (!jxl::ButteraugliDiffmap(src_img, dst_img, params, diffmap)) {
     return -999.0;
   }
 
+  if (pnorm3) {
+    double sums[3] = {0.0, 0.0, 0.0};
+    for (size_t y = 0; y < height; ++y) {
+      const float* row = diffmap.ConstRow(y);
+      for (size_t x = 0; x < width; ++x) {
+        const double d = row[x];
+        const double d3 = d * d * d;
+        const double d6 = d3 * d3;
+        sums[0] += d3;
+        sums[1] += d6;
+        sums[2] += d6 * d6;
+      }
+    }
+    const double pixels = static_cast<double>(width) * height;
+    return (std::cbrt(sums[0] / pixels) +
+            std::pow(sums[1] / pixels, 1.0 / 6.0) +
+            std::pow(sums[2] / pixels, 1.0 / 12.0)) /
+           3.0;
+  }
   return jxl::ButteraugliScoreFromDiffmap(diffmap, &params);
+}
+
+extern "C" double butteraugli_from_linear_planes(
+    const float* src0, const float* src1, const float* src2,
+    const float* dst0, const float* dst1, const float* dst2, size_t width,
+    size_t height) {
+  return ButteraugliFromLinearPlanes(src0, src1, src2, dst0, dst1, dst2,
+                                    width, height, 80.0f, false);
+}
+
+extern "C" double butteraugli_pnorm3_from_linear_planes(
+    const float* src0, const float* src1, const float* src2,
+    const float* dst0, const float* dst1, const float* dst2, size_t width,
+    size_t height, float intensity_target) {
+  return ButteraugliFromLinearPlanes(src0, src1, src2, dst0, dst1, dst2,
+                                    width, height, intensity_target, true);
 }
