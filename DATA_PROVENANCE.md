@@ -1409,3 +1409,11 @@ table when an image has at least that many RGB samples; smaller images retain
 the formula to avoid table construction. Exhaustive bit equality tests cover
 every input value. Both the common-ingress teacher harness and candidate use
 this conversion; performance after the change remains to be measured.
+
+[Five equal-count quality bands](benchmarks/margarine_vector_row_quality_bands_2026-09-26.tsv)
+expose differences hidden by pooled ranks. For example, AIC4's bands 1, 4 and 5
+have primary SROCC deltas −0.020395, −0.016393 and −0.013726; AIC3's directly
+rated band 4 has −0.040597. Several small LIVE session bands also exceed
+0.01 loss (only 17–18 samples per band). Corpus-level point screening therefore
+does not establish uniform quality-band agreement. These are diagnostics,
+not separately agreed acceptance thresholds or uncertainty estimates.

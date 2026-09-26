@@ -1,0 +1,39 @@
+{
+  "build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+  "primary": "max versus teacher max",
+  "bands": 5,
+  "files": {
+    "aic4": {
+      "input_sha256": "d32efbc0b760bacf3e6590b8730cd85d12d1c1b5ba315bffa275fecdb4b824f0",
+      "output_sha256": "410d7e71db045c85c70f1017927d7aff3fd06409ff944e6d1cd2e9e429cf43b6"
+    },
+    "cid22": {
+      "input_sha256": "98a8dda55a3db8a222d5724c3bbca13434439841f202d1a728180d85e648c84d",
+      "output_sha256": "0370512581ad9343b6bc5c7dfbc149d2a3ef1ec6690adacd00726ed8e50dcc8f"
+    },
+    "csiq": {
+      "input_sha256": "ddff0ee855473473a4e11b4ee8bc79f98d907aea543989cc489f1756a259c2fb",
+      "output_sha256": "60065d589e1a5905bc76e78b2a1fedd7a5351d9299c591077324df7d48005ebe"
+    },
+    "kadid": {
+      "input_sha256": "c04e0435afc4c7da14a38f2fe5d69e7386a9315c987ef2c6384b3bb7c0a823ef",
+      "output_sha256": "f32f65045e111b6cd876663f4e6d3e20b6e947011da96300fed4393b738451b9"
+    },
+    "live1": {
+      "input_sha256": "2bcb1544a6197257ec2a0e20efad7573a8e9dc06c7e1194d895da9adc7e5304d",
+      "output_sha256": "b602ca7ef7740d573923d6217cb70d50c3daaf2a2356ede19cd3d2254da0fe84"
+    },
+    "tid-container": {
+      "input_sha256": "2eda090a909071f4334682512739d7f8a4b5bba437e19fab0edbed008c19134e",
+      "output_sha256": "ed61036e50f850a8b641593e0e2586af7aedf75dfcae25b5b037ff7b0f431f66"
+    },
+    "aic3-container": {
+      "input_sha256": "5d5870ca7b15a50a431ba798f0cacc750535d8a6cd2cd53a4633eaf4db6ba56d",
+      "output_sha256": "cf76202f57ca9b7a7864cba58e3687a3e26cf9aa194149b31680e47031124ae9"
+    },
+    "live-container": {
+      "input_sha256": "cba9a419207c722792b949b408edd4837d2e35cc6cce867d0b39774bf7afa086",
+      "output_sha256": "83eb1e582a68ff5613f738728caa21994ff132bbcb64f3b499d6342c7d8746ab"
+    }
+  }
+}
