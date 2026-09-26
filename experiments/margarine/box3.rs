@@ -25,7 +25,9 @@ const CANDIDATE: &str = if cfg!(feature = "tiles") {
         "tiles"
     }
 } else if cfg!(feature = "lattice") {
-    if cfg!(feature = "phase-rows") {
+    if cfg!(feature = "phase-rows") && cfg!(feature = "row-tiles") {
+        "phase-tiles"
+    } else if cfg!(feature = "phase-rows") {
         "phase-rows"
     } else if cfg!(feature = "row-tiles") {
         "row-tiles"

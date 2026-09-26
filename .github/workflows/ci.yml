@@ -43,6 +43,7 @@ jobs:
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features planar --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features row-psycho --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features row-tiles,phase-rows --all-targets -- -D warnings
 
       # The corpus-tests feature gates conformance tests that need the local
       # jpegli corpus (JPEGLI_TESTDATA). CI can't run them (no corpus), but
@@ -89,6 +90,7 @@ jobs:
           cargo test --locked --manifest-path experiments/margarine/Cargo.toml
           cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features planar
           cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features row-psycho
+          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features row-tiles,phase-rows
 
       - name: Run conformance tests
         run: cargo test -p butteraugli --test conformance
@@ -206,6 +208,7 @@ jobs:
           cross test --locked --manifest-path experiments/margarine/Cargo.toml --target ${{ matrix.target }}
           cross test --locked --manifest-path experiments/margarine/Cargo.toml --features planar --target ${{ matrix.target }}
           cross test --locked --manifest-path experiments/margarine/Cargo.toml --features row-psycho --target ${{ matrix.target }}
+          cross test --locked --manifest-path experiments/margarine/Cargo.toml --features row-tiles,phase-rows --target ${{ matrix.target }}
 
   # ==========================================================================
   # WASM compilation check (archmage supports wasm32-simd128)
