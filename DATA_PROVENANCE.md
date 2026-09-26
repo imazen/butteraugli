@@ -419,3 +419,15 @@ records 24 rounds: teacher/candidate 153.574/43.017 ms for scoring and
 on r5900xt in `refined-aic4-2026-09-26/`; other corpora and fresh RSS are
 unmeasured for this candidate. Repeated AIC4 architecture screening is not
 independent final validation.
+
+The one-region variant (`2bab7498`) fails AIC4 p1 by 0.01252103; the
+[panel](benchmarks/margarine_refined1_aic4_2026-09-26.tsv) records the other
+four norms within the 0.01 limit. Its [resource sweep](benchmarks/margarine_refined1_resources_2026-09-26.tsv)
+measures metric speedups 4.777× at 1 MP and 4.696× at 8.44 MP, with
+RSS fractions 20.63% and 12.23%. Decode-inclusive speedups are 4.177×
+and 3.884×. Tiny-image RSS exceeds teacher (6,377,472 versus 5,918,720 bytes),
+so it also fails the small-image memory condition. All sizes reached at least
+20 rounds with no unreliable flag. The run-heavy guard reports peak RSS
+1.57 GiB, minimum available 55,676 MiB and peak load 3.25. This is a rejected
+candidate, not resource or quality acceptance. The full records remain in
+r5900xt `refined1-aic4-2026-09-26/` and `refined1-resources-2026-09-26/`.

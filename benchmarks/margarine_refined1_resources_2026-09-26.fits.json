@@ -1,0 +1,58 @@
+[
+  {
+    "arm": "teacher",
+    "timing": "mean_ns",
+    "alpha_ns": -4813368.67520839,
+    "beta_ns_per_pixel": 174.81631131511975,
+    "observed_sizes": 4,
+    "residual_ns": [
+      4741592.953248167,
+      1133708.896860702,
+      -6695984.278354615,
+      820682.4282455444
+    ],
+    "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+  },
+  {
+    "arm": "teacher",
+    "timing": "decode_included_mean_ns",
+    "alpha_ns": 301465.1853251457,
+    "beta_ns_per_pixel": 190.984814080053,
+    "observed_sizes": 4,
+    "residual_ns": [
+      -339817.6274974396,
+      -3887685.835875498,
+      4792484.8149600625,
+      -564981.3515870571
+    ],
+    "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+  },
+  {
+    "arm": "refined1",
+    "timing": "mean_ns",
+    "alpha_ns": 410926.73351828754,
+    "beta_ns_per_pixel": 37.03034276198892,
+    "observed_sizes": 4,
+    "residual_ns": [
+      -186221.49400909257,
+      3078062.2232320067,
+      -3274838.8800590485,
+      382998.1508361101
+    ],
+    "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+  },
+  {
+    "arm": "refined1",
+    "timing": "decode_included_mean_ns",
+    "alpha_ns": 704754.25363563,
+    "beta_ns_per_pixel": 49.042474208305926,
+    "observed_sizes": 4,
+    "residual_ns": [
+      -421025.264897613,
+      3046536.3816488334,
+      -2971142.3254478574,
+      345631.2086966634
+    ],
+    "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+  }
+]
