@@ -14,6 +14,10 @@ teacher|features228|features228-strips REF DIST` compare native RGB8 ingress.
 They reject other sample formats. Timing excludes decoding and includes each
 metric's sRGB conversion; fresh-process memory includes decoding and inputs.
 These remain extractor cost probes with no trained score or quality claim.
+`--resource-crops REF DIST NEW_DIRECTORY` persists exact 64²/256²/1024² center
+crops plus the native pair, recording crop coordinates. It does not resample
+or upscale. These crops diagnose resource scaling on actual distorted pixels;
+they are not independent content samples or a training corpus.
 
 The first control scores linear-light 2×2 averages with Butteraugli. This is
 deliberately a control, not the proposed finished metric: averaging can erase

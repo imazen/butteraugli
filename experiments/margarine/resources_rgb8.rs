@@ -6,6 +6,50 @@ use image_io::{DynamicImage, ImageReader};
 use std::{error::Error, hint::black_box, path::Path, time::Duration};
 use zensim::{PixelFormat, StridedBytes, Zensim};
 
+/// Exact center crops for resource probes; no resampling, synthesis or upscaling.
+pub(super) fn crops(args: &[String]) -> Result<(), Box<dyn Error>> {
+    use std::io::Write;
+    if args.len() != 4 {
+        return Err("usage: --resource-crops REF DIST NEW_DIRECTORY".into());
+    }
+    let (a, b) = (decode(&args[1])?, decode(&args[2])?);
+    if a.dimensions() != b.dimensions() || a.width().min(a.height()) < 1024 {
+        return Err("resource crop source pair must match and contain 1024-square crops".into());
+    }
+    let out = Path::new(&args[3]);
+    std::fs::create_dir(out)?;
+    let mut log = std::fs::File::create(out.join("progress.log"))?;
+    let mut manifest = std::fs::File::create(out.join("crops.tsv"))?;
+    writeln!(manifest, "width\theight\tx\ty\treference\tdistorted")?;
+    for (w, h) in [(64, 64), (256, 256), (1024, 1024), a.dimensions()] {
+        let (x, y) = ((a.width() - w) / 2, (a.height() - h) / 2);
+        let name = format!("{w}x{h}");
+        let (rp, dp) = (
+            out.join(format!("{name}-ref.png")),
+            out.join(format!("{name}-dist.png")),
+        );
+        let ac = image_io::imageops::crop_imm(&a, x, y, w, h).to_image();
+        let bc = image_io::imageops::crop_imm(&b, x, y, w, h).to_image();
+        if ac == bc {
+            return Err(
+                format!("identity crop at {name}; cannot benchmark comparison work").into(),
+            );
+        }
+        ac.save(&rp)?;
+        bc.save(&dp)?;
+        writeln!(
+            manifest,
+            "{w}\t{h}\t{x}\t{y}\t{}\t{}",
+            rp.display(),
+            dp.display()
+        )?;
+        writeln!(log, "Persisted {name} at x={x}, y={y}")?;
+        log.flush()?;
+        println!("Persisted {name}");
+    }
+    Ok(())
+}
+
 fn decode(path: &str) -> Result<image_io::RgbImage, Box<dyn Error>> {
     match ImageReader::open(path)?.decode()? {
         DynamicImage::ImageRgb8(image) => Ok(image),
