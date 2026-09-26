@@ -45,12 +45,17 @@ def main():
     parser.add_argument("binary", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--build-commit", required=True)
+    parser.add_argument("--model", type=Path, help="measure fitted student scores instead of feature probes")
     args = parser.parse_args()
     system = platform.system()
     time_flag = {"Darwin": "-l", "Linux": "-v"}[system]
     if int(os.environ.get("RAYON_NUM_THREADS", "0")) <= 0:
         raise ValueError("set a positive RAYON_NUM_THREADS explicitly")
     args.binary = args.binary.resolve()
+    if args.model:
+        args.model = args.model.resolve()
+    arms = ("teacher", "student") if args.model else ARMS
+    bench_names = dict(teacher="teacher_rgb8", student="student_rgb8") if args.model else BENCH_NAMES
     rows = list(csv.DictReader(args.crops.open(), delimiter="\t"))
     if not rows: raise ValueError("empty crop manifest")
     args.output.mkdir(parents=True, exist_ok=False)
@@ -62,6 +67,10 @@ def main():
         timing="zenbench cold pairs, decode excluded, each metric sRGB conversion included",
         memory="fresh process platform time, decode and inputs included",
         limitation="same-image crops, feature extraction only; no trained score or coverage claim")
+    if args.model:
+        provenance.update(model=str(args.model), model_sha256=sha(args.model),
+                          timing="interleaved metric-only and file-open/decode/metric arms; model preloaded; warm OS file cache",
+                          limitation="same-image crops, fitted scalar scores; no independent content coverage")
     with (args.output / "progress.log").open("x", buffering=1) as progress:
         def report(message):
             print(message, file=progress, flush=True)
@@ -72,28 +81,44 @@ def main():
             pair = [row["reference"], row["distorted"]]
             for path in pair: provenance["inputs"][path] = sha(Path(path))
             peaks = {}
-            for arm in ARMS:
+            for arm in arms:
                 report(f"{name}: measuring process peak {arm}")
                 log = args.output / f"{name}-{arm}-memory.log"
                 command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-rgb8", arm, *pair]
+                if arm == "student":
+                    command = ["/usr/bin/time", time_flag, str(args.binary), "--student", str(args.model), *pair]
                 with log.open("x") as out: subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=True)
                 peaks[arm] = rss_bytes(log.read_text(), system)
             report(f"{name}: running interleaved timing")
             result_path = args.output / f"{name}.json"
             with (args.output / f"{name}-bench.log").open("x") as out:
-                subprocess.run([str(args.binary), "--bench-rgb8", *pair, str(result_path)],
-                    stdout=out, stderr=subprocess.STDOUT, env=environment, check=True)
+                command = ([str(args.binary), "--bench-student", str(args.model)] if args.model
+                           else [str(args.binary), "--bench-rgb8"])
+                with subprocess.Popen(command + [*pair, str(result_path)],
+                        stdout=out, stderr=subprocess.STDOUT, env=environment) as process:
+                    while True:
+                        try:
+                            code = process.wait(timeout=30)
+                            break
+                        except subprocess.TimeoutExpired:
+                            report(f"{name}: interleaved timing still running; see {name}-bench.log")
+                    if code:
+                        raise subprocess.CalledProcessError(code, process.args)
             result = json.loads(result_path.read_text())
             group = result["comparisons"][0]
             bench = {b["name"]: b for b in group["benchmarks"]}
-            teacher_ns = bench[BENCH_NAMES["teacher"]]["summary"]["mean"]
-            for arm in ARMS:
-                measured = bench[BENCH_NAMES[arm]]
+            teacher_ns = bench[bench_names["teacher"]]["summary"]["mean"]
+            for arm in arms:
+                measured = bench[bench_names[arm]]
                 ns = measured["summary"]["mean"]
                 records.append(dict(width=w, height=h, pixels=w*h, arm=arm, mean_ns=ns,
                     ns_per_pixel=ns/(w*h), rounds=measured["summary"]["n"],
                     peak_rss_bytes=peaks[arm], rss_fraction_of_teacher=peaks[arm]/peaks["teacher"],
                     mean_speedup=teacher_ns/ns, timing_unreliable=result["unreliable"]))
+                if args.model:
+                    decoded_ns = bench[f"{arm}_decode_rgb8"]["summary"]["mean"]
+                    records[-1].update(decode_included_mean_ns=decoded_ns,
+                        decode_included_mean_speedup=bench["teacher_decode_rgb8"]["summary"]["mean"]/decoded_ns)
             report(f"{name}: saved timing and process peaks")
             # Persist each completed size so a later failed arm loses no results.
             with (args.output / "summary.tsv").open("w") as out:
@@ -101,19 +126,21 @@ def main():
                 writer.writeheader(); writer.writerows(records)
             (args.output / "_MANIFEST.json").write_text(json.dumps(provenance, indent=2)+"\n")
         fits = []
-        for arm in ARMS:
+        for arm in arms:
             data = [r for r in records if r["arm"] == arm]
-            xs, ys = [r["pixels"] for r in data], [r["mean_ns"] for r in data]
-            xm, ym = sum(xs)/len(xs), sum(ys)/len(ys)
-            denom = sum((x-xm)**2 for x in xs)
-            if denom == 0: raise ValueError("need distinct sizes for resource fit")
-            beta = sum((x-xm)*(y-ym) for x,y in zip(xs,ys))/denom
-            alpha = ym-beta*xm
-            fits.append(dict(arm=arm, alpha_ns=alpha, beta_ns_per_pixel=beta,
-                observed_sizes=len(data), residual_ns=[y-alpha-beta*x for x,y in zip(xs,ys)],
-                note="OLS description of measured sizes, not extrapolation or a performance gate"))
+            timings = ("mean_ns", "decode_included_mean_ns") if args.model else ("mean_ns",)
+            for timing in timings:
+                xs, ys = [r["pixels"] for r in data], [r[timing] for r in data]
+                xm, ym = sum(xs)/len(xs), sum(ys)/len(ys)
+                denom = sum((x-xm)**2 for x in xs)
+                if denom == 0: raise ValueError("need distinct sizes for resource fit")
+                beta = sum((x-xm)*(y-ym) for x,y in zip(xs,ys))/denom
+                alpha = ym-beta*xm
+                fits.append(dict(arm=arm, timing=timing, alpha_ns=alpha, beta_ns_per_pixel=beta,
+                    observed_sizes=len(data), residual_ns=[y-alpha-beta*x for x,y in zip(xs,ys)],
+                    note="OLS description of measured sizes, not extrapolation or a performance gate"))
         (args.output / "time_fits.json").write_text(json.dumps(fits, indent=2)+"\n")
-        report("Complete: no acceptance verdict for an untrained extractor")
+        report("Complete: measurements do not establish corpus-wide acceptance")
 
 
 if __name__ == "__main__": main()

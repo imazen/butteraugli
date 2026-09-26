@@ -95,6 +95,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     ) {
         return resources_rgb8::run(&args);
     }
+    if args.first().is_some_and(|a| a == "--bench-student") {
+        return resources_rgb8::bench_student(&args);
+    }
     if matches!(
         args.first().map(String::as_str),
         Some("--bench" | "--bench-features" | "--memory")

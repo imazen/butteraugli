@@ -82,6 +82,14 @@ alignment, and writes all five zenstats panels. Teacher diffmaps remain in their
 original store; this scalar student produces no spatial map. Its output supports
 the existing clustered bootstrap and `choice_eval.py --candidate student`.
 
+`resource_sweep.py --model MODEL.tsv` measures the fitted predictor at the
+declared crop sizes. It retains fresh-process peak RSS including model loading,
+decoding and inputs. `--bench-student` runs interleaved metric-only and
+decode-included timing arms, with the model preloaded and a warm OS file cache.
+The report fits fixed overhead and per-pixel cost separately for both timing
+scopes. Noisy runs remain flagged; a synthetic-model smoke is not performance
+qualification for a fitted candidate.
+
 Install `requirements-training.txt` in a virtual environment, then run
 `just margarine-fit-check /absolute/path/to/venv/bin/python`. The fitter uses
 [SciPy NNLS](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.nnls.html)

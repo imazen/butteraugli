@@ -4,6 +4,7 @@ use std::{error::Error, path::Path};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
+#[derive(Clone)]
 pub(super) struct Model {
     scales: [f64; 168],
     weights: [[f64; 5]; 168],

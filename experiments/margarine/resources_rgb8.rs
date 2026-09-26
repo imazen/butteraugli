@@ -368,6 +368,82 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Measure the fitted scalar predictor with and without file decoding.
+pub(super) fn bench_student(args: &[String]) -> Result<(), Box<dyn Error>> {
+    if args.len() != 5 {
+        return Err("usage: --bench-student MODEL.tsv REF DIST NEW.json".into());
+    }
+    if Path::new(&args[4]).exists() {
+        return Err("result output already exists".into());
+    }
+    let model = super::learned::Model::load(&args[1])?;
+    let decode_model = model.clone();
+    let (teacher_ref, teacher_dist) = (args[2].clone(), args[3].clone());
+    let (student_ref, student_dist) = (args[2].clone(), args[3].clone());
+    let (a, b) = (decode(&args[2])?, decode(&args[3])?);
+    if a.dimensions() != b.dimensions() || a == b {
+        return Err("resource measurement needs distinct images with matching dimensions".into());
+    }
+    let (w, h) = (a.width() as usize, a.height() as usize);
+    let (ra, rb) = (rgb(&a), rgb(&b));
+    let scorer = student::edge_extractor();
+    let params = ButteraugliParams::default().with_compute_diffmap(true);
+    let result = zenbench::run(|suite| {
+        suite.compare(format!("fitted_rgb8_pair_{w}x{h}"), |group| {
+            group
+                .config()
+                .min_rounds(20)
+                .max_rounds(40)
+                .warmup_time(Duration::from_millis(200));
+            group.bench("teacher_rgb8", move |bench| {
+                bench.iter(|| {
+                    butteraugli::butteraugli(
+                        black_box(ra.as_ref()),
+                        black_box(rb.as_ref()),
+                        &params,
+                    )
+                    .unwrap()
+                });
+            });
+            group.bench("student_rgb8", move |bench| {
+                let av =
+                    StridedBytes::try_new(a.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb).unwrap();
+                let bv =
+                    StridedBytes::try_new(b.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb).unwrap();
+                bench.iter(|| {
+                    model
+                        .predict(
+                            &extract(&scorer, black_box(av), black_box(bv), true, true).unwrap(),
+                        )
+                        .unwrap()
+                });
+            });
+            // Reopen and decode both files on every iteration. The OS file cache
+            // is warm; this includes decoding, not cold-storage latency.
+            group.bench("teacher_decode_rgb8", move |bench| {
+                let params = ButteraugliParams::default().with_compute_diffmap(true);
+                bench.iter(|| {
+                    let (a, b) = (
+                        decode(&teacher_ref).unwrap(),
+                        decode(&teacher_dist).unwrap(),
+                    );
+                    let (a, b) = (rgb(&a), rgb(&b));
+                    butteraugli::butteraugli(a.as_ref(), b.as_ref(), &params).unwrap()
+                });
+            });
+            group.bench("student_decode_rgb8", move |bench| {
+                bench.iter(|| {
+                    let (_, _, features) = edge_features(&student_ref, &student_dist).unwrap();
+                    decode_model.predict(&features).unwrap()
+                });
+            });
+        });
+    });
+    result.save(&args[4])?;
+    result.print_report();
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
