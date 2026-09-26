@@ -331,3 +331,10 @@ found zero changed scalar values or map bytes on all 300 pairs with 256-row
 interiors. This is arithmetic preservation, not a resource acceptance result.
 The direct timing harness now allows 300 seconds to reach its unchanged
 minimum of twenty rounds on larger images.
+
+The independent-scale [four-size resource sweep](benchmarks/margarine_independent_scales_resources_2026-09-26.tsv)
+uses 128-row interiors and completed at least twenty interleaved rounds at
+every size. At 1 MP, mean speedup is 1.614× and total-process RSS fraction
+31.75%; at 8.44 MP, these are 1.071× and 15.66%. Both smaller sizes are
+below teacher time and RSS. Larger-image speed and 1 MP memory still fail.
+Raw timings and descriptive fixed/per-pixel fits are tracked alongside the table.

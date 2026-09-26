@@ -1,0 +1,254 @@
+{
+  "run_id": "1790412246-248917",
+  "timestamp": "2026-09-26T08:44:19Z",
+  "git_hash": "fad5499fd4c984857988747a3d91ce212081ef23",
+  "ci_environment": null,
+  "comparisons": [
+    {
+      "group_name": "direct_native_1024x1024_rows128",
+      "benchmarks": [
+        {
+          "name": "teacher_metric",
+          "summary": {
+            "n": 20,
+            "min": 146382668.0,
+            "max": 157017527.0,
+            "mean": 151433352.4,
+            "variance": 8350894695980.356,
+            "median": 151934765.0,
+            "mad": 3248193.4989
+          },
+          "cold_start_ns": 149679399.0,
+          "mean_ci": {
+            "lower": 150185165.2,
+            "median": 151432062.4,
+            "upper": 152667361.85
+          },
+          "timer_ticks_per_sample": 15143335.24
+        },
+        {
+          "name": "multirate_metric",
+          "summary": {
+            "n": 20,
+            "min": 84371432.0,
+            "max": 104049973.0,
+            "mean": 93816361.15,
+            "variance": 33291508574759.613,
+            "median": 93550973.5,
+            "mad": 8192236.0275
+          },
+          "cold_start_ns": 95623625.0,
+          "mean_ci": {
+            "lower": 91396774.45,
+            "median": 93815073.6,
+            "upper": 96274460.65
+          },
+          "timer_ticks_per_sample": 9381636.115
+        },
+        {
+          "name": "teacher_decode",
+          "summary": {
+            "n": 20,
+            "min": 165237076.0,
+            "max": 175661635.0,
+            "mean": 169491403.19999996,
+            "variance": 10507717365296.162,
+            "median": 168294559.0,
+            "mad": 2868583.4058
+          },
+          "cold_start_ns": 170792418.0,
+          "mean_ci": {
+            "lower": 168169114.15,
+            "median": 169487885.65,
+            "upper": 170932332.1
+          },
+          "timer_ticks_per_sample": 16949140.319999997
+        },
+        {
+          "name": "multirate_decode",
+          "summary": {
+            "n": 20,
+            "min": 98863397.0,
+            "max": 114859049.0,
+            "mean": 107706259.1,
+            "variance": 24323733105429.676,
+            "median": 108118427.5,
+            "mad": 3983852.2059
+          },
+          "cold_start_ns": 101186997.0,
+          "mean_ci": {
+            "lower": 105580223.4,
+            "median": 107728478.85,
+            "upper": 109772537.85
+          },
+          "timer_ticks_per_sample": 10770625.91
+        }
+      ],
+      "analyses": [
+        [
+          "teacher_metric",
+          "multirate_metric",
+          {
+            "baseline": {
+              "n": 20,
+              "min": 146382668.0,
+              "max": 157017527.0,
+              "mean": 151433352.4,
+              "variance": 8350894695980.356,
+              "median": 151934765.0,
+              "mad": 3248193.4989
+            },
+            "candidate": {
+              "n": 20,
+              "min": 84371432.0,
+              "max": 104049973.0,
+              "mean": 93816361.15,
+              "variance": 33291508574759.613,
+              "median": 93550973.5,
+              "mad": 8192236.0275
+            },
+            "diff": {
+              "n": 20,
+              "min": -69591520.0,
+              "max": -48143864.0,
+              "mean": -57616991.24999999,
+              "variance": 52441604124195.46,
+              "median": -56807835.0,
+              "mad": 8626447.3134
+            },
+            "pct_change": -38.047755224891915,
+            "significant": true,
+            "cohens_d": -12.626927322301754,
+            "n_samples": 20,
+            "n_outliers": 0,
+            "ci_lower": -60741983.4,
+            "ci_median": -57599925.25,
+            "ci_upper": -54568974.15,
+            "drift_correlation": -0.16390977443609023,
+            "wilcoxon_p": 0.00009572996007030089,
+            "resolution_limited": false
+          }
+        ],
+        [
+          "teacher_metric",
+          "teacher_decode",
+          {
+            "baseline": {
+              "n": 20,
+              "min": 146382668.0,
+              "max": 157017527.0,
+              "mean": 151433352.4,
+              "variance": 8350894695980.356,
+              "median": 151934765.0,
+              "mad": 3248193.4989
+            },
+            "candidate": {
+              "n": 20,
+              "min": 165237076.0,
+              "max": 175661635.0,
+              "mean": 169491403.19999996,
+              "variance": 10507717365296.162,
+              "median": 168294559.0,
+              "mad": 2868583.4058
+            },
+            "diff": {
+              "n": 20,
+              "min": 10120422.0,
+              "max": 25467291.0,
+              "mean": 18058050.8,
+              "variance": 25872159221806.066,
+              "median": 16674625.5,
+              "mad": 6649329.048599999
+            },
+            "pct_change": 11.92475139314158,
+            "significant": true,
+            "cohens_d": 5.8807268128581045,
+            "n_samples": 20,
+            "n_outliers": 0,
+            "ci_lower": 15937984.95,
+            "ci_median": 18073619.6,
+            "ci_upper": 20251851.4,
+            "drift_correlation": -0.012030075187969835,
+            "wilcoxon_p": 0.00009572996007030089,
+            "resolution_limited": false
+          }
+        ],
+        [
+          "teacher_metric",
+          "multirate_decode",
+          {
+            "baseline": {
+              "n": 20,
+              "min": 146382668.0,
+              "max": 157017527.0,
+              "mean": 151433352.4,
+              "variance": 8350894695980.356,
+              "median": 151934765.0,
+              "mad": 3248193.4989
+            },
+            "candidate": {
+              "n": 20,
+              "min": 98863397.0,
+              "max": 114859049.0,
+              "mean": 107706259.1,
+              "variance": 24323733105429.676,
+              "median": 108118427.5,
+              "mad": 3983852.2059
+            },
+            "diff": {
+              "n": 20,
+              "min": -54750489.0,
+              "max": -33876079.0,
+              "mean": -43727093.3,
+              "variance": 33822352602193.27,
+              "median": -43717548.5,
+              "mad": 6777424.205999999
+            },
+            "pct_change": -28.87547069848795,
+            "significant": true,
+            "cohens_d": -10.818331431219336,
+            "n_samples": 20,
+            "n_outliers": 0,
+            "ci_lower": -46245885.75,
+            "ci_median": -43697057.7,
+            "ci_upper": -41283156.55,
+            "drift_correlation": 0.03308270676691727,
+            "wilcoxon_p": 0.00009572996007030089,
+            "resolution_limited": false
+          }
+        ]
+      ],
+      "completed_rounds": 20,
+      "cache_firewall": false,
+      "cache_firewall_bytes": 2097152,
+      "baseline_only": true,
+      "sort_by_speed": false,
+      "expect_sub_ns": false,
+      "cold_start": false,
+      "iterations_per_sample": 1
+    }
+  ],
+  "standalones": [],
+  "total_time": {
+    "millis": 13106
+  },
+  "gate_waits": 19,
+  "gate_wait_time": {
+    "millis": 0
+  },
+  "unreliable": false,
+  "timer_resolution_ns": 10,
+  "loop_overhead_ns": 0.203,
+  "testbed": {
+    "cpu_model": "AMD Ryzen 9 5900XT 16-Core Processor",
+    "arch": "x86_64",
+    "os": "linux",
+    "logical_cores": 32,
+    "physical_cores": 16
+  },
+  "calibration": {
+    "integer_ns": 0.2027692,
+    "memory_bw_gibps": 75.41023166023166,
+    "memory_lat_ns": 10.718308
+  }
+}
