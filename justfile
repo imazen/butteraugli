@@ -25,3 +25,7 @@ margarine-check:
 # Caller may wrap this in run-heavy on Linux; use a fresh output directory.
 margarine-bootstrap scores output draws="2000" seed="20260926":
     nice -n 19 experiments/margarine/target/release/margarine-eval --bootstrap-all "{{scores}}" "{{output}}" "{{draws}}" "{{seed}}"
+
+# Fresh-process memory plus interleaved timing; caller sets RAYON_NUM_THREADS.
+margarine-resources crops output commit:
+    nice -n 19 python3 experiments/margarine/resource_sweep.py "{{crops}}" experiments/margarine/target/release/margarine-box3 "{{output}}" --build-commit "{{commit}}"

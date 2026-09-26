@@ -19,6 +19,12 @@ retaining the 168 edge, high-frequency energy, XYB MSE and non-SSIM peak
 features from the pinned 228 layout. Its active values are tested against the
 full extractor, including strided input. This is a feature-cost ablation, not
 a fitted model or an accuracy result. The RGB8 benchmark includes it.
+`features168-strips64` uses 256-row interiors and a 64-row halo, with outer
+strip parallelism. Radius 5 over four scales needs 40 source rows, but the
+pinned reference builder pads sub-64-row tails while its distorted strip stays
+unpadded. A 40-row halo panicked on height 769; the 64-row halo covers that
+minimum as well as the blur support. Tests retain the tight feature agreement
+check on seams and odd bottom tails. This geometry is specific to this profile.
 `--resource-crops REF DIST NEW_DIRECTORY` persists exact 64²/256²/1024² center
 crops plus the native pair, recording crop coordinates. It does not resample
 or upscale. These crops diagnose resource scaling on actual distorted pixels;

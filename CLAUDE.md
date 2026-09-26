@@ -7,6 +7,13 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 None currently known. Parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 
+Margarine lab dependency observation (2026-09-26): pinned zensim `9c0635f1`
+`compute_streaming_strips(..., 256, 40)` panics on a 769-row image because the
+last reference strip is padded from 41 to 64 rows while distorted storage stays
+41 rows (`streaming.rs:3385`, scale-0 height assertion). The lab uses a 64-row
+minimum halo and tests that bottom-tail case. Production Butteraugli is not
+involved; no sibling source was changed.
+
 ## Planar pre-allocation accounting (2026-09-08)
 
 `ButteraugliReference::estimated_planar_peak_bytes` covers a planar reference's

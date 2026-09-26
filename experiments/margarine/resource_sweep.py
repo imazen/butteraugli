@@ -14,8 +14,8 @@ import platform
 import re
 import subprocess
 
-ARMS = ("teacher", "features228", "features228-strips", "features168")
-BENCH_NAMES = dict(zip(ARMS, ("teacher_rgb8", "features228_rgb8_only", "features228_rgb8_strips_only", "features168_rgb8_only")))
+ARMS = ("teacher", "features228", "features228-strips", "features168", "features168-strips64")
+BENCH_NAMES = dict(zip(ARMS, ("teacher_rgb8", "features228_rgb8_only", "features228_rgb8_strips_only", "features168_rgb8_only", "features168_rgb8_strips64_only")))
 
 
 def rss_bytes(text, system):
