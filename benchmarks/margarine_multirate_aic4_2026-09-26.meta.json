@@ -1,0 +1,17 @@
+{
+  "build_commit": "e7781180f74d",
+  "binaries": {
+    "margarine-box3": "d8466dd0fbc27eea96e9a007d9c7c278d51f3f145a777be8aac4d04aae4a2583",
+    "margarine-eval": "c931e0030686e7aa11f3454b8dacfa95430f805d1b4669691458ae902ba05c61"
+  },
+  "cells_sha256": "4bdc2a1ed0f469354999b9700a69d89afd9c2a0e3034bab105dcc2d5c78d3984",
+  "artifact_directory": "r5900xt:/home/lilith/work/codec-artifacts/margarine/multirate-aic4-2026-09-26",
+  "panel_hashes": {
+    "panel-p6.tsv": "5b21b854e7ddf7a3422f6462bedc951f2e0dd3af40e027773d6db0bbd4030c19",
+    "panel-p3.tsv": "0022bea3abb11cf18f67e483cffab5fe611acd7ec5e382df0a6a7419bde7707c",
+    "panel-p2.tsv": "790e841b7ac7516323571041ba4492f53fbc01f515cb2c8be93ddb0c3015eba0",
+    "panel-p1.tsv": "e42f66658dd882eab7e9bc9df9e92bacd0e4fa59cc641f6b20e3cf842150583a",
+    "panel-max.tsv": "448a719ddabb052d9cc75271bcb9db0f540dc4bf1a4e97b56093062c42595c79"
+  },
+  "status": "point estimates only; no acceptance claim"
+}

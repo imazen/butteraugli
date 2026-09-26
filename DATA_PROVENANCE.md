@@ -275,3 +275,15 @@ reports a competing benchmark while the process inventory shows zenbench's own
 heartbeat thread matching its benchmark-name filter. Resolve this measurement
 issue before drawing conclusions from a larger timing sweep; thresholds remain
 unchanged.
+
+## Multirate direct approximation
+
+Candidate `e7781180` retains Butteraugli's perceptual scoring stages and full
+resolution residuals, evaluating broad Gaussian filters on reduced lattices.
+All 300 AIC4 pairs completed in `multirate-aic4-2026-09-26/` on r5900xt;
+the Mac copy contains score/panel metadata. Native maps remain on r5900xt.
+The [corpus panel](benchmarks/margarine_multirate_aic4_2026-09-26.tsv) records
+all five norms: the largest pooled SROCC loss is 0.00217025 (p1), with
+p3 loss 0.00190935. These are point estimates, not clustered non-inferiority
+or complete acceptance. CID22 and the direct native-strip resource sweep are
+separate runs; resource measurements use the fixed zenbench Linux gate.
