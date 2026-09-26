@@ -1448,3 +1448,13 @@ All five pooling variants and the full zenstats corpus panels are retained.
 Native maps and the score ledger live on WSL in
 `vector-expand-row-streamed-pipal-container-2026-09-26`; Tower mirroring is in
 progress. No participant-uncertainty choice result is inferred from these ranks.
+
+The separate `simd-coarse-full-malta` control at `1440dd3e` retains its
+[AIC4 corpus panels](benchmarks/margarine_simd_coarse_full_aic4_2026-09-26.tsv)
+and [screenshot resource curve](benchmarks/margarine_simd_coarse_full_screen_resources_2026-09-26.tsv).
+Primary AIC4 SROCC loss is 0.005285837; native screenshot scoring speedup is
+3.036153×. This control has not replaced the selected row-Malta candidate.
+The [selected candidate's screenshot CPU profile](benchmarks/margarine_vector_row_screen_profile_2026-09-26.txt)
+contains all interleaved benchmark arms; its percentages must not be presented
+as a candidate-only breakdown. [Artifact hashes](benchmarks/margarine_coarse_control_and_profile_2026-09-26.meta.json)
+retain both experiments' identities.

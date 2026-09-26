@@ -1,0 +1,69 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 20K of event 'cpu/cycles/P'
+# Event count (approx.): 94968473673
+#
+# Overhead  Command          Shared Object         Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+# ........  ...............  ....................  ..............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+#
+    11.65%  margarine-box3   margarine-box3        [.] butteraugli::blur::convolve_vertical_v3
+     8.57%  margarine-box3   margarine-box3        [.] butteraugli::malta::__arcane_malta_diff_map_dispatch_v3
+     7.03%  margarine-box3   margarine-box3        [.] butteraugli::blur::convolve_horizontal_interior_v3
+     6.55%  margarine-box3   libc.so.6             [.] __memset_avx2_unaligned_erms
+     2.87%  margarine-box3   margarine-box3        [.] butteraugli::psycho::__arcane_subtract_images_v3
+     2.79%  margarine-box3   margarine-box3        [.] margarine_box3::full_malta::__arcane_evaluate_simd_v3
+     2.33%  margarine-box3   margarine-box3        [.] margarine_box3::row_psycho::__arcane_opsin_row_v3
+     2.31%  margarine-box3   margarine-box3        [.] butteraugli::opsin::__arcane_opsin_dynamics_image_v3
+     2.20%  margarine-box3   [kernel.kallsyms]     [k] kernel_init_pages
+            |          
+             --0.52%--__irqentry_text_end
+
+     1.89%  margarine-box3   margarine-box3        [.] butteraugli::blur::__arcane_blur_mirrored_5x5_v3
+     1.82%  margarine-box3   margarine-box3        [.] butteraugli::blur::__arcane_gaussian_blur_dispatch_v3
+     1.76%  margarine-box3   margarine-box3        [.] butteraugli::malta::__arcane_malta_compute_scaled_diffs_v3
+     1.75%  margarine-box3   margarine-box3        [.] butteraugli::diff::imgref_srgb_to_linear_f32
+     1.58%  margarine-box3   margarine-box3        [.] <margarine_box3::ingress::EncodedRows>::linear_planar_region_row
+     1.42%  margarine-box3   margarine-box3        [.] butteraugli::opsin::linear_rgb_to_xyb_butteraugli
+     1.40%  margarine-box3   margarine-box3        [.] png::filter::paeth::unfilter
+            |          
+             --1.30%--png::filter::paeth::unfilter
+                       |          
+                        --0.58%--<png::decoder::Reader<std::io::buffered::bufreader::BufReader<std::fs::File>>>::next_interlaced_row_impl
+
+     1.13%  margarine-box3   margarine-box3        [.] margarine_box3::stream_blur::__arcane_horizontal_v3
+     1.11%  margarine-box3   margarine-box3        [.] margarine_box3::row_psycho::__arcane_finish_row_v3
+     1.08%  margarine-box3   margarine-box3        [.] butteraugli::diff::__arcane_combine_channels_to_diffmap_fused_v3
+     1.04%  margarine-box3   libc.so.6             [.] __memmove_avx_unaligned_erms
+     0.97%  margarine-box3   margarine-box3        [.] margarine_box3::shared_malta::__arcane_malta_compute_scaled_diffs_v3
+     0.97%  margarine-box3   margarine-box3        [.] butteraugli::diff::subsample_linear_rgb_2x
+     0.96%  margarine-box3   [kernel.kallsyms]     [k] entry_SYSRETQ_unsafe_stack
+     0.95%  margarine-box3   [kernel.kallsyms]     [k] __irqentry_text_end
+     0.93%  margarine-box3   margarine-box3        [.] margarine_box3::mask::__arcane_fuzzy_erosion_interior_row_v3
+            |          
+             --0.92%--margarine_box3::mask::__arcane_fuzzy_erosion_interior_row_v3
+
+     0.84%  margarine-box3   margarine-box3        [.] margarine_box3::stream_blur::__arcane_vertical_v3
+     0.78%  margarine-box3   margarine-box3        [.] <margarine_box3::row_psycho::Graph>::ensure
+     0.73%  margarine-box3   margarine-box3        [.] margarine_box3::blur::__arcane_expand_row_vector_v3::<4>
+     0.68%  margarine-box3   margarine-box3        [.] butteraugli::mask::__arcane_combine_and_precompute_v3
+     0.66%  margarine-box3   margarine-box3        [.] margarine_box3::row_psycho::__arcane_reduce_row_v3
+     0.61%  margarine-box3   margarine-box3        [.] butteraugli::mask::__arcane_fuzzy_erosion_interior_row_v3
+     0.61%  margarine-box3   [kernel.kallsyms]     [k] do_anonymous_page
+     0.57%  margarine-box3   margarine-box3        [.] butteraugli::diff::__arcane_l2_diff_asymmetric_v3
+     0.55%  margarine-box3   margarine-box3        [.] margarine_box3::row_psycho::__arcane_mirror_vertical_v3
+     0.55%  margarine-box3   margarine-box3        [.] <fdeflate::decompress::Decompressor>::read
+            |          
+             --0.52%--<fdeflate::decompress::Decompressor>::read
+
+     0.55%  margarine-box3   margarine-box3        [.] margarine_box3::row_psycho::__arcane_mirror_horizontal_v3
+     0.53%  margarine-box3   margarine-box3        [.] margarine_box3::blur::__arcane_expand_row_vector_v3::<2>
+     0.51%  margarine-box3   margarine-box3        [.] butteraugli::psycho::__arcane_xyb_low_freq_to_vals_v3
+     0.50%  margarine-box3   margarine-box3        [.] butteraugli::psycho::__arcane_process_uhf_hf_y_v3
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#
