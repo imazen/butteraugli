@@ -6,10 +6,31 @@ import zlib
 from cid22_manifest import audit
 from pathlib import Path
 
-from score_manifest import EDGE_COLUMNS, audit_png, parse_features, parse_score
+from score_manifest import EDGE_COLUMNS, FIELDS, NORMS, aligned_teacher, audit_png, parse_features, parse_prediction, parse_score
 
 
 class ScoringContract(unittest.TestCase):
+    def test_cached_teacher_requires_identical_labels_pixels_and_dimensions(self):
+        row = dict(zip(FIELDS, ("aic", "source", "codec", "pair", "2", "quality", "ref", "dist")))
+        frozen = dict(row, reference_sha256="a", distorted_sha256="b",
+                      scores={"teacher": dict.fromkeys(NORMS, 1.0) | dict(width=2, height=3)})
+        images = dict(ref="a", dist="b")
+        self.assertEqual(aligned_teacher(row, frozen, images, (2, 3))["p3"], 1.0)
+        for altered in (dict(row, target="3"), dict(row, source="other")):
+            with self.assertRaisesRegex(ValueError, "labels or identities"):
+                aligned_teacher(altered, frozen, images, (2, 3))
+        with self.assertRaisesRegex(ValueError, "input hash"):
+            aligned_teacher(row, frozen, dict(ref="c", dist="b"), (2, 3))
+        with self.assertRaisesRegex(ValueError, "dimensions"):
+            aligned_teacher(row, frozen, images, (3, 2))
+
+    def test_student_scalar_output_is_checked_without_inventing_a_map(self):
+        text = "mode\twidth\theight\tmax\tp1\tp2\tp3\tp6\nmargarine-probe\t2\t3\t1\t1\t1\t1\t1\n"
+        _, scores = parse_prediction(text, "margarine-probe", (2, 3))
+        self.assertEqual(scores, dict.fromkeys(NORMS, 1.0))
+        with self.assertRaisesRegex(ValueError, "invalid metric output"):
+            parse_prediction(text.replace("\t1\n", "\tnan\n"), "margarine-probe", (2, 3))
+
     def test_feature_order_and_nonfinite_values_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "features.tsv"

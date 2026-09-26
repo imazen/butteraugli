@@ -74,6 +74,14 @@ zensim `ad18b444`; the older frozen extraction must have its features refreshed
 before fitting a compatible model. `compare_features.py` records paired exports
 and exact differences for explicit manifests without applying a tolerance.
 
+`score_manifest.py PAIRS BINARIES NEW_OUTPUT --model FIT_DIRECTORY --teacher
+FROZEN_EVALUATION --build-commit COMMIT` evaluates a frozen student against the
+existing human labels and teacher scores. It checks the model hash, requires the
+same extractor binary used for fitting, verifies exact pair/label/input-hash
+alignment, and writes all five zenstats panels. Teacher diffmaps remain in their
+original store; this scalar student produces no spatial map. Its output supports
+the existing clustered bootstrap and `choice_eval.py --candidate student`.
+
 Install `requirements-training.txt` in a virtual environment, then run
 `just margarine-fit-check /absolute/path/to/venv/bin/python`. The fitter uses
 [SciPy NNLS](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.nnls.html)

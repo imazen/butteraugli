@@ -59,18 +59,23 @@ def audit_png(path):
                 return dimensions
 
 
-def parse_score(stdout, mode, dimensions, map_path):
+def parse_prediction(stdout, mode, dimensions):
     rows = list(csv.DictReader(io.StringIO(stdout), delimiter="\t"))
     if len(rows) != 1:
         raise ValueError("scorer must return exactly one row")
     row = rows[0]
     if row["mode"] != mode or (int(row["width"]), int(row["height"])) != dimensions:
         raise ValueError("wrong scorer mode or map dimensions")
-    if row["diffmap"] != str(map_path):
-        raise ValueError("wrong diffmap path")
     scores = {key: float(row[key]) for key in NORMS}
     if any(not math.isfinite(v) or v < 0 for v in scores.values()):
         raise ValueError("invalid metric output")
+    return row, scores
+
+
+def parse_score(stdout, mode, dimensions, map_path):
+    row, scores = parse_prediction(stdout, mode, dimensions)
+    if row["diffmap"] != str(map_path):
+        raise ValueError("wrong diffmap path")
     if map_path.stat().st_size != dimensions[0] * dimensions[1] * 4:
         raise ValueError("wrong diffmap byte count")
     with map_path.open("rb") as f:
@@ -97,6 +102,42 @@ def parse_features(path, dimensions):
     return values
 
 
+def frozen_teacher(directory):
+    manifest = json.loads((directory / "_MANIFEST.json").read_text())
+    if manifest.get("status") != "complete" or manifest.get("mode") not in (None, "quality-evaluation"):
+        raise ValueError("requires complete human-evaluation teacher ledger")
+    if digest(directory / "cells.jsonl") != manifest["cells_sha256"]:
+        raise ValueError("teacher ledger hash mismatch")
+    rows = {}
+    for line in (directory / "cells.jsonl").open():
+        row = json.loads(line)
+        # Earlier frozen runs kept input hashes in their manifest, before cells
+        # carried them directly. Resolve that recorded provenance, never rehash
+        # today's files as a substitute for the original input identity.
+        for name in ("reference", "distorted"):
+            if name + "_sha256" not in row:
+                row[name + "_sha256"] = manifest["images"][row[name]]
+        key = row["dataset"], row["pair"]
+        if key in rows:
+            raise ValueError("duplicate teacher pair")
+        rows[key] = row
+    return rows
+
+
+def aligned_teacher(row, frozen, images, dimensions):
+    if any(row[key] != frozen[key] for key in FIELDS[:6]):
+        raise ValueError("teacher evaluation labels or identities differ")
+    for key in ("reference", "distorted"):
+        if images[row[key]] != frozen[key + "_sha256"]:
+            raise ValueError("teacher input hash mismatch")
+    scores = frozen["scores"]["teacher"]
+    if (scores["width"], scores["height"]) != dimensions:
+        raise ValueError("teacher dimensions differ")
+    if any(not math.isfinite(scores[n]) or scores[n] < 0 for n in NORMS):
+        raise ValueError("invalid cached teacher score")
+    return scores
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
@@ -109,10 +150,14 @@ def main():
     parser.add_argument("--features-only", action="store_true",
                         help="refresh the separate training feature sidecar without recomputing teacher maps")
     parser.add_argument("--feature-source", help="required extractor dependency commit for training feature runs")
+    parser.add_argument("--model", type=Path, help="frozen fit directory, with model.tsv and provenance")
+    parser.add_argument("--teacher", type=Path, help="existing human-evaluation score directory")
     args = parser.parse_args()
     if args.teacher_features and args.features_only:
         parser.error("choose teacher-features or features-only")
     training = args.teacher_features or args.features_only
+    if bool(args.model) != bool(args.teacher) or (args.model and training):
+        parser.error("--model and --teacher are paired and apply only to quality evaluation")
     if training and not args.feature_source:
         parser.error("training extraction requires --feature-source")
     with args.manifest.open() as f:
@@ -133,7 +178,7 @@ def main():
         print(message, flush=True)
         print(message, file=progress, flush=True)
 
-    names = ["margarine-box3"] if args.features_only else ["margarine-score", "margarine-box3"]
+    names = ["margarine-box3"] if args.features_only or args.model else ["margarine-score", "margarine-box3"]
     if not training:
         names.append("margarine-eval")
     binaries = {name: args.binaries.resolve() / name for name in names}
@@ -143,6 +188,23 @@ def main():
                       n_pairs=len(rows), images={}, status="running")
     provenance["mode"] = ("features-only" if args.features_only else
                           "teacher-features" if training else "quality-evaluation")
+    candidate = "student" if args.model else "box3"
+    if args.model:
+        model = args.model / "model.tsv"
+        fitted = json.loads((args.model / "_MANIFEST.json").read_text())
+        if digest(model) != fitted["model_sha256"]:
+            raise ValueError("model hash mismatch")
+        if provenance["binaries"]["margarine-box3"] != fitted["feature_binaries"]["margarine-box3"]:
+            raise ValueError("runtime binary differs from fitted feature extractor")
+        teachers = frozen_teacher(args.teacher)
+        if set(teachers) != {(r["dataset"], r["pair"]) for r in rows}:
+            raise ValueError("teacher and evaluation pair sets differ")
+        provenance.update(candidate=candidate, model_sha256=digest(model),
+                          model_manifest_sha256=digest(args.model / "_MANIFEST.json"),
+                          teacher_directory=str(args.teacher.resolve()),
+                          teacher_manifest_sha256=digest(args.teacher / "_MANIFEST.json"),
+                          teacher_cells_sha256=digest(args.teacher / "cells.jsonl"),
+                          spatial_output="teacher maps retained in original store; student predicts scalar norms only")
     if training:
         provenance["feature_columns"] = EDGE_COLUMNS
         provenance["feature_profile"] = "168 edges; 256-row strips, 64-row halo"
@@ -180,7 +242,19 @@ def main():
             cell["distorted_sha256"] = provenance["images"][row["distorted"]]
             cell["encoded_sha256"] = provenance["images"][row.get("encoded", row["distorted"])]
             cell["scores"] = {}
-            modes = () if args.features_only else ("teacher",) if training else ("teacher", "box3")
+            if args.model:
+                cell["scores"]["teacher"] = aligned_teacher(
+                    row, teachers[row["dataset"], row["pair"]], provenance["images"],
+                    dimensions[row["reference"]])
+                run = subprocess.run([str(binaries["margarine-box3"]), "--student", str(model),
+                                      row["reference"], row["distorted"]],
+                                     capture_output=True, text=True, check=False)
+                (args.output / f"cell-{i}-student.log").write_text(run.stdout + run.stderr)
+                run.check_returncode()
+                _, scores = parse_prediction(run.stdout, "margarine-probe", dimensions[row["reference"]])
+                cell["scores"][candidate] = scores
+            modes = (() if args.features_only or args.model else
+                     ("teacher",) if training else ("teacher", "box3"))
             for mode in modes:
                 path = maps / f"pending-{i}-{mode}.f32le"
                 cmd = ([str(binaries["margarine-score"]), "teacher"] if mode == "teacher"
@@ -227,7 +301,7 @@ def main():
             for cell in cells:
                 writer.writerow(dict(**{key: cell[key] for key in FIELDS[:6]},
                                      teacher=cell["scores"]["teacher"][norm],
-                                     candidate=cell["scores"]["box3"][norm]))
+                                     candidate=cell["scores"][candidate][norm]))
         with (args.output / f"eval-{norm}.log").open("x") as log:
             subprocess.run([str(binaries["margarine-eval"]), str(path),
                             str(args.output / f"panel-{norm}.tsv"), "0"],
