@@ -516,7 +516,7 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
 /// Performs the full frequency decomposition on an XYB image.
 ///
 /// Borrowed variant for tests and the unstable `internals` API. The production
-/// pipeline owns its XYB image and uses [`separate_frequencies_owned`] so those
+/// pipeline owns its XYB image and uses `separate_frequencies_owned` so those
 /// input buffers can be recycled immediately after LF/MF extraction.
 #[cfg(any(test, feature = "internals"))]
 pub fn separate_frequencies(xyb: &Image3F, pool: &BufferPool) -> PsychoImage {

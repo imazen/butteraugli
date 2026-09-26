@@ -1314,12 +1314,11 @@ fn malta_compute_scaled_diffs(
     _token: archmage::SimdToken,
     lum0: &ImageF,
     lum1: &ImageF,
-    norm2_0gt1: f32,
-    norm2_0lt1: f32,
-    norm1_f32: f32,
+    norms: [f32; 3],
     padded: &mut ImageF,
     pad: usize,
 ) {
+    let [norm2_0gt1, norm2_0lt1, norm1_f32] = norms;
     for y in 0..lum0.height() {
         let row0 = lum0.row(y);
         let row1 = lum1.row(y);
@@ -1418,9 +1417,7 @@ where
     malta_compute_scaled_diffs(
         lum0,
         lum1,
-        norm2_0gt1,
-        norm2_0lt1,
-        norm1_f32,
+        [norm2_0gt1, norm2_0lt1, norm1_f32],
         &mut padded,
         PAD,
     );
