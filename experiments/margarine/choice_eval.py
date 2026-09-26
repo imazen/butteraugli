@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Compare choices at every observed byte budget within each source.
+
+This is a diagnostic regret curve, not the unresolved material-reversal gate.
+Observed budgets weight densely sampled ladders more heavily; report source
+means alongside pooled counts. No interpolation or additional encodes occur.
+"""
+import argparse
+from collections import defaultdict
+import csv
+import hashlib
+import json
+import math
+from pathlib import Path
+
+NORMS = ("max", "p1", "p2", "p3", "p6")
+
+
+def choices(rows, candidate, norm):
+    for row in rows:
+        rate = float(row["bpp"])
+        values = (row["scores"][arm][norm] for arm in ("teacher", candidate))
+        if not math.isfinite(rate) or rate <= 0 or any(not math.isfinite(v) or v < 0 for v in values):
+            raise ValueError("invalid rate or metric value")
+    for budget in sorted({float(row["bpp"]) for row in rows}):
+        eligible = [row for row in rows if float(row["bpp"]) <= budget]
+        # Stable score ties prefer fewer bytes, then the declared pair ID.
+        def pick(arm):
+            return min(eligible, key=lambda row: (row["scores"][arm][norm], float(row["bpp"]), row["pair"]))
+        teacher, student = pick("teacher"), pick(candidate)
+        optimum = teacher["scores"]["teacher"][norm]
+        achieved = student["scores"]["teacher"][norm]
+        absolute = achieved - optimum
+        relative = absolute / optimum if optimum else (0.0 if absolute == 0 else math.inf)
+        yield dict(budget_bpp=budget, eligible=len(eligible), teacher_pair=teacher["pair"],
+                   candidate_pair=student["pair"], teacher_codec=teacher["codec"],
+                   candidate_codec=student["codec"], teacher_optimum=optimum,
+                   teacher_at_candidate=achieved, absolute_regret=absolute,
+                   relative_regret=relative, different_pair=int(teacher["pair"] != student["pair"]))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("ledger", type=Path)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--candidate", default="box3")
+    parser.add_argument("--build-commit", required=True)
+    args = parser.parse_args()
+    groups = defaultdict(list)
+    seen = set()
+    for line in args.ledger.open():
+        row = json.loads(line)
+        key = row["dataset"], row["source"], row["pair"]
+        if key in seen:
+            raise ValueError(f"duplicate pair {key}")
+        seen.add(key)
+        groups[key[:2]].append(row)
+    if not groups:
+        raise ValueError("empty ledger")
+    args.output.mkdir(parents=True, exist_ok=False)
+    summaries = []
+    with (args.output / "progress.log").open("x", buffering=1) as log:
+        for norm in NORMS:
+            records = []
+            for (dataset, source), rows in sorted(groups.items()):
+                records.extend(dict(dataset=dataset, source=source, norm=norm, **r)
+                               for r in choices(rows, args.candidate, norm))
+                print(f"{norm} {dataset} {source}: choices persisted below", file=log, flush=True)
+            with (args.output / f"choices-{norm}.tsv").open("x") as out:
+                writer = csv.DictWriter(out, delimiter="\t", fieldnames=list(records[0]))
+                writer.writeheader()
+                writer.writerows(records)
+            for dataset in sorted({r["dataset"] for r in records}):
+                dataset_rows = [r for r in records if r["dataset"] == dataset]
+                for threshold in (0.0, 0.001, 0.01, 0.05, 0.1):
+                    per_source = defaultdict(list)
+                    for row in dataset_rows:
+                        per_source[row["source"]].append(row["relative_regret"] > threshold)
+                    count = sum(sum(values) for values in per_source.values())
+                    summaries.append(dict(dataset=dataset, norm=norm,
+                        diagnostic_relative_regret_threshold=threshold, sources=len(per_source),
+                        budgets=len(dataset_rows), exceeding_budgets=count,
+                        pooled_exceedance_rate=count/len(dataset_rows),
+                        source_mean_exceedance_rate=sum(sum(v)/len(v) for v in per_source.values())/len(per_source),
+                        maximum_absolute_regret=max(r["absolute_regret"] for r in dataset_rows)))
+            print(f"{norm}: {len(records)} observed-budget comparisons", flush=True)
+        with (args.output / "summary.tsv").open("x") as out:
+            writer = csv.DictWriter(out, delimiter="\t", fieldnames=list(summaries[0]))
+            writer.writeheader()
+            writer.writerows(summaries)
+        provenance = dict(build_commit=args.build_commit, ledger=str(args.ledger.resolve()),
+            ledger_sha256=hashlib.sha256(args.ledger.read_bytes()).hexdigest(), candidate=args.candidate,
+            budget_policy="all distinct observed bpp values per source, no interpolation",
+            tie_policy="minimum score, then minimum bpp, then lexicographic pair ID",
+            acceptance_gate="unavailable: materiality definition not agreed; thresholds are diagnostics")
+        (args.output / "_MANIFEST.json").write_text(json.dumps(provenance, indent=2)+"\n")
+        print("Complete; diagnostic regret curves, no acceptance verdict", file=log, flush=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -85,6 +85,15 @@ local-edit/diffmap agreement with actual score changes. A high pooled SROCC
 does not pass either panel. Zensim's 0–100 dial thresholds do not automatically
 apply to a Butteraugli-shaped distance.
 
+`choice_eval.py CELLS.jsonl NEW_OUTPUT --build-commit COMMIT` measures observed
+byte-budget choices when the ledger contains bpp. At each distinct observed bpp
+within a source, each arm selects its lowest score among eligible encodes. Ties
+prefer fewer bytes, then pair ID; the candidate never uses teacher scores to
+break a tie. Reports contain absolute and relative teacher regret, pooled and
+equal-source exceedance rates at several diagnostic thresholds. These thresholds
+are not an agreed definition of materiality. Observed budgets reflect each
+dataset's ladder density; they are not a uniformly sampled production workload.
+
 Benchmark cold pairs and precomputed-reference comparisons separately, at
 64², 256², 1024², and 4096² plus real native dimensions. Use zenbench for
 interleaved timing and a fresh process per arm under heaptrack or platform
