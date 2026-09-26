@@ -338,3 +338,11 @@ every size. At 1 MP, mean speedup is 1.614× and total-process RSS fraction
 31.75%; at 8.44 MP, these are 1.071× and 15.66%. Both smaller sizes are
 below teacher time and RSS. Larger-image speed and 1 MP memory still fail.
 Raw timings and descriptive fixed/per-pixel fits are tracked alongside the table.
+
+The coarse-band candidate `88289438` completed 300 AIC4 pairs. Its
+[panel](benchmarks/margarine_compact_aic4_2026-09-26.tsv) has maximum pooled SROCC
+loss 0.00197247 (p1); p3 loses 0.00135690. Its 1 MP interleaved metric
+means are teacher 144.858 ms and candidate 93.476 ms over twenty rounds.
+It remains unqualified for speed; CID22 and other corpora are unmeasured for
+this candidate. All native maps remain on r5900xt under
+`compact-aic4-2026-09-26/`, with compact ledgers/panels copied to the Mac.
