@@ -1,6 +1,6 @@
 import math
 import unittest
-from choice_eval import choices
+from choice_eval import choices, attach_aic3_rates
 
 
 def row(pair, rate, teacher, student):
@@ -9,6 +9,20 @@ def row(pair, rate, teacher, student):
 
 
 class ChoiceTests(unittest.TestCase):
+    def test_aic3_rates_require_matching_identity_and_label(self):
+        scored = dict(dataset='aic3_subjective', source='original/a.png', codec='JPEG-1',
+                      pair='decoded/a/JPEG-1_a_2.png', direction='quality', target='-1')
+        rate = {'img.name': 'a', 'codec': 'JPEG-1', 'quality': '2', 'score.jnd': '-1', 'bpp': '.5'}
+        rows = [scored.copy()]
+        attach_aic3_rates(rows, [rate])
+        self.assertEqual(rows[0]['bpp'], .5)
+        self.assertEqual(rows[0]['dataset'], 'aic3_subjective')
+        for changed in [dict(rate, **{'score.jnd': '-2'}), dict(rate, bpp='nan'), dict(rate, quality='3')]:
+            with self.assertRaises(ValueError):
+                attach_aic3_rates([scored.copy()], [changed])
+        with self.assertRaises(ValueError):
+            attach_aic3_rates([scored.copy()], [rate, rate])
+
     def test_budget_changes_eligibility_and_uses_teacher_regret(self):
         rows = [row("a", 1, 3, 2), row("b", 2, 2, 3), row("c", 3, 1, 1)]
         result = list(choices(rows, "box3", "p3"))

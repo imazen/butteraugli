@@ -17,6 +17,32 @@ from pathlib import Path
 NORMS = ("max", "p1", "p2", "p3", "p6")
 
 
+def attach_aic3_rates(rows, rates):
+    """Join the supplied AIC3 bitrate table without changing labels or cohorts."""
+    lookup = {}
+    for r in rates:
+        if not any(r.values()):
+            continue
+        source = r['img.name']
+        pair = f"decoded/{source}/{r['codec']}_{source}_{r['quality']}.png"
+        rate = float(r['bpp'])
+        target = float(r['score.jnd'])
+        if pair in lookup or not math.isfinite(rate) or rate <= 0 or not math.isfinite(target):
+            raise ValueError('duplicate or invalid AIC3 bitrate row')
+        lookup[pair] = (source, r['codec'], target, rate)
+    if len(rows) != len(lookup) or {r['pair'] for r in rows} != lookup.keys():
+        raise ValueError('AIC3 bitrate and scored image sets differ')
+    for row in rows:
+        source, codec, target, rate = lookup[row['pair']]
+        if (row['dataset'] not in ('aic3_subjective', 'aic3_estimated')
+                or row['direction'] != 'quality' or float(row['target']) != target
+                or row['source'] != f'original/{source}.png' or row['codec'] != codec):
+            raise ValueError('AIC3 bitrate row identity or label differs')
+        if row.get('bpp') and float(row['bpp']) != rate:
+            raise ValueError('AIC3 bitrate conflicts with scored ledger')
+        row['bpp'] = rate
+
+
 def choices(rows, candidate, norm, human=False, teacher_norm=None):
     teacher_norm = teacher_norm or norm
     def score(row, arm):
@@ -65,6 +91,7 @@ def main():
                         help="diagnostic loss in native label units; requires complete human labels")
     parser.add_argument("--participant-panels", type=Path,
                         help="root containing one saved participant-bootstrap directory per dataset/cohort")
+    parser.add_argument("--aic3-rates", type=Path, help="join original info_with_bitrates.csv by exact image identity and label")
     args = parser.parse_args()
     if any(not math.isfinite(x) or x < 0 for x in args.human_loss_threshold):
         parser.error("human-loss thresholds must be finite and nonnegative")
@@ -79,6 +106,9 @@ def main():
         groups[key[:2]].append(row)
     if not groups:
         raise ValueError("empty ledger")
+    if args.aic3_rates:
+        with args.aic3_rates.open() as rates:
+            attach_aic3_rates([r for rows in groups.values() for r in rows], csv.DictReader(rates))
     args.output.mkdir(parents=True, exist_ok=False)
     summaries = []
     human_summaries = []
@@ -162,6 +192,10 @@ def main():
             participant_panels={k:dict(hashes=v['hashes'], method=v['method']) for k,v in participant_panels.items()},
             acceptance_gate="cohort-scoped participant-supported choice losses; full qualification remains separate"
                 if participant_panels else "unavailable: participant uncertainty not supplied; thresholds are diagnostics")
+        if args.aic3_rates:
+            provenance['aic3_rates'] = dict(path=str(args.aic3_rates.resolve()),
+                sha256=hashlib.sha256(args.aic3_rates.read_bytes()).hexdigest(),
+                join='exact pair, source, codec, target and quality direction; estimated and subjective cohorts retained')
         (args.output / "_MANIFEST.json").write_text(json.dumps(provenance, indent=2)+"\n")
         print("Complete; diagnostic regret curves, no acceptance verdict", file=log, flush=True)
 
