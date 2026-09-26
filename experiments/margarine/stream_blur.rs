@@ -76,28 +76,47 @@ pub(crate) fn horizontal(
             .sum::<f32>()
             * scale;
     }
-    let blocks = (end - begin) / 8;
-    for (i, dst) in output[begin..begin + blocks * 8]
-        .as_chunks_mut::<8>()
-        .0
-        .iter_mut()
-        .enumerate()
-    {
-        let start = begin + i * 8 - radius;
-        let mut sums = [0.0f32; 8];
-        for (k, &weight) in scaled.iter().enumerate() {
-            let values: &[f32; 8] = input[start + k..start + k + 8].try_into().unwrap();
-            for lane in 0..8 {
-                sums[lane] = values[lane].mul_add(weight, sums[lane]);
-            }
-        }
-        *dst = sums;
-    }
-    for x in begin + blocks * 8..end {
+    let full = (end - begin) / 32 * 32;
+    horizontal_blocks::<32>(
+        input,
+        scaled,
+        begin.saturating_sub(radius),
+        &mut output[begin..begin + full],
+    );
+    let tail = (end - begin - full) / 8 * 8;
+    horizontal_blocks::<8>(
+        input,
+        scaled,
+        (begin + full).saturating_sub(radius),
+        &mut output[begin + full..begin + full + tail],
+    );
+    for x in begin + full + tail..end {
         output[x] = input[x - radius..x - radius + scaled.len()]
             .iter()
             .zip(scaled)
             .fold(0.0, |sum, (&value, &weight)| value.mul_add(weight, sum));
+    }
+}
+
+// Keep each pixel's reduction order while exposing four independent AVX2
+// accumulators (or eight NEON accumulators) to the instruction scheduler.
+#[inline(always)]
+fn horizontal_blocks<const N: usize>(
+    input: &[f32],
+    weights: &[f32],
+    offset: usize,
+    output: &mut [f32],
+) {
+    for (i, dst) in output.as_chunks_mut::<N>().0.iter_mut().enumerate() {
+        let start = offset + i * N;
+        let mut sums = [0.0f32; N];
+        for (k, &weight) in weights.iter().enumerate() {
+            let values: &[f32; N] = input[start + k..start + k + N].try_into().unwrap();
+            for lane in 0..N {
+                sums[lane] = values[lane].mul_add(weight, sums[lane]);
+            }
+        }
+        *dst = sums;
     }
 }
 
@@ -108,22 +127,34 @@ pub(crate) fn vertical(
     weights: &[f32],
     output: &mut [f32],
 ) {
-    let (blocks, tail) = output.as_chunks_mut::<8>();
-    let count = blocks.len();
-    for (i, dst) in blocks.iter_mut().enumerate() {
-        let mut sums = [0.0f32; 8];
+    let full = output.len() / 32 * 32;
+    vertical_blocks::<32>(rows, weights, 0, &mut output[..full]);
+    let tail = (output.len() - full) / 8 * 8;
+    vertical_blocks::<8>(rows, weights, full, &mut output[full..full + tail]);
+    for (i, dst) in output[full + tail..].iter_mut().enumerate() {
+        *dst = rows.iter().zip(weights).fold(0.0, |sum, (&row, &weight)| {
+            row[full + tail + i].mul_add(weight, sum)
+        });
+    }
+}
+
+#[inline(always)]
+fn vertical_blocks<const N: usize>(
+    rows: &[&[f32]],
+    weights: &[f32],
+    offset: usize,
+    output: &mut [f32],
+) {
+    for (i, dst) in output.as_chunks_mut::<N>().0.iter_mut().enumerate() {
+        let start = offset + i * N;
+        let mut sums = [0.0f32; N];
         for (&row, &weight) in rows.iter().zip(weights) {
-            let values: &[f32; 8] = row[i * 8..i * 8 + 8].try_into().unwrap();
-            for lane in 0..8 {
+            let values: &[f32; N] = row[start..start + N].try_into().unwrap();
+            for lane in 0..N {
                 sums[lane] = values[lane].mul_add(weight, sums[lane]);
             }
         }
         *dst = sums;
-    }
-    for (i, dst) in tail.iter_mut().enumerate() {
-        *dst = rows.iter().zip(weights).fold(0.0, |sum, (&row, &weight)| {
-            row[count * 8 + i].mul_add(weight, sum)
-        });
     }
 }
 
