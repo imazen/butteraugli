@@ -6,15 +6,22 @@ use zensim::{AlphaMode, PixelFormat, StridedBytes, Zensim, ZensimProfile};
 
 use zensim::profile::ProfileParams;
 
-static WEIGHTS: [f64; 372] = [1.0; 372];
-static PARAMS: OnceLock<ProfileParams> = OnceLock::new();
+static WEIGHTS_228: [f64; 228] = [1.0; 228];
+static WEIGHTS_372: [f64; 372] = [1.0; 372];
+static PARAMS_228: OnceLock<ProfileParams> = OnceLock::new();
+static PARAMS_372: OnceLock<ProfileParams> = OnceLock::new();
 
-pub(crate) fn extractor() -> Zensim {
-    let params = PARAMS.get_or_init(|| {
+pub(crate) fn extractor(count: usize) -> Zensim {
+    let (slot, weights): (&OnceLock<ProfileParams>, &'static [f64]) = match count {
+        228 => (&PARAMS_228, &WEIGHTS_228),
+        372 => (&PARAMS_372, &WEIGHTS_372),
+        _ => panic!("unsupported feature probe"),
+    };
+    let params = slot.get_or_init(|| {
         ProfileParams::builder()
-            .weights(&WEIGHTS)
-            .extended_features(true)
-            .compute_iw_features(true)
+            .weights(weights)
+            .extended_features(count > 228)
+            .compute_iw_features(count == 372)
             .build()
     });
     Zensim::new(ZensimProfile::Custom {
@@ -63,7 +70,7 @@ pub(crate) fn extract(
         AlphaMode::Opaque,
     )?;
     let features = scorer.compute_all_features(&a, &b)?.into_features();
-    if features.len() != 372 || !features.iter().all(|v| v.is_finite()) {
+    if !matches!(features.len(), 228 | 372) || !features.iter().all(|v| v.is_finite()) {
         return Err("unexpected or nonfinite feature vector".into());
     }
     Ok(features)
@@ -91,10 +98,13 @@ mod tests {
             }
             out
         };
-        let scorer = extractor();
-        assert_eq!(
-            extract(&scorer, &a, &b, w, h, w * 16).unwrap(),
-            extract(&scorer, &pad(&a), &pad(&b), w, h, stride).unwrap()
-        );
+        for count in [228, 372] {
+            let scorer = extractor(count);
+            assert_eq!(
+                extract(&scorer, &a, &b, w, h, w * 16).unwrap(),
+                extract(&scorer, &pad(&a), &pad(&b), w, h, stride).unwrap()
+            );
+            assert_eq!(extract(&scorer, &a, &b, w, h, w * 16).unwrap().len(), count);
+        }
     }
 }

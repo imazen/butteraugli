@@ -53,14 +53,15 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 black_box(&result);
                 (result.score, result.pnorm_3)
             }
-            "features372" => {
+            "features228" | "features372" => {
+                let count = if args[1] == "features228" { 228 } else { 372 };
                 let a = student::rgba(&reference);
                 drop(reference);
                 let b = student::rgba(&distorted);
                 drop(distorted);
-                let features = student::extract(&student::extractor(), &a, &b, w, h, w * 16)?;
+                let features = student::extract(&student::extractor(count), &a, &b, w, h, w * 16)?;
                 println!(
-                    "features372\t{w}\t{h}\t{} features; no trained score",
+                    "features{count}\t{w}\t{h}\t{} features; no trained score",
                     features.len()
                 );
                 black_box(features);
@@ -84,7 +85,7 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     let teacher_params = params.clone();
     let features = if args[0] == "--bench-features" {
         Some((
-            student::extractor(),
+            student::extractor(372),
             student::rgba(&reference),
             student::rgba(&distorted),
         ))
@@ -109,6 +110,21 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 });
             });
             if let Some((scorer, a, b)) = features {
+                let (a228, b228) = (a.clone(), b.clone());
+                let scorer228 = student::extractor(228);
+                group.bench("features228_only", move |bench| {
+                    bench.iter(|| {
+                        student::extract(
+                            &scorer228,
+                            black_box(&a228),
+                            black_box(&b228),
+                            w,
+                            h,
+                            w * 16,
+                        )
+                        .unwrap()
+                    });
+                });
                 group.bench("features372_only", move |bench| {
                     bench.iter(|| {
                         student::extract(&scorer, black_box(&a), black_box(&b), w, h, w * 16)
