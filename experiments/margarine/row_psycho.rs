@@ -6,15 +6,15 @@ use butteraugli::ButteraugliParams;
 use std::{error::Error, sync::Arc};
 
 type Row = Arc<Vec<f32>>;
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 enum Op {
     Input,
     MirrorH(usize, [f32; 3]),
     MirrorV(usize, [f32; 3]),
     Opsin(usize, usize),
     Reduce(usize, usize),
-    GaussianH(usize, Arc<Vec<f32>>, Arc<Vec<f32>>),
-    GaussianV(usize, Arc<Vec<f32>>, Arc<Vec<f32>>),
+    GaussianH(usize, usize),
+    GaussianV(usize, usize),
     Expand(usize, usize),
     Subtract(usize, usize),
     High(usize, usize),
@@ -35,6 +35,7 @@ struct Graph<'a, 'b> {
     factor: usize,
     intensity: f32,
     nodes: Vec<Node>,
+    kernels: Vec<(Vec<f32>, Vec<f32>)>,
     output: usize,
 }
 impl<'a, 'b> Graph<'a, 'b> {
@@ -44,6 +45,7 @@ impl<'a, 'b> Graph<'a, 'b> {
             factor,
             intensity,
             nodes: Vec::new(),
+            kernels: Vec::new(),
             output: 0,
         };
         let w = input.width.div_ceil(factor);
@@ -66,8 +68,8 @@ impl<'a, 'b> Graph<'a, 'b> {
                 Op::MirrorH(s, _)
                 | Op::MirrorV(s, _)
                 | Op::Reduce(s, _)
-                | Op::GaussianH(s, _, _)
-                | Op::GaussianV(s, _, _)
+                | Op::GaussianH(s, _)
+                | Op::GaussianV(s, _)
                 | Op::Expand(s, _) => vec![*s],
                 Op::Opsin(a, b) | Op::Subtract(a, b) | Op::High(a, b) => vec![*a, *b],
                 Op::Finish(s) => s.to_vec(),
@@ -126,24 +128,17 @@ impl<'a, 'b> Graph<'a, 'b> {
                 ],
             )
         };
-        let kernel = Arc::new(crate::exact_blur::compute_kernel(sigma));
+        let kernel = crate::exact_blur::compute_kernel(sigma);
+        let radius = kernel.len() / 2;
         let inverse = 1.0 / kernel.iter().sum::<f32>();
-        let scaled: Arc<Vec<f32>> = Arc::new(kernel.iter().map(|v| v * inverse).collect());
-        let horizontal = self.same(
-            Op::GaussianH(reduced, kernel.clone(), scaled.clone()),
-            reduced,
-            c,
-        );
+        let scaled = kernel.iter().map(|v| v * inverse).collect();
+        let kernel_id = self.kernels.len();
+        self.kernels.push((kernel, scaled));
+        let horizontal = self.same(Op::GaussianH(reduced, kernel_id), reduced, c);
         let n = &self.nodes[horizontal];
         let vertical = self.add(
-            Op::GaussianV(horizontal, kernel.clone(), scaled),
-            [
-                n.width,
-                n.height,
-                c,
-                n.step,
-                n.latency + kernel.len() / 2 * n.step,
-            ],
+            Op::GaussianV(horizontal, kernel_id),
+            [n.width, n.height, c, n.step, n.latency + radius * n.step],
         );
         if factor == 1 {
             vertical
@@ -164,7 +159,7 @@ impl<'a, 'b> Graph<'a, 'b> {
             .take()
             .and_then(|(_, r)| Arc::try_unwrap(r).ok())
             .unwrap_or_else(|| vec![0.0; node.width * node.channels]);
-        let (op, w, c) = (node.op.clone(), node.width, node.channels);
+        let (op, w, c) = (node.op, node.width, node.channels);
         match op {
             Op::Input => {
                 let (r, gb) = out.split_at_mut(w);
@@ -196,22 +191,28 @@ impl<'a, 'b> Graph<'a, 'b> {
             Op::Reduce(source, factor) => {
                 let sw = self.nodes[source].width;
                 let end = ((y + 1) * factor).min(self.nodes[source].height);
-                let rows: Vec<_> = (y * factor..end).map(|y| self.row(source, y)).collect();
-                reduce_row(&rows, sw, w, factor, &mut out);
+                let count = end - y * factor;
+                let rows: [Option<Row>; 4] =
+                    std::array::from_fn(|i| (i < count).then(|| self.row(source, y * factor + i)));
+                let views = rows
+                    .each_ref()
+                    .map(|r| r.as_deref().map_or(&[][..], |r| r.as_slice()));
+                reduce_row(&views[..count], sw, w, factor, &mut out);
             }
-            Op::GaussianH(source, kernel, scaled) => {
+            Op::GaussianH(source, kernel_id) => {
                 let row = self.row(source, y);
+                let (kernel, scaled) = &self.kernels[kernel_id];
                 for channel in 0..c {
                     stream_blur::horizontal(
                         &row[channel * w..(channel + 1) * w],
-                        &kernel,
-                        &scaled,
+                        kernel,
+                        scaled,
                         &mut out[channel * w..(channel + 1) * w],
                     );
                 }
             }
-            Op::GaussianV(source, kernel, scaled) => {
-                let radius = kernel.len() / 2;
+            Op::GaussianV(source, kernel_id) => {
+                let radius = self.kernels[kernel_id].0.len() / 2;
                 let start = y.saturating_sub(radius);
                 let end = (y + radius + 1).min(self.nodes[source].height);
                 let mut rows: [Option<Row>; 64] = std::array::from_fn(|_| None);
@@ -219,6 +220,7 @@ impl<'a, 'b> Graph<'a, 'b> {
                 for (i, slot) in rows[..count].iter_mut().enumerate() {
                     *slot = Some(self.row(source, start + i));
                 }
+                let (kernel, scaled) = &self.kernels[kernel_id];
                 let raw = &kernel[start + radius - y..end + radius - y];
                 let mut border = [0.0; 64];
                 let weights = if raw.len() == kernel.len() {
@@ -382,7 +384,7 @@ fn opsin_row(
 #[archmage::autoversion]
 fn reduce_row(
     _token: archmage::SimdToken,
-    rows: &[Row],
+    rows: &[&[f32]],
     sw: usize,
     w: usize,
     factor: usize,
@@ -397,7 +399,7 @@ fn reduce_row(
 
 #[inline(always)]
 fn reduce_fixed<const F: usize, const N: usize>(
-    rows: &[Row],
+    rows: &[&[f32]],
     sw: usize,
     w: usize,
     out: &mut [f32],

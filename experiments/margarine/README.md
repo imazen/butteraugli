@@ -655,3 +655,9 @@ recipe accepts columns after rows. The geometry test compares 256, 512, 768 and
 1024 columns against the same full-map reference, including strided RGB16 and
 odd edges. This exposes a scheduling experiment; it does not select a new
 default or change the quality/resource gates.
+
+The row graph owns Gaussian kernels in an indexed table and copies lightweight
+operation descriptors. Area reduction borrows up to four cached row views from
+a stack array. This removes per-row kernel reference counting and temporary
+reduction vectors while preserving filter coefficients and arithmetic; the
+unchanged row/strip equivalence tests cover the resulting maps.
