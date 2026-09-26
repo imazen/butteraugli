@@ -27,7 +27,9 @@ class ChoiceUncertainty(unittest.TestCase):
         self.assertEqual(reverse['pointwise_95_harm'], 0)
 
     def test_loader_requires_complete_matching_finite_draws(self):
-        with tempfile.TemporaryDirectory(dir=Path.home() / 'tmp') as directory:
+        scratch = Path.home() / 'tmp'
+        scratch.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=scratch) as directory:
             p = Path(directory)
             (p / 'bootstrap.tsv').write_text('images\tdraws\tsimultaneous_95_radius\n2\t100\t1\n')
             identities = 'index\tsource\tpair\tmean\n0\ts\ta\t10\n1\ts\tb\t20\n'
