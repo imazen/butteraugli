@@ -1,0 +1,85 @@
+{
+  "build_commit": "61a9fd95678d48447f1cd5d040983d215367c33d",
+  "binary": "/home/lilith/work/codec-artifacts/margarine/row-cache-binaries-v2/margarine-box3",
+  "binary_sha256": "7caaaa30e5920ed46cf2fd814047d8753cdcee82c8c6e2373d0b8d46c7b3735d",
+  "host": "r5900xt",
+  "system": "Linux",
+  "threads": 2,
+  "crop_manifest": "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/crops-linux.tsv",
+  "crop_manifest_sha256": "6aaf8fa1f417fdcd039f22cac519b96ac5c4a56e4eb1042ed8b931afba255f5f",
+  "inputs": {
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/64x64-ref.png": "47c4196bdb2450b5a1e5e843ac132fb1b57d31ccf332e62f893f80d26c2fa188",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/64x64-dist.png": "ae36fb193a8427c22d4b80cac447c42e7110f13c920fd8831bdf5b0ad55ddefe",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/256x256-ref.png": "dfb31e29f4a06ac91f4a043c73214a4e8a8d7868a84a492f544463299096abf6",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/256x256-dist.png": "7f901c803499c2e4bc9b55a9213e57cfd75ae76b37202dcba65c2fe15644b271",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-ref.png": "19d33faa59a6354e5a5b50540f770b5f8fe5863754371a7aadca6397e07ae152",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-dist.png": "3eaa954d429ec7b4322a3fc09e6ff975b0e8f5d843c516b15adaa846564461ca",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/3355x2516-ref.png": "8cf7c241f8c00f3b92181bde4391cba15ea0fa24aa4e35942c0014fb72643b8e",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/3355x2516-dist.png": "a5c0560b2b205916398338a8bc2043ca01357ce315989087e12ff9b7c07362cf"
+  },
+  "timing": "interleaved metric-only and file-open/decode/metric arms; warm OS file cache",
+  "memory": "maximum across repeated fresh process platform time; decode and inputs included",
+  "memory_trials": 3,
+  "limitation": "same-image crops; no independent content coverage",
+  "candidate": "row-psycho",
+  "strip_rows": 128,
+  "time_fits": [
+    {
+      "arm": "teacher",
+      "timing": "mean_ns",
+      "alpha_ns": -9336579.166302323,
+      "beta_ns_per_pixel": 156.4295701513612,
+      "observed_sizes": 4,
+      "residual_ns": [
+        9295981.18183338,
+        5143499.481862716,
+        -16436846.159731418,
+        1997365.4960353374
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "teacher",
+      "timing": "decode_included_mean_ns",
+      "alpha_ns": -8306769.768953025,
+      "beta_ns_per_pixel": 171.69987077854177,
+      "observed_sizes": 4,
+      "residual_ns": [
+        8296255.694375071,
+        4284221.13761051,
+        -14322330.432527184,
+        1741853.6005415916
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "row-psycho",
+      "timing": "mean_ns",
+      "alpha_ns": -4164940.4181109667,
+      "beta_ns_per_pixel": 65.97717026345204,
+      "observed_sizes": 4,
+      "residual_ns": [
+        4368411.596668216,
+        3596826.1127253743,
+        -9060730.243058518,
+        1095492.5336649418
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "row-psycho",
+      "timing": "decode_included_mean_ns",
+      "alpha_ns": -3833611.5957016647,
+      "beta_ns_per_pixel": 77.18280669110356,
+      "observed_sizes": 4,
+      "residual_ns": [
+        4099824.0842766506,
+        3549172.026393501,
+        -8700203.821562275,
+        1051207.7108922005
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    }
+  ],
+  "run_heavy": "rc=0 130s | peak-RSS 1.60GiB | min-avail 56799MiB | peak-load 1.49"
+}

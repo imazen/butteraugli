@@ -848,3 +848,17 @@ row recomputation. That change needs its own measurements. Full initial maps
 remain on r5900xt in `row-psycho-aic4-2026-09-26/`; resources and compact replay
 metadata also exist on the Mac. Guard peak RSS was 1.56 GiB, minimum available
 RAM 56,641 MiB, peak load 1.60.
+
+Direct-consumer row caches and vectorized expansion (`61a9fd95`) retain
+[all AIC4 maps/scalars exactly](benchmarks/margarine_row_cache_aic4_parity_2026-09-26.json).
+The [three-fresh-process-per-arm resource sweep](benchmarks/margarine_row_cache_resources_2026-09-26.tsv)
+reports the largest peak for each arm: 1 MP/8.44 MP speedups are 2.471×/2.371×,
+RSS fractions 32.06%/15.95%. Tiny RSS still exceeds teacher (104.64%).
+The [1 MP instruction profile](benchmarks/margarine_row_cache_profile_2026-09-26.txt)
+identifies row reduction as 18.65% of 1,490,651,174 instructions, followed by
+native Malta evaluation at 13.85%. That profile prompted fixed-width row
+reduction; no throughput improvement is inferred from instruction counts.
+Full profile data remain in r5900xt `row-cache-profile-2026-09-26/` with input
+hashes and build commit; resources and compact AIC replay metadata also exist
+on the Mac. Guard peak RSS was 1.60 GiB, minimum available RAM 56,799 MiB,
+peak load 1.49.
