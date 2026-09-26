@@ -46,7 +46,12 @@ or AIC holdouts. Split development data by source, including crop/resize and
 cross-corpus duplicates.
 
 Use the full six-stat `zenstats::compute_panel`: SROCC, PLCC, KROCC, OR, PWRC,
-and Z-RMSE. Retain signed rank correlations beside its polarity-tolerant panel.
+and Z-RMSE. Report zenstats' `geomean3`, `harmean3`, and `min3` composites
+of SROCC, PLCC, and PWRC beside those individual statistics. These are the
+repository's panel aggregates, not additional statistics attributed to the
+Mohammadi paper. Z-RMSE and OR remain separate lower-is-better criteria;
+a composite improvement does not excuse a regression in either. Retain signed
+rank correlations beside the polarity-tolerant panel.
 Report each dataset, codec, source, and quality band, including sample counts
 and unavailable/degenerate cells. Compare candidate and teacher on identical
 rows. The user accepts up to 0.01 loss in rank correlation and 1% material
@@ -104,9 +109,13 @@ AIC-4 sample and its JPEG-AI-SDR25 subset are not independent datasets.
   [pooling](../../butteraugli/src/lib.rs).
 
 The pinned zenstats dependency avoids consuming concurrent local zensim work.
-This lab's PNG/JPEG reader assumes sRGB content; it is not a color-managed
-corpus ingress. Scoring official corpora requires verified common ingress,
-including bit depth and profiles, before calling the metric.
+The shared experimental reader uses encoded-sRGB input, preserving RGB16
+samples through the sRGB transfer function in f64 before storing f32. RGB8
+retains the teacher's lookup conversion. RGBA is accepted only when every
+alpha sample is opaque. This is an explicit SDR convention, not a general CMS;
+the corpus runner must audit metadata. Its original AIC mode still requires
+untagged RGB8 PNGs. CID22 inventory found two distinct PNG ICC profiles, both
+identifying sRGB; a broader audited corpus runner is still needed.
 
 ## Running the initial instruments
 

@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::io::{BufWriter, Write};
-use zenstats::{compute_panel, spearman};
+use zenstats::{LightPanel, ValAggregate, compute_panel, spearman};
 
 const HEADER: &str = "dataset\tsource\tcodec\tpair\ttarget\tdirection\tteacher\tcandidate";
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -96,15 +96,22 @@ fn panel(out: &mut impl Write, scope: &str, dataset: &str, key: &str, rows: &[&R
         if rows.len() < 4 || !has_spread(&target) || !has_spread(&pred) {
             writeln!(
                 out,
-                "{scope}\t{dataset}\t{key}\t{arm}\t{}\tunavailable\tNA\tNA\tNA\tNA\tNA\tNA\tNA",
+                "{scope}\t{dataset}\t{key}\t{arm}\t{}\tunavailable\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA",
                 rows.len()
             )?;
             continue;
         }
         let p = compute_panel(&pred, &target);
+        // Use the shared implementation, without another fit or different rows.
+        let light = LightPanel {
+            srocc: p.srocc,
+            plcc: p.plcc,
+            pwrc: p.pwrc,
+            n: p.n,
+        };
         writeln!(
             out,
-            "{scope}\t{dataset}\t{key}\t{arm}\t{}\tmeasured\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{scope}\t{dataset}\t{key}\t{arm}\t{}\tmeasured\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             rows.len(),
             spearman(&pred, &target),
             p.srocc,
@@ -112,7 +119,10 @@ fn panel(out: &mut impl Write, scope: &str, dataset: &str, key: &str, rows: &[&R
             p.krocc,
             p.or_ratio,
             p.pwrc,
-            p.z_rmse
+            p.z_rmse,
+            light.aggregate(ValAggregate::GeomeanSPP),
+            light.aggregate(ValAggregate::HarmeanSPP),
+            light.aggregate(ValAggregate::MinSPP),
         )?;
     }
     Ok(())
@@ -161,7 +171,7 @@ fn main() -> Result<()> {
     let mut out = BufWriter::new(std::fs::File::create_new(&args[1])?);
     writeln!(
         out,
-        "scope\tdataset\tkey\tarm\tn\tstatus\tsigned_srocc\tsrocc\tplcc\tkrocc\tor\tpwrc\tz_rmse"
+        "scope\tdataset\tkey\tarm\tn\tstatus\tsigned_srocc\tsrocc\tplcc\tkrocc\tor\tpwrc\tz_rmse\tgeomean3\tharmean3\tmin3"
     )?;
     let mut groups: BTreeMap<(&str, &str, String), Vec<&Row>> = BTreeMap::new();
     for row in &rows {
