@@ -732,3 +732,29 @@ panels also exceed 0.01, despite all four pooled screens passing. These are
 narrow-range point diagnostics without source-cluster confidence intervals;
 they do not establish a new acceptance rule. Complete six-stat/composite panels
 are in Mac `lattice-quality-bands-2026-09-26/`, with [hashes and evaluator identity](benchmarks/margarine_lattice_quality_bands_2026-09-26.meta.json).
+
+Frozen stratified correction (`76728638`) completed all 10,125 KADID pairs
+using the already verified teacher ledger. Its [pooled panel](benchmarks/margarine_stratified_kadid_2026-09-26.tsv)
+has largest SROCC loss 0.00693954 (max); all five pooled rank losses remain
+below 0.01. Its [participant disagreement counts](benchmarks/margarine_stratified_kadid_participants_2026-09-26.tsv)
+are larger than lattice: 16,409 max reversals, 6,722 pointwise harmful decreases
+and 2,825 simultaneous-family harmful decreases among 627,750 source-local
+pairs. p3 counts are 10,562, 4,290 and 1,825. Full maps remain in r5900xt
+`stratified-kadid-2026-09-26/`; bootstrap outputs and panels remain in
+`stratified-kadid-participants-2026-09-26/` with a compact Mac copy.
+The [measurement record](benchmarks/margarine_stratified_kadid_2026-09-26.meta.json)
+pins both scorer and evaluator provenance. These counts are not matched-rate
+encoder choices and do not establish the requested choice gate.
+
+The original AIC4 sample CSV also supplies marginal 95% JND intervals;
+these are now checked against all 300 frozen score identities. Among 7,500
+within-source cross-codec pairs, max has 74 [lattice](benchmarks/margarine_lattice_aic4_intervals_2026-09-26.tsv)
+versus 191 [stratified](benchmarks/margarine_stratified_aic4_intervals_2026-09-26.tsv)
+reversals whose candidate lower JND bound exceeds the teacher upper bound.
+For p3 the corresponding counts are 19 and 113. Interval non-overlap is
+reported literally: no paired-difference or simultaneous-coverage claim is
+made. The sample's full-resolution files on lilith are PNG reconstructions,
+not the original codec bitstreams, and this report has no matched byte budgets.
+The [source methodology](https://arxiv.org/html/2504.06301v1) describes resampling
+BTC/PTC responses and reconstructing scales. Original CSV and README links
+remain preserved in Mac `aic4-sample-audit-2026-09-25/`.

@@ -1,0 +1,15 @@
+{
+  "build_commit": "367cefb2f8aa8525f4b77eb05cc3294306c459dc",
+  "candidate": "lattice",
+  "scored_build_commit": "e7bc7678955e",
+  "cells_sha256": "f93d1954b6f4a937975a381f215834ecbaa41349a870b8aa5e32d82c227baa77",
+  "labels_sha256": "3f746bc6bc7f3a0fb3c7537ebc8b107f975014c26029333f5c9b4de4fffb59f9",
+  "labels_url": "https://raw.githubusercontent.com/jpeg-aic/JPEG-AIC-4-datasets/56723f70180637aa9916664c018cd82b955b6b4f/JPEG_AIC_reconstructed_jnd_scores.csv",
+  "status": "complete",
+  "criterion": "candidate JND lower bound exceeds teacher JND upper bound",
+  "limitation": "published marginal 95% intervals; no paired interval or multiplicity claim; no matched byte budgets",
+  "outputs": {
+    "disagreements.tsv": "918c819c547815b3b4bccc17e9a0a072f68f6d3c89e39e53e2a375a70ffe875c",
+    "summary.tsv": "129fa08fb0c331ba04ea2786888c32e5bc115e7d4bb112dd5b7dadce50c261c6"
+  }
+}
