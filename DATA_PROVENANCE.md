@@ -890,3 +890,14 @@ profile](benchmarks/margarine_row_reduce_profile_2026-09-26.txt) records
 1,152,280,842 instructions, with row reduction reduced to 2.18% and Malta
 now the largest metric stage at 17.92%. These instruction counts do not
 substitute for the separately measured timing results.
+
+The rolling Malta phase rows (`7e2fac48`) [preserve all 300 AIC4 maps and
+scalar norms](benchmarks/margarine_phase_rows_aic4_parity_2026-09-26.json).
+The [resource sweep](benchmarks/margarine_phase_rows_resources_2026-09-26.tsv)
+measures 3.194×/2.756× metric speed at 1 MP/8.44 MP and RSS fractions
+24.96%/13.26%. Tiny RSS is 101.68% of teacher, failing that condition.
+This untiled run does not meet the goal. Each peak is the largest of three
+fresh-process measurements. Full maps remain on r5900xt in
+`phase-rows-aic4-2026-09-26/`; compact replay and resource records also exist
+on the Mac. Guard peak RSS was 1.58 GiB, minimum available RAM 56,596 MiB,
+peak load 1.40.
