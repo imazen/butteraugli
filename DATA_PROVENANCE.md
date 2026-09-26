@@ -68,6 +68,15 @@ Every benchmark's adjacent `.meta.json` identifies its measured build and input.
 The single 620×800 RGB8 cost probe is not a size sweep. No 4×/quarter-RAM claim
 has passed across sizes or datasets.
 
+`resource-scaling-2026-09-26/` on the Mac measures exact center crops of AIC2026
+S67 reference/AVIF level 4 at 64², 256², 1024² and native 3355×2516. The original
+pair and attribution CSV are in `aic2026-resource-pair/`; crop coordinates are in
+`resource-crops-2026-09-26/crops.tsv`. Summary, hashes and descriptive time fits
+are tracked under `benchmarks/margarine_resource_scaling_mac_2026-09-26*`.
+The 228-feature probe passes the quarter-process-memory comparison at 1024²
+and native size, but its mean speedups there are 3.72× and 3.63×. Neither the
+whole-image nor strip probe satisfies both resource targets across these sizes.
+
 Heaptrack captures and reports live at `heap-2026-09-26/` on Mac and r5900xt;
 [their pointer](benchmarks/margarine_heap_2026-09-26.pointer.json) carries hashes.
 Heaptrack RSS includes instrumentation overhead. Use fresh-process platform
@@ -98,6 +107,15 @@ marked unknown. It does **not** satisfy the required dense size/quality/class
 coverage. See [the recorded inventory](benchmarks/margarine_teacher_training_inventory_2026-09-26.json).
 No weights have been fitted from it. These tables do not supply all five
 Butteraugli pooling targets or verified diffmap persistence.
+
+The AVIF table `/mnt/v/output/avifgen-2026-08-06/unified/scores.parquet` was also
+inventoried: 564,300 rows, 1,082 source IDs derived from explicit
+`ID.scaleWxH.png` filenames, and 30 quality values. Of those sources, 858 have
+only one represented size; none has more than nine. Low-quality sampling is
+step 5 while high quality is step 2. Content classes are unavailable. This
+table therefore also falls short of the requested dense training axes; its
+GPU max/p3 labels still need CPU-teacher verification. See
+[the metadata summary](benchmarks/margarine_avif_training_inventory_2026-09-26.json).
 
 Do not train or select weights using AIC4_sample or CID22 validation. Before
 training, verify source-family splits, duplicate/crop lineage, teacher arithmetic,
