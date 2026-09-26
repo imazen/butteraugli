@@ -788,3 +788,17 @@ also loses 0.01030100. Fixing the reference sample while retaining the selected
 native error vector did not preserve the required rankings. Full maps remain
 on r5900xt in `anchored-aic4-2026-09-26/`; compact metadata and panels are
 copied to the Mac. No resource qualification or additional corpus run was made.
+
+The rolling horizontal Gaussian buffer (`0afa1014`) has a
+[four-size resource sweep](benchmarks/margarine_stream_blur_resources_2026-09-26.tsv):
+metric speedups are 2.332× at 1 MP and 1.671× at 8.44 MP, with process RSS
+fractions 25.491% and 13.582%. At 64² RSS is 6,053,888 versus 5,910,528 bytes
+for teacher. It still fails speed, 1 MP memory, and tiny memory requirements.
+Guard peak RSS was 1.60 GiB, minimum available RAM 56,643 MiB, peak load 1.48.
+The [AIC4 replay](benchmarks/margarine_stream_blur_aic4_2026-09-26.tsv)
+retains the lattice corpus SROCC/KROCC values for all five norms. All 300 map
+hashes change through rounding; the largest absolute scalar change is
+2.1457672119140625e-6 (max). This is not bit parity. Full maps remain on
+r5900xt in `stream-blur-aic4-2026-09-26/`; resource records and compact AIC
+metadata are also on the Mac. Single-region pool retention was subsequently
+changed in `21b19447` and is being measured separately.

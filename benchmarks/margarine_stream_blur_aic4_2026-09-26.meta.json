@@ -1,0 +1,13 @@
+{
+  "build_commit": "0afa101420cec33c54052e09312f8cc62023b6ac",
+  "pairs": 300,
+  "changed_map_hashes": 300,
+  "max_absolute_scalar_difference": {
+    "max": 2.1457672119140625e-06,
+    "p1": 9.083655772013088e-09,
+    "p2": 1.4310020945984547e-08,
+    "p3": 4.140240950079033e-08,
+    "p6": 2.7086857246061413e-07
+  },
+  "ledger_sha256": "22ab2dcdc90bd04198e6835c4d611421d4d0f7a77a5912be93df6dc67f7b289f"
+}
