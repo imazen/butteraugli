@@ -934,3 +934,30 @@ phase-tiles measurement. Full maps remain on r5900xt in
 `expand-lanes-aic4-2026-09-26/`; compact replay and all resource records also
 exist on the Mac. Raw resource directories are `expand-lanes-resources-2026-09-26/`
 and `expand-lanes-rows256-resources-2026-09-26/`.
+
+The wider streaming FIR accumulator schedule (`6186fc47`) [preserves all
+AIC4 maps and norms](benchmarks/margarine_fir_lanes_aic4_parity_2026-09-26.json).
+The [resource sweep](benchmarks/margarine_fir_lanes_resources_2026-09-26.tsv)
+measures 3.358×/3.221× metric speed and 18.84%/8.13% process RSS at
+1 MP/8.44 MP. Decode-inclusive speedups are 2.940×/2.884×; small-image
+time/RAM remain below teacher. This still fails 4× speed. Full maps and
+profiles remain in r5900xt `fir-lanes-{aic4,profile}-2026-09-26/`; compact
+replay, flat profile and complete resources also exist on the Mac. The
+[1 MP profile](benchmarks/margarine_fir_lanes_profile_2026-09-26.txt) now places
+rolling Malta at 16.70%, horizontal Gaussian at 4.66% and vertical Gaussian
+at 2.50% of instructions, including decoding. Tiling differs from the older
+untiled profile, so these percentages are not a controlled stage speedup.
+Guard peak RSS was 1.55 GiB, minimum available RAM 56,537 MiB, peak load 1.55.
+
+The [official LIVE Release 1 JPEG](https://live.ece.utexas.edu/research/quality/JPEG/readme.txt)
+and [JPEG2000](https://live.ece.utexas.edu/research/quality/JPEG2000/readme.txt)
+archives contain individual raw responses, published processed observer
+matrices, processing MATLAB code and bitrate tables. The downloaded originals
+and metadata are in Mac `live-release1-metadata-2026-09-26/`; extracted images
+are in `live-release1-input-2026-09-26/` on Mac and r5900xt. Release 1 is a
+separate target from Release 2 DMOS. Its processing independently normalizes
+four codec/session cohorts. The new adapter retains those cohort boundaries,
+checks published means/sample deviations against nonzero processed opinions,
+and explicitly excludes documented zero-bitrate lossless controls. Bootstrap
+results from these matrices are conditional on published normalization and
+outlier selection; they cannot establish cross-cohort or Release 2 uncertainty.
