@@ -3,7 +3,13 @@
 use super::*;
 
 const TILE: usize = 128;
-const PATCHES: usize = if cfg!(feature = "refined1") { 1 } else { 3 };
+const PATCHES: usize = if cfg!(feature = "refined1") {
+    1
+} else if cfg!(feature = "refined2") {
+    2
+} else {
+    3
+};
 // Conservative finite support: opsin 2 + Gaussian radii 16+7+3 + mask 6+3,
 // doubled for the half-resolution contribution, plus its sampling footprint.
 const HALO: usize = 76;
