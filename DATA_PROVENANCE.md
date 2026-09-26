@@ -150,4 +150,6 @@ Lanczos3 in encoded sRGB, with no upscaling and a 4096-pixel maximum dimension.
 This is preparation only. No encodes, teacher targets or trained score exist for
 this pilot yet. Canonical variant registration, per-class coverage, cross-corpus
 near-duplicate checks and held-out representatives remain outstanding. The pilot
-is not a complete training corpus and has not yet been mirrored to Tower.
+is not a complete training corpus. Its Tower mirror is
+`/mnt/user/coefficient/output/margarine/dense-references-pilot-2026-09-26/`;
+the manifest and three deterministic output hashes match the Mac copy.

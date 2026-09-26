@@ -29,5 +29,6 @@
   "sizes_per_source": 20,
   "reference_bytes": 602010963,
   "verification": "All 1000 encoded PNG hashes and IHDR dimensions verified after rendering",
-  "tower_mirror": null
+  "tower_mirror": "tower:/mnt/user/coefficient/output/margarine/dense-references-pilot-2026-09-26/",
+  "tower_verification": "Manifest and three deterministic PNG samples SHA-256 matched after transfer; full local PNG verification is recorded above"
 }
