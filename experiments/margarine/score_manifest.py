@@ -136,18 +136,19 @@ def frozen_teacher(directory):
     if digest(directory / "cells.jsonl") != manifest["cells_sha256"]:
         raise ValueError("teacher ledger hash mismatch")
     rows = {}
-    for line in (directory / "cells.jsonl").open():
-        row = json.loads(line)
-        # Earlier frozen runs kept input hashes in their manifest, before cells
-        # carried them directly. Resolve that recorded provenance, never rehash
-        # today's files as a substitute for the original input identity.
-        for name in ("reference", "distorted"):
-            if name + "_sha256" not in row:
-                row[name + "_sha256"] = manifest["images"][row[name]]
-        key = row["dataset"], row["pair"]
-        if key in rows:
-            raise ValueError("duplicate teacher pair")
-        rows[key] = row
+    with (directory / "cells.jsonl").open() as ledger:
+        for line in ledger:
+            row = json.loads(line)
+            # Earlier frozen runs kept input hashes in their manifest, before cells
+            # carried them directly. Resolve that recorded provenance, never rehash
+            # today's files as a substitute for the original input identity.
+            for name in ("reference", "distorted"):
+                if name + "_sha256" not in row:
+                    row[name + "_sha256"] = manifest["images"][row[name]]
+            key = row["dataset"], row["pair"]
+            if key in rows:
+                raise ValueError("duplicate teacher pair")
+            rows[key] = row
     return rows
 
 
