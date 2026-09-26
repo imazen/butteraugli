@@ -166,7 +166,7 @@ def aligned_teacher(row, frozen, images, dimensions):
     return scores
 
 
-def evaluate_panels(cells, candidate, evaluator, output, report):
+def evaluate_panels(cells, candidate, evaluator, output, report, published_sigma=True):
     for norm in NORMS:
         path = output / f"scores-{norm}.tsv"
         fields = FIELDS[:6] + ["teacher", "candidate"]
@@ -181,7 +181,7 @@ def evaluate_panels(cells, candidate, evaluator, output, report):
             subprocess.run([str(evaluator), str(path),
                             str(output / f"panel-{norm}.tsv"), "0"],
                            stdout=log, stderr=subprocess.STDOUT, check=True)
-        if any("sigma" in cell for cell in cells):
+        if published_sigma and any("sigma" in cell for cell in cells):
             sigma_path = output / f"scores-published-sigma-{norm}.tsv"
             with sigma_path.open("x", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=fields + ["sigma"], delimiter="\t")

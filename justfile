@@ -79,6 +79,9 @@ margarine-kadid-opinions raw dmos output commit:
 margarine-panels scored evaluator output candidate commit:
     nice -n 19 python3 experiments/margarine/evaluate_manifest.py "{{scored}}" "{{evaluator}}" "{{output}}" --candidate "{{candidate}}" --build-commit "{{commit}}"
 
+margarine-ordinary-panels scored evaluator output candidate commit:
+    nice -n 19 python3 experiments/margarine/evaluate_manifest.py "{{scored}}" "{{evaluator}}" "{{output}}" --candidate "{{candidate}}" --build-commit "{{commit}}" --ordinary-only
+
 margarine-quality-bands evaluator scores output bands="5":
     nice -n 19 "{{evaluator}}" --quality-bands "{{scores}}" "{{output}}" "{{bands}}"
 

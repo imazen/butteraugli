@@ -149,6 +149,10 @@ NEW_OUTPUT CANDIDATE COMMIT` evaluates that ledger without decoding or scoring
 again. It verifies the ledger hash, pair count, identities and scoring arms,
 and records the separate evaluator hash and build commit. Panel replay accepts
 completed older runs too; their original files remain unchanged.
+`just margarine-ordinary-panels` takes the same arguments and explicitly
+requests only the ordinary panels. It retains every row, including rows with
+zero or missing published dispersion, and marks supplied-sigma panels as not
+requested in the replay manifest. This does not qualify those separate panels.
 
 `just margarine-participant-pairs SCORED OPINIONS EVALUATOR NEW_OUTPUT
 CANDIDATE COMMIT DRAWS SEED` joins the full KADID ledger to the reconciled

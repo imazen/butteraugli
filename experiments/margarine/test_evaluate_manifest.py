@@ -2,12 +2,25 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from evaluate_manifest import load_scores
-from score_manifest import digest
+from score_manifest import digest, evaluate_panels, NORMS
 
 
 class PersistedScoreTests(unittest.TestCase):
+    def test_ordinary_panels_retain_zero_sigma_rows_without_requesting_sigma_panel(self):
+        cell = dict(dataset='d', source='s', codec='c', pair='p', target='1', direction='quality',
+                    sigma=0, scores={a:dict.fromkeys(NORMS, 1.) for a in ['teacher', 'lattice']})
+        with tempfile.TemporaryDirectory() as directory, patch('score_manifest.subprocess.run') as run:
+            root = Path(directory)
+            evaluate_panels([cell], 'lattice', Path('evaluator'), root, lambda _:None,
+                            published_sigma=False)
+            self.assertEqual(run.call_count, 5)
+            self.assertFalse(list(root.glob('*published-sigma*')))
+            self.assertEqual(len((root/'scores-max.tsv').read_text().splitlines()), 2)
+            self.assertTrue(all('--published-sigma' not in c.args[0] for c in run.call_args_list))
+
     def test_replay_requires_complete_unchanged_aligned_scores(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

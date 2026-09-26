@@ -30,20 +30,24 @@ def main():
     parser.add_argument('output', type=Path)
     parser.add_argument('--candidate', required=True)
     parser.add_argument('--build-commit', required=True)
+    parser.add_argument('--ordinary-only', action='store_true',
+                        help='evaluate ordinary panels for every row; leave supplied-sigma panels explicitly unevaluated')
     args = parser.parse_args()
     cells, source = load_scores(args.scored, args.candidate)
     args.output.mkdir(parents=True, exist_ok=False)
     manifest = dict(build_commit=args.build_commit, candidate=args.candidate,
                     source=str(args.scored.resolve()), source_build_commit=source['build_commit'],
                     cells_sha256=source['cells_sha256'],
-                    evaluator_sha256=digest(args.evaluator), n_pairs=len(cells), status='running')
+                    evaluator_sha256=digest(args.evaluator), n_pairs=len(cells), status='running',
+                    published_sigma='not requested' if args.ordinary_only else 'requested when supplied')
     path = args.output / '_MANIFEST.json'
     path.write_text(json.dumps(manifest, indent=2) + '\n')
     with (args.output / 'progress.log').open('x', buffering=1) as log:
         def report(message):
             print(message, flush=True)
             print(message, file=log, flush=True)
-        evaluate_panels(cells, args.candidate, args.evaluator.resolve(), args.output, report)
+        evaluate_panels(cells, args.candidate, args.evaluator.resolve(), args.output, report,
+                        published_sigma=not args.ordinary_only)
         manifest['status'] = 'complete'
         path.write_text(json.dumps(manifest, indent=2) + '\n')
         report('Statistical panels complete; original scores and maps unchanged')
