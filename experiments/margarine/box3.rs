@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "bounded") {
+const CANDIDATE: &str = if cfg!(feature = "lattice") {
+    "lattice"
+} else if cfg!(feature = "bounded") {
     "bounded"
 } else if cfg!(feature = "stratified") {
     "stratified"
@@ -62,23 +64,31 @@ mod image;
     clippy::too_many_arguments
 )]
 mod shared_malta;
-#[cfg(not(any(feature = "compact4", feature = "sparse", feature = "physical")))]
+#[cfg(not(any(
+    feature = "compact4",
+    feature = "sparse",
+    feature = "lattice",
+    feature = "physical"
+)))]
 use shared_malta as malta;
 #[cfg(feature = "physical")]
 mod half_malta_bank;
 #[cfg(all(
     feature = "compact4",
-    not(any(feature = "sparse", feature = "physical"))
+    not(any(feature = "sparse", feature = "lattice", feature = "physical"))
 ))]
 #[path = "directional_malta.rs"]
 mod malta;
-#[cfg(all(feature = "sparse", not(feature = "physical")))]
+#[cfg(all(
+    any(feature = "sparse", feature = "lattice"),
+    not(feature = "physical")
+))]
 #[path = "sparse_malta.rs"]
 mod malta;
 #[cfg(feature = "physical")]
 #[path = "physical_malta.rs"]
 mod malta;
-#[cfg(any(feature = "sparse", feature = "physical"))]
+#[cfg(any(feature = "sparse", feature = "lattice", feature = "physical"))]
 mod malta_bank;
 #[path = "../../butteraugli/src/mask.rs"]
 mod mask;

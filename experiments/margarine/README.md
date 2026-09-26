@@ -485,3 +485,11 @@ match of staged image hashes, sizes and dimensions before scoring. This
 connects `prepare_human.py` to evaluation; label-only manifests cannot pass it.
 The current zenstats panel still uses corpus-level Z-RMSE, not the retained
 per-stimulus sigma values.
+
+The `lattice` feature adds regular 2×2 Malta output sampling to `bounded`,
+retaining its native frequency decomposition and all sixteen directional
+stencils. It loads interleaved native samples directly into fixed arrays,
+avoiding four materialized phase planes. Bilinear reconstruction fills the
+other response locations. Sampled-node tests require bit identity with the
+complete bank on tiny, odd, and strided inputs. This is an approximation
+between nodes; corpus and resource acceptance are separate.

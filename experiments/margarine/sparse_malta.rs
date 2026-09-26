@@ -17,6 +17,15 @@ pub(crate) fn malta_diff_map(
     let padded =
         crate::shared_malta::malta_scaled_differences(a, b, greater, smaller, norm, lf, pool);
     let (w, h) = (a.width(), a.height());
+    if cfg!(feature = "lattice") {
+        let mut coarse = ImageF::from_pool_dirty(w.div_ceil(2), h.div_ceil(2), pool);
+        native_evaluate(&padded, lf, &mut coarse);
+        padded.recycle(pool);
+        let mut result = ImageF::from_pool_dirty(w, h, pool);
+        reconstruct(&coarse, &mut result);
+        coarse.recycle(pool);
+        return result;
+    }
     let phases = phase_planes(&padded, pool);
     padded.recycle(pool);
     let mut coarse = ImageF::from_pool_dirty(w.div_ceil(2), h.div_ceil(2), pool);
@@ -28,6 +37,62 @@ pub(crate) fn malta_diff_map(
     reconstruct(&coarse, &mut result);
     coarse.recycle(pool);
     result
+}
+
+struct NativeWindow<'a> {
+    rows: [&'a [f32; 23]; 9],
+}
+impl BankWindow for NativeWindow<'_> {
+    #[inline(always)]
+    fn load(&self, dx: isize, dy: isize) -> V {
+        let row = self.rows[(dy + 4) as usize];
+        let start = (dx + 4) as usize;
+        V(std::array::from_fn(|lane| row[start + lane * 2]))
+    }
+}
+
+#[archmage::autoversion]
+fn native_evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, out: &mut ImageF) {
+    for y in 0..out.height() {
+        let full = out.width() / 8;
+        let row = out.row_mut(y);
+        for (block, dst) in row[..full * 8]
+            .as_chunks_mut::<8>()
+            .0
+            .iter_mut()
+            .enumerate()
+        {
+            let rows = std::array::from_fn(|r| {
+                padded.row(y * 2 + r)[block * 16..block * 16 + 23]
+                    .try_into()
+                    .unwrap()
+            });
+            let window = NativeWindow { rows };
+            *dst = if lf {
+                lf_bank(&window).0
+            } else {
+                hf_bank(&window).0
+            };
+        }
+        if row.len() != full * 8 {
+            let mut tail = [[0.0; 23]; 9];
+            for (r, dst) in tail.iter_mut().enumerate() {
+                let src = &padded.row(y * 2 + r)[full * 16..];
+                let n = src.len().min(dst.len());
+                dst[..n].copy_from_slice(&src[..n]);
+            }
+            let window = NativeWindow {
+                rows: std::array::from_fn(|r| &tail[r]),
+            };
+            let values = if lf {
+                lf_bank(&window)
+            } else {
+                hf_bank(&window)
+            };
+            let dst = &mut row[full * 8..];
+            dst.copy_from_slice(&values.0[..dst.len()]);
+        }
+    }
 }
 
 fn phase_planes(input: &ImageF, pool: &BufferPool) -> [ImageF; 4] {
