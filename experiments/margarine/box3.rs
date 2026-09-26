@@ -18,7 +18,13 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "row-malta") {
+const CANDIDATE: &str = if cfg!(feature = "wide-malta") {
+    if cfg!(feature = "row-malta") {
+        "wide-row-malta"
+    } else {
+        "wide-full-malta"
+    }
+} else if cfg!(feature = "row-malta") {
     "row-malta"
 } else if cfg!(feature = "full-malta") {
     if cfg!(feature = "coarse-gaussian") {

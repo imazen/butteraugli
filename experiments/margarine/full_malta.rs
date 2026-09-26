@@ -3,14 +3,16 @@
 use crate::image::{BufferPool, ImageF};
 use crate::malta_bank::{V, Window, hf_bank, lf_bank};
 
+const LANES: usize = if cfg!(feature = "wide-malta") { 16 } else { 8 };
+const WINDOW: usize = LANES + 8;
 struct NativeWindow<'a> {
-    rows: [&'a [f32; 16]; 9],
+    rows: [&'a [f32; WINDOW]; 9],
 }
-impl Window for NativeWindow<'_> {
+impl Window<LANES> for NativeWindow<'_> {
     #[inline(always)]
-    fn load(&self, dx: isize, dy: isize) -> V {
+    fn load(&self, dx: isize, dy: isize) -> V<LANES> {
         let start = (dx + 4) as usize;
-        let values: &[f32; 8] = self.rows[(dy + 4) as usize][start..start + 8]
+        let values: &[f32; LANES] = self.rows[(dy + 4) as usize][start..start + LANES]
             .try_into()
             .unwrap();
         V(*values)
@@ -27,7 +29,7 @@ pub(crate) fn malta_diff_map(
     lf: bool,
     pool: &BufferPool,
 ) -> ImageF {
-    if a.width() < 8 {
+    if a.width() < LANES {
         return crate::shared_malta::malta_diff_map(a, b, greater, smaller, norm, lf, pool);
     }
     let padded =
@@ -43,12 +45,12 @@ fn evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, step: usize,
     let width = out.width();
     for y in (0..out.height()).step_by(step) {
         let row = out.row_mut(y);
-        for block in 0..width.div_ceil(8) {
+        for block in 0..width.div_ceil(LANES) {
             // The last block overlaps when width is not divisible by eight.
-            let start = (block * 8).min(width - 8);
+            let start = (block * LANES).min(width - LANES);
             let window = NativeWindow {
                 rows: std::array::from_fn(|r| {
-                    padded.row(y + r)[start..start + 16].try_into().unwrap()
+                    padded.row(y + r)[start..start + WINDOW].try_into().unwrap()
                 }),
             };
             let values = if lf {
@@ -56,7 +58,7 @@ fn evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, step: usize,
             } else {
                 hf_bank(&window)
             };
-            row[start..start + 8].copy_from_slice(&values.0);
+            row[start..start + LANES].copy_from_slice(&values.0);
         }
     }
 }
@@ -73,7 +75,7 @@ pub(crate) fn sampled_rows_diff_map(
     lf: bool,
     pool: &BufferPool,
 ) -> ImageF {
-    let mut out = if a.width() < 8 {
+    let mut out = if a.width() < LANES {
         malta_diff_map(a, b, greater, smaller, norm, lf, pool)
     } else {
         let padded =

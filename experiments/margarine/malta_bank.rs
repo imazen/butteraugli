@@ -1,36 +1,36 @@
 //! The complete Butteraugli Malta stencils, shared by experimental layouts.
 #[derive(Clone, Copy)]
-pub(crate) struct V(pub(crate) [f32; 8]);
-impl std::ops::Add for V {
+pub(crate) struct V<const N: usize = 8>(pub(crate) [f32; N]);
+impl<const N: usize> std::ops::Add for V<N> {
     type Output = Self;
     #[inline(always)]
     fn add(self, other: Self) -> Self {
         Self(std::array::from_fn(|i| self.0[i] + other.0[i]))
     }
 }
-impl std::ops::Mul for V {
+impl<const N: usize> std::ops::Mul for V<N> {
     type Output = Self;
     #[inline(always)]
     fn mul(self, other: Self) -> Self {
         Self(std::array::from_fn(|i| self.0[i] * other.0[i]))
     }
 }
-impl std::ops::AddAssign for V {
+impl<const N: usize> std::ops::AddAssign for V<N> {
     #[inline(always)]
     fn add_assign(&mut self, other: Self) {
         *self = *self + other;
     }
 }
 
-impl V {
+impl<const N: usize> V<N> {
     #[inline(always)]
     pub(crate) fn splat(value: f32) -> Self {
-        Self([value; 8])
+        Self([value; N])
     }
 }
 
-pub(crate) trait Window {
-    fn load(&self, dx: isize, dy: isize) -> V;
+pub(crate) trait Window<const N: usize = 8> {
+    fn load(&self, dx: isize, dy: isize) -> V<N>;
 }
 macro_rules! w {
     ($window:expr,$dx:expr,$dy:expr) => {
@@ -39,8 +39,8 @@ macro_rules! w {
 }
 
 #[inline(always)]
-pub(crate) fn hf_bank<W: Window>(window: &W) -> V {
-    let mut retval = V([0.0; 8]);
+pub(crate) fn hf_bank<const N: usize, W: Window<N>>(window: &W) -> V<N> {
+    let mut retval = V([0.0; N]);
 
     // Pattern 1: x grows, y constant (horizontal line)
     {
@@ -260,8 +260,8 @@ pub(crate) fn hf_bank<W: Window>(window: &W) -> V {
 }
 
 #[inline(always)]
-pub(crate) fn lf_bank<W: Window>(window: &W) -> V {
-    let mut retval = V([0.0; 8]);
+pub(crate) fn lf_bank<const N: usize, W: Window<N>>(window: &W) -> V<N> {
+    let mut retval = V([0.0; N]);
 
     // Pattern 1: x grows, y constant (sparse horizontal)
     {

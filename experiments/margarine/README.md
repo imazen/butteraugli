@@ -632,3 +632,10 @@ pseudonyms. Location and IP fields are not copied. Its manifest reports counts,
 duplicate worker/image observations, and exact agreement within the published
 decimal rounding intervals. A `requires-reconciliation` result must not be
 treated as the participant sample behind the published labels.
+
+`wide-malta` evaluates the complete native Malta bank in sixteen array lanes
+instead of eight. It preserves the uniform overlapping-block tail traversal.
+Debug and release exact-response tests pass on aarch64 and x86_64; these checks
+do not establish a speed improvement. `margarine-direct-perf` records CPU cycles
+for the interleaved timing workload. Its percentages include teacher, candidate
+and decoding arms, and instrumented timings do not qualify resource targets.
