@@ -335,6 +335,20 @@ def main():
             subprocess.run([str(binaries["margarine-eval"]), str(path),
                             str(args.output / f"panel-{norm}.tsv"), "0"],
                            stdout=log, stderr=subprocess.STDOUT, check=True)
+        if any("sigma" in cell for cell in cells):
+            sigma_path = args.output / f"scores-published-sigma-{norm}.tsv"
+            with sigma_path.open("x", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fields + ["sigma"], delimiter="\t")
+                writer.writeheader()
+                for cell in cells:
+                    writer.writerow(dict(**{key: cell[key] for key in FIELDS[:6]},
+                                         teacher=cell["scores"]["teacher"][norm],
+                                         candidate=cell["scores"][candidate][norm],
+                                         sigma=cell.get("sigma", "")))
+            with (args.output / f"eval-published-sigma-{norm}.log").open("x") as log:
+                subprocess.run([str(binaries["margarine-eval"]), "--published-sigma", str(sigma_path),
+                                str(args.output / f"panel-published-sigma-{norm}.tsv")],
+                               stdout=log, stderr=subprocess.STDOUT, check=True)
         report(f"Evaluated {norm}")
     provenance["status"] = "complete"
     provenance["cells_sha256"] = digest(args.output / "cells.jsonl")

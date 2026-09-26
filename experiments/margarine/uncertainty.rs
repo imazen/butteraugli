@@ -164,6 +164,7 @@ mod tests {
                     target: q as f64,
                     teacher: (s * 10 + q) as f64,
                     candidate: (s * 10 + q) as f64 + 1.0,
+                    sigma: None,
                 })
             })
             .collect();

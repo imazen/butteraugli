@@ -15,14 +15,17 @@ struct Row {
     dataset: String,
     source: String,
     codec: String,
-    target: f64,    // normalized polarity only; larger = better
-    teacher: f64,   // raw distance; smaller = better
-    candidate: f64, // raw distance; smaller = better
+    target: f64,        // normalized polarity only; larger = better
+    teacher: f64,       // raw distance; smaller = better
+    candidate: f64,     // raw distance; smaller = better
+    sigma: Option<f64>, // native published label dispersion, not inferred standard error
 }
 
 fn parse(input: &str) -> Result<Vec<Row>> {
     let mut lines = input.lines();
-    if lines.next() != Some(HEADER) {
+    let header = lines.next().ok_or("missing header")?;
+    let with_sigma = header == format!("{HEADER}\tsigma");
+    if header != HEADER && !with_sigma {
         return Err(format!("expected header: {HEADER}").into());
     }
     let mut seen = BTreeSet::new();
@@ -30,7 +33,9 @@ fn parse(input: &str) -> Result<Vec<Row>> {
     let mut rows = Vec::new();
     for (i, line) in lines.enumerate() {
         let fields: Vec<_> = line.split('\t').collect();
-        if fields.len() != 8 || fields.iter().any(|f| f.is_empty()) {
+        if fields.len() != if with_sigma { 9 } else { 8 }
+            || fields[..8.min(fields.len())].iter().any(|f| f.is_empty())
+        {
             return Err(format!("line {}: expected eight nonempty fields", i + 2).into());
         }
         if !seen.insert((fields[0], fields[3])) {
@@ -64,6 +69,17 @@ fn parse(input: &str) -> Result<Vec<Row>> {
             )
             .into());
         }
+        let sigma = if with_sigma && !fields[8].is_empty() {
+            let value = fields[8].parse::<f64>()?;
+            if !value.is_finite() || value <= 0.0 {
+                return Err(
+                    format!("line {}: supplied sigma must be finite and positive", i + 2).into(),
+                );
+            }
+            Some(value)
+        } else {
+            None
+        };
         rows.push(Row {
             dataset: fields[0].into(),
             source: fields[1].into(),
@@ -71,6 +87,7 @@ fn parse(input: &str) -> Result<Vec<Row>> {
             target: sign * target,
             teacher,
             candidate,
+            sigma,
         });
     }
     if rows.is_empty() {
@@ -130,6 +147,57 @@ fn panel(out: &mut impl Write, scope: &str, dataset: &str, key: &str, rows: &[&R
     Ok(())
 }
 
+/// Supplied dispersion is reported separately from corpus-standardized panels.
+/// Missing sigma never silently removes rows from a statistic.
+fn published_sigma_panel(out: &mut impl Write, rows: &[Row]) -> Result<()> {
+    writeln!(
+        out,
+        "dataset\tarm\tn\tsigma_count\tstatus\tor_published_sigma\tz_rmse_published_sigma"
+    )?;
+    let mut groups: BTreeMap<&str, Vec<&Row>> = BTreeMap::new();
+    for row in rows {
+        groups.entry(&row.dataset).or_default().push(row);
+    }
+    for (dataset, rows) in groups {
+        let target: Vec<_> = rows.iter().map(|r| r.target).collect();
+        let sigma: Vec<_> = rows.iter().filter_map(|r| r.sigma).collect();
+        for (arm, prediction) in [
+            (
+                "teacher",
+                rows.iter().map(|r| -r.teacher).collect::<Vec<_>>(),
+            ),
+            (
+                "candidate",
+                rows.iter().map(|r| -r.candidate).collect::<Vec<_>>(),
+            ),
+        ] {
+            if sigma.len() != rows.len()
+                || rows.len() < 4
+                || !has_spread(&target)
+                || !has_spread(&prediction)
+            {
+                writeln!(
+                    out,
+                    "{dataset}\t{arm}\t{}\t{}\tunavailable\tNA\tNA",
+                    rows.len(),
+                    sigma.len()
+                )?;
+                continue;
+            }
+            let transformed = zenstats::rescale_logistic(&prediction, &target);
+            writeln!(
+                out,
+                "{dataset}\t{arm}\t{}\t{}\tmeasured\t{}\t{}",
+                rows.len(),
+                sigma.len(),
+                zenstats::outlier_ratio_per_sample(&transformed, &target, &sigma),
+                zenstats::z_rmse_per_sample(&transformed, &target, &sigma)
+            )?;
+        }
+    }
+    Ok(())
+}
+
 #[derive(Default, Debug, PartialEq)]
 struct Orders {
     decisive: u64,
@@ -162,6 +230,18 @@ fn orders(rows: &[&Row], epsilon: f64) -> Orders {
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--published-sigma") {
+        if args.len() != 3 {
+            return Err(
+                "usage: margarine-eval --published-sigma SCORES_WITH_SIGMA.tsv NEW_OUTPUT.tsv"
+                    .into(),
+            );
+        }
+        let rows = parse(&std::fs::read_to_string(&args[1])?)?;
+        let mut out = BufWriter::new(std::fs::File::create_new(&args[2])?);
+        published_sigma_panel(&mut out, &rows)?;
+        return Ok(());
+    }
     if args.first().is_some_and(|a| a == "--bootstrap-all") {
         if args.len() != 5 {
             return Err(
@@ -258,6 +338,63 @@ mod tests {
 
     fn input(body: &str) -> String {
         format!("{HEADER}\n{body}")
+    }
+
+    #[test]
+    fn supplied_sigma_is_explicit_and_missing_values_are_not_dropped() {
+        let header = format!("{HEADER}\tsigma\n");
+        for invalid in ["0", "-1", "NaN", "inf"] {
+            assert!(parse(&format!("{header}d\ts\tc\tp\t1\tquality\t2\t3\t{invalid}")).is_err());
+        }
+        let body = (0..6)
+            .map(|i| {
+                format!(
+                    "d\ts\tc\tp{i}\t{}\tquality\t{}\t{}\t1",
+                    i + 1,
+                    6 - i,
+                    [6, 4, 5, 2, 3, 1][i]
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut rows = parse(&(header + &body)).unwrap();
+        let mut first = Vec::new();
+        published_sigma_panel(&mut first, &rows).unwrap();
+        let first = String::from_utf8(first).unwrap();
+        let z: f64 = first
+            .lines()
+            .last()
+            .unwrap()
+            .split('\t')
+            .next_back()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(z > 0.0);
+        for row in &mut rows {
+            row.sigma = Some(2.0);
+        }
+        let mut twice = Vec::new();
+        published_sigma_panel(&mut twice, &rows).unwrap();
+        let twice = String::from_utf8(twice).unwrap();
+        let z_twice: f64 = twice
+            .lines()
+            .last()
+            .unwrap()
+            .split('\t')
+            .next_back()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(z, 2.0 * z_twice);
+        rows[0].sigma = None;
+        let mut missing = Vec::new();
+        published_sigma_panel(&mut missing, &rows).unwrap();
+        assert!(
+            String::from_utf8(missing)
+                .unwrap()
+                .contains("\t6\t5\tunavailable\tNA\tNA")
+        );
     }
 
     #[test]

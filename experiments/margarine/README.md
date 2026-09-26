@@ -483,8 +483,8 @@ and preserves them in its ledger. `--input-audit PREPARED/_MANIFEST.json`
 requires the full source audit, identical pair-manifest bytes, and an exact
 match of staged image hashes, sizes and dimensions before scoring. This
 connects `prepare_human.py` to evaluation; label-only manifests cannot pass it.
-The current zenstats panel still uses corpus-level Z-RMSE, not the retained
-per-stimulus sigma values.
+The original zenstats panel uses corpus-level Z-RMSE. The separate
+`--published-sigma` panel below consumes retained per-stimulus dispersion.
 
 The `lattice` feature adds regular 2×2 Malta output sampling to `bounded`,
 retaining its native frequency decomposition and all sixteen directional
@@ -510,3 +510,15 @@ samples the tile nearest each stratum's area-weighted mean. Area weights enter
 the correction. Distorted pixels cannot change region selection. This tests
 selection stability; it does not establish quality or resource acceptance.
 The selector supports RGB8/RGB16 and strided rows, with no input quantization.
+
+### Published label dispersion
+
+`margarine-eval --published-sigma SCORES_WITH_SIGMA.tsv NEW_OUTPUT.tsv` accepts
+the ordinary score schema with a final `sigma` column in native label units.
+It reports per-sample OR and Z-RMSE through zenstats, after logistic rescaling,
+in separate columns from the original corpus-standardized panel. Missing sigma
+is explicit `unavailable`; nonpositive or nonfinite supplied values fail.
+The manifest scorer writes these additional files when raw labels supply sigma.
+These statistics use the published dispersion as declared by `label_method`;
+they do not reinterpret observer dispersion as a standard error or establish
+statistically distinguishable encoder-choice harm.

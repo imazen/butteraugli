@@ -556,8 +556,8 @@ reduction is not a measured proportional wall-time improvement.
 The user clarified on 2026-09-26 that the 1% material-reversal limit concerns
 **human-rated quality loss**, not Butteraugli-score disagreement. Teacher regret
 curves remain diagnostics. Native human-label loss curves are available above;
-the material magnitude or uncertainty rule still needs definition. Do not
-substitute an unapproved teacher-relative percentage for this acceptance gate.
+the user subsequently specified statistically distinguishable decreases. Do not
+substitute point-label loss or teacher-relative regret for this acceptance gate.
 
 The first untouched broader-corpus run, [CSIQ](benchmarks/margarine_lattice_csiq_2026-09-26.tsv),
 is complete for all 866 pairs and thirty sources using frozen lattice
@@ -596,3 +596,19 @@ maximum SROCC loss 0.00334404 (p6); all five SROCC/KROCC losses stay below
 0.01. Z-RMSE worsens for all five norms. These are development point
 screens, not encoder-choice or resource qualification. Full maps remain
 on r5900xt in `lattice-aic4-2026-09-26/`.
+
+Participant uncertainty is required for the agreed material-choice criterion.
+The published CID22 annotation ZIP contains only the validation CSV and license.
+The full 7,288,601,687-byte archive's central directory contains 24,382 entries;
+its only non-image, non-directory entries are that CSV and the license. The
+inspected image plot (`1025469`) contains point curves without uncertainty fields.
+Raw HTML, annotation ZIP, source URLs and the full archive index are preserved
+in Mac `cid22-published-uncertainty-2026-09-26/`. No participant uncertainty
+was inferred from opinion counts or image-to-image bootstrap variation.
+
+The evaluator now supports a separate `--published-sigma` panel, using
+zenstats's per-sample OR and Z-RMSE after logistic rescaling. This preserves
+the original corpus-standardized panels. A missing dispersion value makes
+the complete corpus's supplied-sigma panel unavailable; it does not silently
+select a different subset. Published dispersion is not automatically a
+standard error, a paired-loss interval, or the encoder-choice significance gate.
