@@ -4,7 +4,7 @@
 pub use crate::exact_blur::{blur_mirrored_5x5, compute_separable5_weights};
 use crate::image::{BufferPool, ImageF};
 
-fn geometry(sigma: f32) -> (usize, f32) {
+pub(crate) fn geometry(sigma: f32) -> (usize, f32) {
     let factor = if sigma >= 6.0 {
         4
     } else if sigma >= 2.0 || (cfg!(feature = "coarse-gaussian") && sigma >= 1.0) {

@@ -71,11 +71,18 @@ pub(super) fn compute_encoded(
     if rows == 0 || (w, h) != (distorted.width, distorted.height) {
         return Err("invalid encoded strip pair".into());
     }
+    #[cfg(all(feature = "row-psycho", not(feature = "tiles")))]
+    {
+        crate::row_psycho::compute(reference, distorted, rows, params)
+    }
     #[cfg(feature = "tiles")]
     {
         tiles::compute(reference, distorted, rows, params)
     }
-    #[cfg(all(not(feature = "tiles"), feature = "planar"))]
+    #[cfg(all(
+        not(any(feature = "tiles", feature = "row-psycho")),
+        feature = "planar"
+    ))]
     {
         compose_scaled(w, h, rows, params, |factor, y0, y1, pool| {
             single_scale_encoded(
@@ -146,7 +153,7 @@ pub(super) fn single_scale(
     finish_scale(a, b, params, pool)
 }
 
-fn finish_scale(
+pub(super) fn finish_scale(
     a: psycho::PsychoImage,
     b: psycho::PsychoImage,
     params: &ButteraugliParams,

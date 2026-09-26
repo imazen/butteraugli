@@ -828,3 +828,11 @@ losses remain below 0.01, but that does not excuse the KROCC failures.
 No resource qualification or further corpus evaluation was run. Full maps
 remain in r5900xt `coarse-gaussian-aic4-2026-09-26/`; compact metadata and
 panels also exist on the Mac.
+
+The `row-psycho` experiment pulls linear RGB, opsin and frequency rows through
+bounded per-stage caches and then uses the existing local Malta/mask scorer.
+Its cache support includes downstream lookahead and both sides of scoring-strip
+overlap. Tests compare all ten frequency planes exactly against shared source
+for strided RGB16, odd/tiny dimensions and both scales, and verify each stage
+produces each row once across overlapping strips. This is a scheduling change;
+corpus parity and process resources still require measurement.

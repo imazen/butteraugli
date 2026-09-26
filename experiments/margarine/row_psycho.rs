@@ -1,0 +1,531 @@
+//! Pull frequency rows through bounded caches, retaining overlap across scoring
+//! strips. Shared Gaussian coefficients, nonlinearities and Malta scoring remain
+//! the contract; this is an experimental execution schedule.
+use crate::{blur, consts::*, diff, image, ingress, opsin, psycho, stream_blur, strips};
+use butteraugli::ButteraugliParams;
+use std::{error::Error, sync::Arc};
+
+type Row = Arc<Vec<f32>>;
+#[derive(Clone)]
+enum Op {
+    Input,
+    MirrorH(usize, [f32; 3]),
+    MirrorV(usize, [f32; 3]),
+    Opsin(usize, usize),
+    Reduce(usize, usize),
+    GaussianH(usize, Arc<Vec<f32>>, Arc<Vec<f32>>),
+    GaussianV(usize, Arc<Vec<f32>>, Arc<Vec<f32>>),
+    Expand(usize, usize),
+    Subtract(usize, usize),
+    High(usize, usize),
+    Finish([usize; 4]),
+}
+struct Node {
+    op: Op,
+    width: usize,
+    height: usize,
+    channels: usize,
+    step: usize,
+    latency: usize,
+    cache: Vec<Option<(usize, Row)>>,
+    generated: usize,
+}
+struct Graph<'a, 'b> {
+    input: &'a ingress::EncodedRows<'b>,
+    factor: usize,
+    intensity: f32,
+    nodes: Vec<Node>,
+    output: usize,
+}
+impl<'a, 'b> Graph<'a, 'b> {
+    fn new(input: &'a ingress::EncodedRows<'b>, factor: usize, intensity: f32) -> Self {
+        let mut g = Self {
+            input,
+            factor,
+            intensity,
+            nodes: Vec::new(),
+            output: 0,
+        };
+        let w = input.width.div_ceil(factor);
+        let h = input.height.div_ceil(factor);
+        let rgb = g.add(Op::Input, [w, h, 3, 1, 0]);
+        let weights = blur::compute_separable5_weights(1.2);
+        let horizontal = g.add(Op::MirrorH(rgb, weights), [w, h, 3, 1, 0]);
+        let vertical = g.add(Op::MirrorV(horizontal, weights), [w, h, 3, 1, 2]);
+        let xyb = g.add(Op::Opsin(rgb, vertical), [w, h, 3, 1, 2]);
+        let lf = g.gaussian(xyb, SIGMA_LF as f32);
+        let mf = g.same(Op::Subtract(xyb, lf), lf, 3);
+        let mf_blur = g.gaussian(mf, SIGMA_HF as f32);
+        let hf = g.same(Op::High(mf, mf_blur), mf_blur, 2);
+        let hf_blur = g.gaussian(hf, SIGMA_UHF as f32);
+        g.output = g.same(Op::Finish([lf, mf_blur, hf, hf_blur]), hf_blur, 10);
+        let latency = g.nodes[g.output].latency;
+        for node in &mut g.nodes {
+            // The scoring walker revisits both sides of its local halo. A
+            // producer additionally leads its consumer by the graph latency.
+            let support = 2 * (latency - node.latency + local_halo()) + 9;
+            node.cache = vec![None; support.div_ceil(node.step).min(node.height)];
+        }
+        g
+    }
+    fn add(&mut self, op: Op, shape: [usize; 5]) -> usize {
+        let [width, height, channels, step, latency] = shape;
+        let index = self.nodes.len();
+        self.nodes.push(Node {
+            op,
+            width,
+            height,
+            channels,
+            step,
+            latency,
+            cache: Vec::new(),
+            generated: 0,
+        });
+        index
+    }
+    fn same(&mut self, op: Op, source: usize, channels: usize) -> usize {
+        let n = &self.nodes[source];
+        self.add(op, [n.width, n.height, channels, n.step, n.latency])
+    }
+    fn gaussian(&mut self, source: usize, sigma: f32) -> usize {
+        let (factor, sigma) = blur::geometry(sigma);
+        let n = &self.nodes[source];
+        let [w, h, c, step, latency] = [n.width, n.height, n.channels, n.step, n.latency];
+        let reduced = if factor == 1 {
+            source
+        } else {
+            self.add(
+                Op::Reduce(source, factor),
+                [
+                    w.div_ceil(factor),
+                    h.div_ceil(factor),
+                    c,
+                    step * factor,
+                    latency + (factor - 1) * step,
+                ],
+            )
+        };
+        let kernel = Arc::new(crate::exact_blur::compute_kernel(sigma));
+        let inverse = 1.0 / kernel.iter().sum::<f32>();
+        let scaled: Arc<Vec<f32>> = Arc::new(kernel.iter().map(|v| v * inverse).collect());
+        let horizontal = self.same(
+            Op::GaussianH(reduced, kernel.clone(), scaled.clone()),
+            reduced,
+            c,
+        );
+        let n = &self.nodes[horizontal];
+        let vertical = self.add(
+            Op::GaussianV(horizontal, kernel.clone(), scaled),
+            [
+                n.width,
+                n.height,
+                c,
+                n.step,
+                n.latency + kernel.len() / 2 * n.step,
+            ],
+        );
+        if factor == 1 {
+            vertical
+        } else {
+            let latency = self.nodes[vertical].latency + factor * step;
+            self.add(Op::Expand(vertical, factor), [w, h, c, step, latency])
+        }
+    }
+    fn row(&mut self, id: usize, y: usize) -> Row {
+        let node = &mut self.nodes[id];
+        let slot = y % node.cache.len();
+        if let Some((stored, row)) = &node.cache[slot]
+            && *stored == y
+        {
+            return row.clone();
+        }
+        let mut out = node.cache[slot]
+            .take()
+            .and_then(|(_, r)| Arc::try_unwrap(r).ok())
+            .unwrap_or_else(|| vec![0.0; node.width * node.channels]);
+        let (op, w, c) = (node.op.clone(), node.width, node.channels);
+        match op {
+            Op::Input => {
+                let (r, gb) = out.split_at_mut(w);
+                let (g, b) = gb.split_at_mut(w);
+                self.input
+                    .linear_planar_row(y * self.factor, self.factor, [r, g, b]);
+            }
+            Op::MirrorH(source, weights) => {
+                let row = self.row(source, y);
+                for channel in 0..c {
+                    mirror_horizontal(
+                        &row[channel * w..(channel + 1) * w],
+                        weights,
+                        &mut out[channel * w..(channel + 1) * w],
+                    );
+                }
+            }
+            Op::MirrorV(source, weights) => {
+                let h = self.nodes[source].height;
+                let rows: [Row; 5] = std::array::from_fn(|i| {
+                    self.row(source, mirror(y as isize + i as isize - 2, h))
+                });
+                mirror_vertical(rows.each_ref().map(|r| r.as_slice()), weights, &mut out);
+            }
+            Op::Opsin(a, b) => {
+                let (a, b) = (self.row(a, y), self.row(b, y));
+                opsin_row(&a, &b, self.intensity, w, &mut out);
+            }
+            Op::Reduce(source, factor) => {
+                let sw = self.nodes[source].width;
+                let end = ((y + 1) * factor).min(self.nodes[source].height);
+                let rows: Vec<_> = (y * factor..end).map(|y| self.row(source, y)).collect();
+                reduce_row(&rows, sw, w, factor, &mut out);
+            }
+            Op::GaussianH(source, kernel, scaled) => {
+                let row = self.row(source, y);
+                for channel in 0..c {
+                    stream_blur::horizontal(
+                        &row[channel * w..(channel + 1) * w],
+                        &kernel,
+                        &scaled,
+                        &mut out[channel * w..(channel + 1) * w],
+                    );
+                }
+            }
+            Op::GaussianV(source, kernel, scaled) => {
+                let radius = kernel.len() / 2;
+                let start = y.saturating_sub(radius);
+                let end = (y + radius + 1).min(self.nodes[source].height);
+                let rows: Vec<_> = (start..end).map(|y| self.row(source, y)).collect();
+                let raw = &kernel[start + radius - y..end + radius - y];
+                let weights = if raw.len() == kernel.len() {
+                    scaled.as_ref().clone()
+                } else {
+                    let inv = 1.0 / raw.iter().sum::<f32>();
+                    raw.iter().map(|v| v * inv).collect()
+                };
+                // All channels share row weights; planar concatenation permits
+                // a single vectorized call without a channel-boundary stencil.
+                let views: Vec<_> = rows.iter().map(|r| r.as_slice()).collect();
+                stream_blur::vertical(&views, &weights, &mut out);
+            }
+            Op::Expand(source, factor) => {
+                let sw = self.nodes[source].width;
+                let sh = self.nodes[source].height;
+                let (a, b, fy) = coordinate(y, factor, sh);
+                let (a, b) = (self.row(source, a), self.row(source, b));
+                expand_row(&a, &b, [sw, w, factor], fy, &mut out);
+            }
+            Op::Subtract(a, b) => {
+                let (a, b) = (self.row(a, y), self.row(b, y));
+                subtract_row(&a, &b, &mut out);
+            }
+            Op::High(a, b) => {
+                let (a, b) = (self.row(a, y), self.row(b, y));
+                high_row(&a, &b, w, &mut out);
+            }
+            Op::Finish(sources) => {
+                let rows = sources.map(|id| self.row(id, y));
+                finish_row(rows.each_ref().map(|r| r.as_slice()), w, &mut out);
+            }
+        }
+        let result = Arc::new(out);
+        self.nodes[id].cache[slot] = Some((y, result.clone()));
+        self.nodes[id].generated += 1;
+        result
+    }
+    fn prepare(&mut self, y0: usize, y1: usize, pool: &image::BufferPool) -> psycho::PsychoImage {
+        let w = self.nodes[self.output].width;
+        let mut result = psycho::PsychoImage::from_pool(w, y1 - y0, pool);
+        for y in y0..y1 {
+            let row = self.row(self.output, y);
+            for c in 0..10 {
+                let plane = match c {
+                    0..=1 => &mut result.uhf[c],
+                    2..=3 => &mut result.hf[c - 2],
+                    4..=6 => result.mf.plane_mut(c - 4),
+                    _ => result.lf.plane_mut(c - 7),
+                };
+                plane
+                    .row_mut(y - y0)
+                    .copy_from_slice(&row[c * w..(c + 1) * w]);
+            }
+        }
+        result
+    }
+}
+fn mirror(mut x: isize, size: usize) -> usize {
+    while x < 0 || x >= size as isize {
+        x = if x < 0 {
+            -x - 1
+        } else {
+            2 * size as isize - 1 - x
+        };
+    }
+    x as usize
+}
+fn coordinate(pixel: usize, factor: usize, length: usize) -> (usize, usize, f32) {
+    let p = ((pixel as f32 + 0.5) / factor as f32 - 0.5).max(0.0);
+    let a = (p as usize).min(length - 1);
+    (a, (a + 1).min(length - 1), p - a as f32)
+}
+fn local_halo() -> usize {
+    4.max(blur::support(MASK_RADIUS) + 3)
+}
+
+#[archmage::autoversion]
+fn mirror_horizontal(
+    _token: archmage::SimdToken,
+    input: &[f32],
+    weights: [f32; 3],
+    out: &mut [f32],
+) {
+    let [a, b, c] = weights;
+    for (x, v) in out.iter_mut().enumerate() {
+        let at = |dx| input[mirror(x as isize + dx, input.len())];
+        *v = at(0) * a + (at(-1) + at(1)) * b + (at(-2) + at(2)) * c;
+    }
+}
+#[archmage::autoversion]
+fn mirror_vertical(
+    _token: archmage::SimdToken,
+    rows: [&[f32]; 5],
+    weights: [f32; 3],
+    out: &mut [f32],
+) {
+    let [a, b, c] = weights;
+    for (i, v) in out.iter_mut().enumerate() {
+        *v = rows[2][i] * a + (rows[1][i] + rows[3][i]) * b + (rows[0][i] + rows[4][i]) * c;
+    }
+}
+#[archmage::autoversion]
+fn opsin_row(
+    _token: archmage::SimdToken,
+    a: &[f32],
+    b: &[f32],
+    intensity: f32,
+    w: usize,
+    out: &mut [f32],
+) {
+    let (min0, min1, min2) = opsin::opsin_absorbance(0.0, 0.0, 0.0, false);
+    for x in 0..w {
+        let (p0, p1, p2) = opsin::opsin_absorbance(
+            b[x] * intensity,
+            b[w + x] * intensity,
+            b[2 * w + x] * intensity,
+            true,
+        );
+        let [p0, p1, p2] = [p0, p1, p2].map(|p| p.max(1e-4));
+        let [s0, s1, s2] = [p0, p1, p2].map(|p| (opsin::gamma(p) / p).max(1e-4));
+        let (v0, v1, v2) = opsin::opsin_absorbance(
+            a[x] * intensity,
+            a[w + x] * intensity,
+            a[2 * w + x] * intensity,
+            false,
+        );
+        let (v0, v1, v2) = (
+            (v0 * s0).max(min0),
+            (v1 * s1).max(min1),
+            (v2 * s2).max(min2),
+        );
+        out[x] = v0 - v1;
+        out[w + x] = v0 + v1;
+        out[2 * w + x] = v2;
+    }
+}
+#[archmage::autoversion]
+fn reduce_row(
+    _token: archmage::SimdToken,
+    rows: &[Row],
+    sw: usize,
+    w: usize,
+    factor: usize,
+    out: &mut [f32],
+) {
+    for (channel, dst) in out.chunks_exact_mut(w).enumerate() {
+        for (x, v) in dst.iter_mut().enumerate() {
+            let x0 = x * factor;
+            let x1 = (x0 + factor).min(sw);
+            let mut sum = 0.0;
+            for row in rows {
+                for &value in &row[channel * sw + x0..channel * sw + x1] {
+                    sum += value;
+                }
+            }
+            *v = sum / ((x1 - x0) * rows.len()) as f32;
+        }
+    }
+}
+#[archmage::autoversion]
+#[allow(clippy::too_many_arguments)]
+fn expand_row(
+    _token: archmage::SimdToken,
+    a: &[f32],
+    b: &[f32],
+    shape: [usize; 3],
+    fy: f32,
+    out: &mut [f32],
+) {
+    let [sw, w, factor] = shape;
+    for (channel, dst) in out.chunks_exact_mut(w).enumerate() {
+        let (a, b) = (
+            &a[channel * sw..(channel + 1) * sw],
+            &b[channel * sw..(channel + 1) * sw],
+        );
+        for (x, v) in dst.iter_mut().enumerate() {
+            let (x0, x1, fx) = coordinate(x, factor, sw);
+            let top = a[x0] + fx * (a[x1] - a[x0]);
+            let bottom = b[x0] + fx * (b[x1] - b[x0]);
+            *v = top + fy * (bottom - top);
+        }
+    }
+}
+#[archmage::autoversion]
+fn subtract_row(_token: archmage::SimdToken, a: &[f32], b: &[f32], out: &mut [f32]) {
+    for ((v, a), b) in out.iter_mut().zip(a).zip(b) {
+        *v = a - b;
+    }
+}
+#[archmage::autoversion]
+fn high_row(_token: archmage::SimdToken, a: &[f32], b: &[f32], w: usize, out: &mut [f32]) {
+    let s = SUPPRESS_S as f32;
+    let yw = SUPPRESS_XY as f32;
+    for x in 0..w {
+        let y = a[w + x] - b[w + x];
+        out[x] = (a[x] - b[x]) * (yw / y.mul_add(y, yw)).mul_add(1.0 - s, s);
+        out[w + x] = y;
+    }
+}
+#[archmage::autoversion]
+fn finish_row(_token: archmage::SimdToken, rows: [&[f32]; 4], w: usize, out: &mut [f32]) {
+    let [lf, mf, hf, blurred] = rows;
+    let remove = |v: f32, range: f32| (v.abs() - range).max(0.0).copysign(v);
+    let amplify = |v: f32, range: f32| v + v.abs().min(range).copysign(v);
+    let clamp = |v: f32, limit: f32| {
+        let c = v.min(limit).max(-limit);
+        (v - c).mul_add(0.724_216_146_f64 as f32, c)
+    };
+    for x in 0..w {
+        let hc = clamp(blurred[w + x], MAXCLAMP_HF as f32);
+        out[x] = remove(hf[x] - blurred[x], REMOVE_UHF_RANGE as f32);
+        out[w + x] = clamp(hf[w + x] - hc, MAXCLAMP_UHF as f32) * MUL_Y_UHF as f32;
+        out[2 * w + x] = remove(blurred[x], REMOVE_HF_RANGE as f32);
+        out[3 * w + x] = amplify(hc * MUL_Y_HF as f32, ADD_HF_RANGE as f32);
+        out[4 * w + x] = remove(mf[x], REMOVE_MF_RANGE as f32);
+        out[5 * w + x] = amplify(mf[w + x], ADD_MF_RANGE as f32);
+        out[6 * w + x] = mf[2 * w + x];
+        out[7 * w + x] = lf[x] * XMUL_LF_TO_VALS as f32;
+        out[8 * w + x] = lf[w + x] * YMUL_LF_TO_VALS as f32;
+        out[9 * w + x] = (Y_TO_B_MUL_LF_TO_VALS as f32).mul_add(lf[w + x], lf[2 * w + x])
+            * BMUL_LF_TO_VALS as f32;
+    }
+}
+
+pub(super) fn compute(
+    a: &ingress::EncodedRows<'_>,
+    b: &ingress::EncodedRows<'_>,
+    rows: usize,
+    params: &ButteraugliParams,
+) -> Result<diff::InternalResult, Box<dyn Error>> {
+    let (w, h) = (a.width, a.height);
+    let scale = |factor| {
+        let (sw, sh) = (w.div_ceil(factor), h.div_ceil(factor));
+        let mut a = Graph::new(a, factor, params.intensity_target());
+        let mut b = Graph::new(b, factor, params.intensity_target());
+        let pool = image::BufferPool::with_capacity(if sh > rows { 32 } else { 0 });
+        let mut result = image::ImageF::new(sw, sh);
+        for start in (0..sh).step_by(rows) {
+            let end = (start + rows).min(sh);
+            let y0 = start.saturating_sub(local_halo()) / 4 * 4;
+            let y1 = (end + local_halo()).div_ceil(4).saturating_mul(4).min(sh);
+            let (pa, pb) =
+                diff::maybe_join(|| a.prepare(y0, y1, &pool), || b.prepare(y0, y1, &pool));
+            let map = strips::finish_scale(pa, pb, params, &pool);
+            for y in start..end {
+                result.row_mut(y).copy_from_slice(map.row(y - y0));
+            }
+            map.recycle(&pool);
+        }
+        result
+    };
+    let sub = (!params.single_resolution() && w >= 15 && h >= 15).then(|| scale(2));
+    let mut map = scale(1);
+    if let Some(sub) = sub {
+        diff::add_supersampled_2x(&sub, 0.5, &mut map);
+    }
+    let (score, pnorm_3) = diff::compute_score_from_diffmap(&map);
+    Ok(diff::InternalResult {
+        score,
+        pnorm_3,
+        diffmap: Some(map),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn every_frequency_row_matches_shared_pipeline_without_recomputation() {
+        use ingress::{EncodedRows, Samples};
+        for (w, h) in [(1, 1), (3, 5), (31, 73), (129, 277)] {
+            let stride = w * 3 + 7;
+            let mut data = vec![u16::MAX; stride * h];
+            for y in 0..h {
+                for x in 0..w {
+                    for c in 0..3 {
+                        data[y * stride + x * 3 + c] =
+                            ((x * 217 + y * 1597 + c * 21739 + x * y * 17) % 65536) as u16;
+                    }
+                }
+            }
+            let input = EncodedRows::new(Samples::U16(&data), w, h, stride, 3).unwrap();
+            for factor in [1, 2] {
+                let (sw, sh) = (w.div_ceil(factor), h.div_ceil(factor));
+                let pool = image::BufferPool::with_capacity(0);
+                let mut linear = image::Image3F::new(sw, sh);
+                for y in 0..sh {
+                    let (r, g, b) = linear.planes_mut();
+                    input.linear_planar_row(
+                        y * factor,
+                        factor,
+                        [r.row_mut(y), g.row_mut(y), b.row_mut(y)],
+                    );
+                }
+                let xyb = opsin::opsin_dynamics_image(&linear, 80.0, &pool);
+                let expected = psycho::separate_frequencies_owned(xyb, &pool);
+                let mut graph = Graph::new(&input, factor, 80.0);
+                for start in (0..sh).step_by(64) {
+                    let y0 = start.saturating_sub(local_halo()) / 4 * 4;
+                    let y1 = (start + 64 + local_halo())
+                        .div_ceil(4)
+                        .saturating_mul(4)
+                        .min(sh);
+                    let actual = graph.prepare(y0, y1, &pool);
+                    let planes = |p: &psycho::PsychoImage, y: usize| {
+                        (0..10)
+                            .map(|c| {
+                                match c {
+                                    0..=1 => p.uhf[c].row(y),
+                                    2..=3 => p.hf[c - 2].row(y),
+                                    4..=6 => p.mf.plane(c - 4).row(y),
+                                    _ => p.lf.plane(c - 7).row(y),
+                                }
+                                .to_vec()
+                            })
+                            .collect::<Vec<_>>()
+                    };
+                    for y in y0..y1 {
+                        assert_eq!(
+                            planes(&actual, y - y0),
+                            planes(&expected, y),
+                            "{w}x{h}, factor {factor}, row {y}"
+                        );
+                    }
+                }
+                for (id, node) in graph.nodes.iter().enumerate() {
+                    assert_eq!(
+                        node.generated, node.height,
+                        "node {id} recomputed rows on {w}x{h}, factor {factor}"
+                    );
+                }
+            }
+        }
+    }
+}

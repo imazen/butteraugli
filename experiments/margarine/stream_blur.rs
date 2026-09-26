@@ -54,7 +54,7 @@ pub(crate) fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> Im
 }
 
 #[archmage::autoversion]
-fn horizontal(
+pub(crate) fn horizontal(
     _token: archmage::SimdToken,
     input: &[f32],
     kernel: &[f32],
@@ -102,7 +102,12 @@ fn horizontal(
 }
 
 #[archmage::autoversion]
-fn vertical(_token: archmage::SimdToken, rows: &[&[f32]], weights: &[f32], output: &mut [f32]) {
+pub(crate) fn vertical(
+    _token: archmage::SimdToken,
+    rows: &[&[f32]],
+    weights: &[f32],
+    output: &mut [f32],
+) {
     let (blocks, tail) = output.as_chunks_mut::<8>();
     let count = blocks.len();
     for (i, dst) in blocks.iter_mut().enumerate() {

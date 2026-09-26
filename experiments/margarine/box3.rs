@@ -25,7 +25,9 @@ const CANDIDATE: &str = if cfg!(feature = "tiles") {
         "tiles"
     }
 } else if cfg!(feature = "lattice") {
-    if cfg!(feature = "coarse-gaussian") {
+    if cfg!(feature = "row-psycho") {
+        "row-psycho"
+    } else if cfg!(feature = "coarse-gaussian") {
         "coarse-gaussian"
     } else if cfg!(feature = "stream-blur") {
         "stream-blur"
@@ -396,3 +398,6 @@ mod experiment_tests {
         assert!(result.pnorm_3.is_finite() && result.pnorm_3 > 0.0);
     }
 }
+
+#[cfg(feature = "row-psycho")]
+mod row_psycho;
