@@ -25,7 +25,9 @@ const CANDIDATE: &str = if cfg!(feature = "tiles") {
         "tiles"
     }
 } else if cfg!(feature = "lattice") {
-    if cfg!(feature = "stream-blur") {
+    if cfg!(feature = "coarse-gaussian") {
+        "coarse-gaussian"
+    } else if cfg!(feature = "stream-blur") {
         "stream-blur"
     } else if cfg!(feature = "planar") {
         "planar"

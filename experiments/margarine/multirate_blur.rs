@@ -7,7 +7,10 @@ use crate::image::{BufferPool, ImageF};
 fn geometry(sigma: f32) -> (usize, f32) {
     let factor = if sigma >= 6.0 {
         4
-    } else if sigma >= 2.0 {
+    } else if sigma >= 2.0 || (cfg!(feature = "coarse-gaussian") && sigma >= 1.0) {
+        // At sigma=1, subtracting area/reconstruction variance leaves
+        // reduced sigma=0.25. This experiment also reduces the fine band;
+        // native residuals and all scoring stencils remain unchanged.
         2
     } else {
         1
