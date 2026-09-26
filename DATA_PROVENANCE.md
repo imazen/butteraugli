@@ -199,3 +199,32 @@ manifest, complete pairs export and three deterministic encoded-blob hashes
 match the Mac copy. `refs/` was excluded from this mirror because those bytes
 already live in `dense-references-pilot-2026-09-26/`; the stage manifest maps the
 flat source/size names to the same source IDs, dimensions and hashes.
+
+## Extractor compatibility and refreshed features
+
+Zensim supplies feature extraction for a teacher-distillation feasibility probe;
+its quality score is not a Margarine target or input. The representation still
+needs held-out teacher and human-quality validation. It is not a selected final
+architecture merely because its measured resource cost was promising.
+
+The isolated x86 tail repair landed in zensim `7d6d7451`; helper feature gating
+landed in `ad18b444`. The sibling checkout was synced and its duplicate local
+changes were proved already landed; historical experiments remain remotely
+tagged. Margarine's runtime pins `ad18b444` in commit `caccee81`.
+
+The broader sync changes features on 94/158 real comparison pairs across the
+50 pilot sources. The [compatibility record](benchmarks/margarine_x86_edge_tail_2026-09-26.json)
+pins both binaries and the measured changes. Do not fit the old feature sidecar
+and silently run the resulting model with the newer extractor.
+
+`dense-jpeg-features-ad18b444-2026-09-26/` on dev is the in-progress feature-only
+refresh, using frozen `feature-binaries-caccee81/` and runner `710d9f19`.
+The original Mac teacher run continues unchanged; its maps and five scalar
+targets are retained. After both complete, `fit_probe.py --features` joins by
+reference/encoded SHA-256 and requires equal key sets. The original 28/11/11
+source partitions remain fixed. This refresh generates no new encodes or maps.
+
+The private scalar runtime and cached-teacher evaluator are implemented, but no
+trained model has been evaluated. The four-pair CID22 adapter smoke on r5900xt
+uses synthetic coefficients solely to test alignment and panel generation;
+its artifacts are `student-eval-smoke-2026-09-26/`, not quality evidence.
