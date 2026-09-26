@@ -43,7 +43,10 @@ Mac artifact root:
 `3fcc5e2e763ca8a34404457b1d7da576e16c82a99d1e2ceb0f99c546cc860d4e`.
 The JSON manifest records input and binary hashes. Every pair retains all five
 norms and pointers to both native f32 diffmaps, named by map SHA-256.
-Tower mirroring is pending; no cloud mirror was made.
+Tower mirror: `/mnt/user/coefficient/output/margarine/box3-aic4-2026-09-25/`.
+The cell ledger hash matched after copying, and three deterministically
+sampled map hashes matched their content-addressed names (600 maps present).
+No cloud mirror was made.
 
 ```sh
 RAYON_NUM_THREADS=2 TMPDIR="$HOME/tmp" nice -n 19 python3 \
@@ -53,5 +56,16 @@ RAYON_NUM_THREADS=2 TMPDIR="$HOME/tmp" nice -n 19 python3 \
 ```
 
 The first Mac timing attempt was terminated when zenbench detected another
-agent's decoder benchmark. It produced no usable timing result. Performance
-must be measured on a quiet host before judging the cost of this control.
+agent's decoder benchmark. After that process finished, a fresh run completed
+30 rounds: teacher 32.79 ms, box3 47.84 ms (paired 95% slowdown interval
+44.1%–47.8%). Box3 fails the 4× speed target on this measured pair.
+JSON and logs: `../box3-resources-2026-09-25/aic4-native-quiet.{json,log}`
+relative to the artifact root above. Timing harness: `c11d287423e3`.
+
+Fresh-process `/usr/bin/time -v` on r5900xt (Zen 3, two Rayon threads) measured
+102,068 KiB peak RSS for teacher and 84,012 KiB for box3 on the same pair.
+This includes decoding and caller buffers; neither figure is metric-only
+working memory. Box3 fails the quarter-RAM target. The resource wrapper used
+a 12 GiB cgroup cap and recorded minimum available system RAM of 58,446 MiB
+and 58,375 MiB respectively. The Zen 3 timing attempts collected only four
+rounds due to benchmark-process gating and are not accepted speed evidence.

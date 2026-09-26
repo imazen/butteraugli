@@ -36,9 +36,12 @@ Use the full six-stat `zenstats::compute_panel`: SROCC, PLCC, KROCC, OR, PWRC,
 and Z-RMSE. Retain signed rank correlations beside its polarity-tolerant panel.
 Report each dataset, codec, source, and quality band, including sample counts
 and unavailable/degenerate cells. Compare candidate and teacher on identical
-rows. Do not mistake a confidence interval containing zero for evidence of
-non-inferiority: acceptable accuracy margins remain to be fixed before a
-ship decision. Source-cluster resampling is needed for uncertainty across
+rows. The user accepts up to 0.01 loss in rank correlation and 1% material
+encoder-choice reversals. Do not mistake a confidence interval containing zero
+for evidence of non-inferiority against those margins. The material-choice
+definition must be explicit in each decision panel; zero-epsilon pair counts
+are diagnostic counts, not that acceptance gate.
+Source-cluster resampling is needed for uncertainty across
 independent contents; zenstats' existing bootstrap resamples rows instead.
 
 The second panel checks encoder behavior: within-source candidate ordering,
