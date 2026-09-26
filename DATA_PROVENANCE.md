@@ -665,3 +665,16 @@ KADID images were staged from dev to r5900xt under
 `human-corpora-2026-09-26/kadid/` because dev's data volume had only 22 GB free.
 The source audit is `kadid-input-r5900-2026-09-26/`; scoring must verify that
 audit's image hashes and pair-manifest hash before computing results.
+
+The separate `stable-peak` experiment (`8d99ccec`) also fails the AIC4
+rank-loss screen: [max SROCC loses 0.01319081](benchmarks/margarine_stable_peak_aic4_2026-09-26.tsv),
+and p6 KROCC loses 0.01667781. Its p6 SROCC loss is 0.00983878; that does
+not excuse the other failures. Full maps remain on r5900xt in
+`stable-peak-aic4-2026-09-26/`; no resource qualification was run.
+
+The [whole-image lattice timing diagnostic](benchmarks/margarine_lattice_whole_1mp_2026-09-26.json)
+at 1 MP with 1,024-row interiors gives teacher/candidate metric means
+171.480/124.575 ms over twenty rounds, or 1.3765×. Decode-inclusive means
+are 192.174/140.659 ms. It is slower than the earlier 128-row path; removing
+strip overlap did not produce the hoped-for speedup. This single-size
+diagnostic has no fresh RSS measurement and does not qualify resource use.

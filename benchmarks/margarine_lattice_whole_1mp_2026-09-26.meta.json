@@ -1,0 +1,9 @@
+{
+  "build_commit": "e7bc7678955ea28212630faaba52352e743f4ed8",
+  "runtime_checkout_commit": "1756ae8823c18a7de09c076bbd709a886cffc5c3",
+  "host": "r5900xt",
+  "binary": "/home/lilith/work/codec-artifacts/margarine/lattice-binaries-e7bc7678/margarine-box3",
+  "command": "margarine-box3 --bench-direct 1024 1024x1024-ref.png 1024x1024-dist.png 1mp-whole.json",
+  "json_sha256": "25ac97bebf928b87781821f8d572d1dc907734f1d17eeee2aee15b0cfcc157ed",
+  "scope": "single-size timing diagnostic; no fresh RSS measurement or size qualification"
+}
