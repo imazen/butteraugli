@@ -1458,3 +1458,18 @@ The [selected candidate's screenshot CPU profile](benchmarks/margarine_vector_ro
 contains all interleaved benchmark arms; its percentages must not be presented
 as a candidate-only breakdown. [Artifact hashes](benchmarks/margarine_coarse_control_and_profile_2026-09-26.meta.json)
 retain both experiments' identities.
+
+The [latest executable RGB8 sweep](benchmarks/margarine_latest_rgb8_resources_2026-09-26.tsv)
+measures both timing and standalone process memory at `b6c1e6b1`: scoring
+speedups at 1 MP and 8.44 MP are 4.066335× and 4.420433×; process RSS fractions
+are 0.181122 and 0.080116. Decode-inclusive speedups are 3.403338× and
+3.671685×. Tiny/small costs remain below the teacher.
+
+AIC3's supplied `decoded/info_with_bitrates.csv` exists alongside `info.csv`
+and matches all 600 image identities and targets. The [observed-budget point
+diagnostic](benchmarks/margarine_vector_row_aic3_point_choices_2026-09-26.tsv)
+keeps the subjective and estimated cohorts separate. Primary max has 11
+point-label decreases in 479 subjective budgets, maximum 0.5 JND, mean signed
+loss 0.003131524 JND. The estimated cohort has six decreases in 121 budgets.
+The table supplies no participant uncertainty, so these are not counts of
+statistically distinguishable harm. The immutable scored ledger is unchanged.

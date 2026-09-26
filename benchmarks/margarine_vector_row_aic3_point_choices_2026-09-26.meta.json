@@ -1,0 +1,32 @@
+{
+  "build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+  "ledger": "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-aic3-container-2026-09-26/cells.jsonl",
+  "ledger_sha256": "d62fb9d0f4e178413341ce61be5ad284eae4ac6c7a0ac7ffd5dff21c1810c027",
+  "candidate": "simd-row-malta",
+  "teacher_norm": "max",
+  "budget_policy": "all distinct observed bpp values per source, no interpolation",
+  "tie_policy": "minimum score, then minimum bpp, then lexicographic pair ID",
+  "human_loss_thresholds": [
+    0.0
+  ],
+  "human_loss_policy": "signed native-label loss versus teacher-selected encode; not an uncertainty test",
+  "participant_panels": {},
+  "acceptance_gate": "unavailable: participant uncertainty not supplied; thresholds are diagnostics",
+  "aic3_rates": {
+    "path": "/Users/lilith/work/codec-artifacts/margarine/aic3-rates-2026-09-26/info_with_bitrates.csv",
+    "sha256": "41e072c990a2a867510a99f21123a17bc7144959714b2c4666d3d3e9d426da4a",
+    "join": "exact pair, source, codec, target and quality direction; estimated and subjective cohorts retained"
+  },
+  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/vector-row-aic3-point-choices-2026-09-26",
+  "artifacts": {
+    "choices-max.tsv": "806e1b3b7b97f22b6401e0f743a45e6eddc91963e96e29d1cac0a33356a73b20",
+    "choices-p2.tsv": "c66d5e6f30ae155fa5c3661275bac94252d141e5d49b5788f7d679fa6e91f4f1",
+    "choices-p3.tsv": "fb269f65dce30b1c0e08fb7619b7dd0bb193d3086bbba2fa57d47782a4588e5c",
+    "choices-p1.tsv": "ee3e1cd5ea11a7d61340a703243df52fda0393970b95bb61575a1951874d5936",
+    "choices-p6.tsv": "d896a0415c6e3ebdae3f605503f7508e9cc8c0c0f39541e46863ae43e50fa554",
+    "_MANIFEST.json": "605436c3c1657b2ac08488b481a036da7066ee7c2e4f39732ae5320207bd4012",
+    "human-summary.tsv": "c986e4a01d7d68b76925959b7bf9b0e0a2b610da7272516e2d20ab154be2ad8a",
+    "progress.log": "23b7518fda7e71fa460ec4cf006f9e3148b3f9992728413c3188fdb229854639",
+    "summary.tsv": "1cacb3019125fefa97a24b5523a93184da94f6332b887f8c741697c57da43744"
+  }
+}
