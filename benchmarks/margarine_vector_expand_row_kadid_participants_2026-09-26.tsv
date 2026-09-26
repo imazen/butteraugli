@@ -1,0 +1,6 @@
+norm	all_pairs	teacher_ties	candidate_ties	reversals	point_loss_positive	pointwise_95_harm	pointwise_95_benefit	simultaneous_95_harm	simultaneous_95_benefit
+max	627750	490	490	4315	2466	1898	1212	817	409
+p1	627750	486	486	1322	368	233	794	43	414
+p2	627750	486	486	1240	539	413	556	165	254
+p3	627750	486	486	1544	817	649	543	269	212
+p6	627750	486	486	2213	1338	1092	591	500	217

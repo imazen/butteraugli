@@ -1324,3 +1324,14 @@ WSL `subjective_ratings.csv` contains compression-level ratings per source;
 those values must not be reused as ordinary quality labels for arbitrary
 JPEG/BPG files. A threshold-specific evaluation is distinct from the ordinary
 TID/AIC3/LIVE/PIPAL panels.
+
+The streamed row candidate's [KADID participant diagnosis](benchmarks/margarine_vector_expand_row_kadid_participants_2026-09-26.tsv)
+uses all 304,406 reconciled opinions and 2,000 worker-bootstrap draws. Among
+627,750 within-source pairs, primary max reverses 4,315; 1,898 have pointwise
+95% human-supported harm and 817 retain harm under the simultaneous envelope.
+These are pair-order diagnostics, not bitrate choices. The saved 162 MB draw
+matrix permits future fixed-choice joins without rerunning the bootstrap.
+The [AIC4 interval diagnosis](benchmarks/margarine_vector_expand_row_aic4_intervals_2026-09-26.tsv)
+finds 64 harmful and 51 beneficial primary reversals with separated published
+intervals among 8,850 pairs. AIC4 has no original byte-budget table here, so this
+also remains a pairwise diagnostic rather than the encoder-choice gate.

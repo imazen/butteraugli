@@ -1,0 +1,7 @@
+{
+  "artifact_root": "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-kadid-participants-2026-09-26",
+  "manifest_sha256": "87f3aa3436ae82c291030c2d9028c03b3924c9346fe8fdf74f9ac6088fa94936",
+  "summary_sha256": "653c3fb9ca6ab463229e01478410a410bd85ad9fd0b86edb19221698a5071fba",
+  "build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+  "scope": "Within-source pairwise uncertainty diagnosis; not matched-byte encoder choices"
+}

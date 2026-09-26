@@ -1,0 +1,6 @@
+norm	pairs	cross_codec_pairs	teacher_ties	candidate_ties	reversals	cross_codec_reversals	point_harm	separated_harm	separated_benefit	cross_codec_separated_harm
+max	8850	7500	0	0	217	191	118	64	51	54
+p1	8850	7500	0	0	18	18	12	10	2	10
+p2	8850	7500	0	0	12	12	9	8	2	8
+p3	8850	7500	0	0	19	19	13	13	1	13
+p6	8850	7500	0	0	50	50	33	27	6	27
