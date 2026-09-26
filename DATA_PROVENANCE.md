@@ -390,3 +390,18 @@ Its generated maps remain in r5900xt `pooled-aic4-2026-09-26/`.
 The original invocation used a preparation label as build provenance; the
 manifest was corrected to the verified landed source commit, with the original
 manifest preserved and hashed.
+
+Native-XYB pair selection (`9ca083ff`) and corrected physical radii (`c428c4a7`)
+are both rejected on all five AIC4 rank-loss comparisons. Their
+[perceptual panel](benchmarks/margarine_perceptual_rejected_2026-09-26.tsv) and
+[physical-radius panel](benchmarks/margarine_physical_rejected_2026-09-26.tsv)
+record p3 SROCC 0.78912477 and 0.72752453, respectively, versus teacher
+0.89692419. At 1 MP the interleaved metric means are 32.281/146.034 ms
+(perceptual/teacher, 26 rounds) and 41.199/148.660 ms
+(physical/teacher, 25 rounds). Decode-inclusive means are 45.665/162.451 ms
+and 54.469/167.132 ms. Neither candidate qualifies the joint goal.
+Their maps remain on r5900xt in `perceptual-aic4-2026-09-26/` and
+`physical-aic4-2026-09-26/`; the Mac has compact metadata and panels.
+The perceptual timing JSON records the checkout's older runtime Git parent;
+the frozen binary and source provenance are pinned by the adjacent evaluation
+manifest, not that runtime field.
