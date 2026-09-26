@@ -1160,3 +1160,25 @@ rows, then linearly reconstructs the missing response rows before the shared
 scoring pipeline. The full-Malta entry point and its exact assertions remain
 separate. This analytical ablation has no fitted constants and no quality or
 resource qualification before corpus scoring and measurements.
+
+Row sampling (`37fbc16e`) passes the four LIVE max rank screens, but retains
+one statistically harmful JPEG2000 session-1 choice out of 87 budgets
+(1.1494%), under both pointwise and simultaneous participant intervals.
+The changed choice is `caps.bmp`: img68 instead of img49. The native peak
+in img68 is (734,415), score 4.541418; row sampling gives 4.156408 there and
+selects a different global peak. The missing peak remains the maximum inside
+its 512-column, 128-row core region, motivating a local refinement diagnostic.
+This is a rejected candidate, not an accepted relaxation of the choice limit.
+[All five LIVE panels and full-Malta AIC4/CSIQ panels](benchmarks/margarine_malta_controls_quality_2026-09-26.tsv)
+and [participant counts](benchmarks/margarine_row_malta_live1_choices_2026-09-26.tsv)
+retain the measured differences. Full-Malta max rank loss is below 0.01 on
+both new corpora; CID22 and KADID scoring remain separate.
+
+[Row-sampling resources](benchmarks/margarine_row_malta_resources_2026-09-26.tsv)
+are 3.217×/3.326× scoring speed and 17.793%/8.053% total-process RSS at
+1 MP/8.44 MP. The guard reports 1.55 GiB peak RSS, 56,678 MiB minimum
+available RAM and 1.73 peak load; reported arm peaks use fresh-process time.
+The [256-row full-Malta control](benchmarks/margarine_malta_rows256_resources_2026-09-26.tsv)
+measures 2.590×/2.790× and 23.417%/8.822% RSS. Increasing strip height does
+not establish the speed target. These resource sweeps use the same crop
+family and do not establish content-wide performance.
