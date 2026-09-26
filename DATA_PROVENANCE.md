@@ -802,3 +802,11 @@ hashes change through rounding; the largest absolute scalar change is
 r5900xt in `stream-blur-aic4-2026-09-26/`; resource records and compact AIC
 metadata are also on the Mac. Single-region pool retention was subsequently
 changed in `21b19447` and is being measured separately.
+
+Disabling unused scratch retention on single-region scales (`21b19447`)
+passes the tiny/small comparisons in the [four-size sweep](benchmarks/margarine_single_region_resources_2026-09-26.tsv):
+64² process RSS is 5,705,728 versus teacher 6,053,888 bytes and metric speedup
+is 2.045×; 256² RSS fraction is 74.58% and speedup 1.652×. The larger-image
+requirements remain unmet: 1 MP/8.44 MP speedups are 2.249×/1.692× and RSS
+fractions 25.20%/13.93%. All sizes have at least twenty interleaved rounds.
+Full records remain in `single-region-resources-2026-09-26/` on r5900xt and Mac.
