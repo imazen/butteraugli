@@ -73,10 +73,12 @@ fn parse(input: &str) -> Result<Vec<Row>> {
         }
         let sigma = if with_sigma && !fields[8].is_empty() {
             let value = fields[8].parse::<f64>()?;
-            if !value.is_finite() || value <= 0.0 {
-                return Err(
-                    format!("line {}: supplied sigma must be finite and positive", i + 2).into(),
-                );
+            if !value.is_finite() || value < 0.0 {
+                return Err(format!(
+                    "line {}: supplied sigma must be finite and nonnegative",
+                    i + 2
+                )
+                .into());
             }
             Some(value)
         } else {
@@ -175,6 +177,7 @@ fn published_sigma_panel(out: &mut impl Write, rows: &[Row]) -> Result<()> {
             ),
         ] {
             if sigma.len() != rows.len()
+                || sigma.contains(&0.0)
                 || rows.len() < 4
                 || !has_spread(&target)
                 || !has_spread(&prediction)
@@ -434,7 +437,7 @@ mod tests {
     #[test]
     fn supplied_sigma_is_explicit_and_missing_values_are_not_dropped() {
         let header = format!("{HEADER}\tsigma\n");
-        for invalid in ["0", "-1", "NaN", "inf"] {
+        for invalid in ["-1", "NaN", "inf"] {
             assert!(parse(&format!("{header}d\ts\tc\tp\t1\tquality\t2\t3\t{invalid}")).is_err());
         }
         let body = (0..6)
@@ -478,6 +481,16 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(z, 2.0 * z_twice);
+        let zero = parse(&format!("{HEADER}\tsigma\nd\ts\tc\tp\t1\tquality\t2\t3\t0")).unwrap();
+        assert_eq!(zero[0].sigma, Some(0.0));
+        rows[0].sigma = Some(0.0);
+        let mut zero_panel = Vec::new();
+        published_sigma_panel(&mut zero_panel, &rows).unwrap();
+        assert!(
+            String::from_utf8(zero_panel)
+                .unwrap()
+                .contains("\t6\t6\tunavailable\tNA\tNA")
+        );
         rows[0].sigma = None;
         let mut missing = Vec::new();
         published_sigma_panel(&mut missing, &rows).unwrap();

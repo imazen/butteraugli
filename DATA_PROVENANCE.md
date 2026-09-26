@@ -659,7 +659,9 @@ worker/image observations have distinct judgment IDs and equal ratings one
 second apart. Preserve those observations together in participant resamples;
 they are not six independent additional participants. The separate image audit
 verified 10,206 files totaling 3,070,504,062 bytes. Two published dispersions
-are zero; the sigma-normalized panel needs explicit handling before use.
+are zero. The approved evaluator correction accepts zero dispersion and marks
+the complete supplied-sigma panel unavailable instead of dividing by zero;
+ordinary panels retain every image.
 
 KADID images were staged from dev to r5900xt under
 `human-corpora-2026-09-26/kadid/` because dev's data volume had only 22 GB free.
@@ -707,9 +709,10 @@ harms, not matched-rate encoder-choice rates. The simultaneous radius is
 seed, binary and output hashes are in the [measurement record](benchmarks/margarine_lattice_kadid_2026-09-26.meta.json).
 Bootstrap means and full disagreements remain on r5900xt in
 `lattice-kadid-participants-2026-09-26/`; maps are not yet mirrored to Tower.
-The complete supplied-sigma panels remain unavailable pending correct handling
-of zero dispersion (two KADID and twenty-two CSIQ images); ordinary panels
-retain those images. No joint quality/resource acceptance is established.
+The complete supplied-sigma panels are unavailable because zero dispersion
+(two KADID and twenty-two CSIQ images) makes sigma-normalized residuals
+undefined. The user approved accepting those observations on 2026-09-26;
+ordinary panels retain them. No joint quality/resource acceptance is established.
 
 Direct planar ingress (`0cef9206`) preserves all 300 AIC4 maps and all five
 scalar norms [exactly](benchmarks/margarine_planar_aic4_parity_2026-09-26.json)
