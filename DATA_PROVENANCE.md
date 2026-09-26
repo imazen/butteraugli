@@ -405,3 +405,17 @@ Their maps remain on r5900xt in `perceptual-aic4-2026-09-26/` and
 The perceptual timing JSON records the checkout's older runtime Git parent;
 the frozen binary and source provenance are pinned by the adjacent evaluation
 manifest, not that runtime field.
+
+The original-FIR region correction (`c6f2e82c`) passes the AIC4 pooled point
+screen: largest SROCC loss 0.00259870 (max), with p1/p2/p3/p6 improving.
+The [panel](benchmarks/margarine_refined_aic4_2026-09-26.tsv) records p3
+0.90504428 and Z-RMSE 0.44917830. Three 128-pixel tiles are selected by
+proxy cubic error mass; original Butteraugli corrects the map using those
+regions. Crop origins align to 32 pixels to preserve SIMD/FMA grouping;
+the finite-halo test is bit-identical at interior and image boundaries.
+The [1 MP timing](benchmarks/margarine_refined_aic4_2026-09-26_1mp.json)
+records 24 rounds: teacher/candidate 153.574/43.017 ms for scoring and
+171.395/55.350 ms including decoding. Speed still fails. Native maps remain
+on r5900xt in `refined-aic4-2026-09-26/`; other corpora and fresh RSS are
+unmeasured for this candidate. Repeated AIC4 architecture screening is not
+independent final validation.
