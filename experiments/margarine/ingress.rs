@@ -145,6 +145,40 @@ mod tests {
     use image_io::{ImageBuffer, Rgb, Rgba};
 
     #[test]
+    fn bmp_ingress_preserves_bgr_channels_row_padding_and_orientation() {
+        let mut bytes = vec![0u8; 70];
+        bytes[0..2].copy_from_slice(b"BM");
+        bytes[2..6].copy_from_slice(&70u32.to_le_bytes());
+        bytes[10..14].copy_from_slice(&54u32.to_le_bytes());
+        bytes[14..18].copy_from_slice(&40u32.to_le_bytes());
+        bytes[18..22].copy_from_slice(&2i32.to_le_bytes());
+        bytes[22..26].copy_from_slice(&2i32.to_le_bytes());
+        bytes[26..28].copy_from_slice(&1u16.to_le_bytes());
+        bytes[28..30].copy_from_slice(&24u16.to_le_bytes());
+        bytes[54..70].copy_from_slice(&[
+            255, 0, 0, 255, 255, 255, 99, 99, 0, 0, 255, 0, 255, 0, 99, 99,
+        ]);
+        let decoded = ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .unwrap()
+            .decode()
+            .unwrap();
+        let DynamicImage::ImageRgb8(ref rgb) = decoded else {
+            panic!("expected RGB8 BMP")
+        };
+        assert_eq!(
+            rgb.as_raw(),
+            &[255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255]
+        );
+        let view = EncodedRows::from_image(&decoded).unwrap();
+        assert_eq!(
+            view.linear_strip(0, 2),
+            [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255]
+                .map(butteraugli::opsin::srgb_to_linear)
+        );
+    }
+
+    #[test]
     fn strided_rgb8_excludes_padding_and_rejects_bad_geometry() {
         let data = [10, 20, 30, 1, 2, 3, 99, 99, 40, 50, 60, 4, 5, 6];
         let rows = EncodedRows::new(Samples::U8(&data), 2, 2, 8, 3).unwrap();
