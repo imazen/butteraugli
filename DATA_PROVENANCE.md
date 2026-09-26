@@ -1060,3 +1060,12 @@ corrected wiring passes the existing channel/asymmetry, seam and strided-plane
 tests. Gaussian grid reduction remains enabled. This provides a scheduled
 counterpart of `bounded` for measuring the cost of restoring native Malta
 outputs, without assuming its runtime from the sampled-kernel profile.
+
+Native-mask (`86d43a83`) passes the [AIC4 pooled rank screen](benchmarks/margarine_native_mask_quality_2026-09-26.tsv)
+but still fails LIVE: max KROCC loses 0.01122845 in JPEG2000 session 1,
+and p6 KROCC loses 0.01098615 in JPEG session 2. Keeping only the masking
+blur on the native grid does not repair the combined approximation. [Binary
+and ledger provenance](benchmarks/margarine_native_mask_quality_2026-09-26.meta.json)
+are retained; full maps remain in r5900xt `native-mask-{aic4,live1}-2026-09-26/`
+with compact records also on the Mac. No resource qualification was run for
+this rejected control.
