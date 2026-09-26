@@ -43,6 +43,15 @@ by reference/encoded SHA-256. Both input artifacts remain in their original
 stores. The scorer and exporter detect file formats by signature, so encoded
 blobs need no extension. Existing quality-evaluation mode remains available.
 
+`prepare_fit_input.py STAGE NEW_OUTPUT --dataset NAME --build-commit COMMIT`
+validates Zenfleet's `pairs.tsv` against the staged references and encoded blobs,
+checks the declared quality grid, and writes the extraction manifest. It freezes
+source-level fit/tune/test partitions before extraction, with at least 20% each
+for tuning and testing within four declared broad content groups. Original
+content classes remain in the split file. These broad groups include generated
+photo-like products; they do not certify the final per-class sample quotas.
+Encoding/reconciliation stays in Zenfleet; this adapter only translates files.
+
 `fit_probe.py EXTRACTION SPLITS NEW_OUTPUT --build-commit COMMIT` is a private
 feasibility fitter using the separate teacher/feature sidecars. It consumes no
 human labels, requires explicit `fit`/`tune`/`test` source partitions and rejects
