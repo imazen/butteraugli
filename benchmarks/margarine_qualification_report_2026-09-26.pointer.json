@@ -1,0 +1,15 @@
+{
+  "build_commit": "6a5dde7134d4db0e057c3d786b64586fe3b7ca58",
+  "inputs": {
+    "margarine_vector_row_primary_comparison_2026-09-26.tsv": "0a1ba68015c1bd05cc60b03e5b7f49da48ae941f29cc8adfa988c00cc2890529",
+    "margarine_latest_rgb8_resources_2026-09-26.tsv": "3b8c84f8364886845ba506b417a0323f4fc856cbf78f437e766d5e286e0ac0d2",
+    "margarine_native16_lut_resources_2026-09-26.tsv": "411b897f6a42d79f98890809e8b088ac6c37e46ec6d4fd33c074fd8d5e7849c7",
+    "margarine_vector_row_cid22_point_choices_2026-09-26.tsv": "a91f4fc351db439efe60188293e1b825231b1b6c2949d93f3b264442b4a0432f",
+    "margarine_vector_row_aic3_point_choices_2026-09-26.tsv": "c986e4a01d7d68b76925959b7bf9b0e0a2b610da7272516e2d20ab154be2ad8a"
+  },
+  "report_sha256": "4ba2dfdf02112e24d841cabbf2a56d4d6b31ee279a336d1b56af1ce0800a85f7",
+  "qualification": "incomplete; corpus point screens are not universal or uncertainty-based choice guarantees",
+  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/qualification-report-2026-09-26",
+  "served_url": "http://192.168.50.159:3300/margarine/qualification-2026-09-26/index.html",
+  "served_bytes_verified": true
+}

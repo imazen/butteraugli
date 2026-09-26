@@ -27,6 +27,13 @@ failing outputs. The named command shares `kernel.rs` with the evaluation
 binary. It is unpublished and does not imply that the full qualification goal
 has passed; the corpus panels and complete resource curves remain authoritative.
 
+The [offline qualification report](http://192.168.50.159:3300/margarine/qualification-2026-09-26/index.html)
+compares every pooling norm against Butteraugli max and separates scoring,
+decoding and process-memory results. Rebuild it from committed measurement
+tables with `just margarine-report NEW_DIRECTORY COMMIT`. Its
+[input hashes and artifact location](../../benchmarks/margarine_qualification_report_2026-09-26.pointer.json)
+are retained alongside the raw tables.
+
 The memory acceptance gate is **total process peak, including decoding and
 caller-owned inputs**, as specified by the user on 2026-09-26. Heap profiles
 diagnose allocation costs; a metric-only heap reduction cannot pass this gate.
