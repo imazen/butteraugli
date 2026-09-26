@@ -1256,3 +1256,19 @@ with raw artifacts under `masked-row-resources-2026-09-26/` and
 speedups of 3.445001× and 3.825383× respectively; neither reaches 4× there.
 The full-bank 64² run has RSS fraction 1.002841, so it also misses the small
 image memory condition in that measurement. No new resource pass is claimed.
+
+The `6bb371fb` explicit SIMD reconstruction build has the first streamed
+full-bank LIVE replay in `vector-expand-full-streamed-live1-2026-09-26/`.
+At 128 rows × 512 columns, its [complete ledger](benchmarks/margarine_vector_expand_full_streamed_live1_parity_2026-09-26.json)
+is byte-identical to the older full-height SIMD ledger, including all 344 map
+hashes and five norms. This run exercises the row cache.
+
+The same build with `simd-malta,row-malta` passes the measured four-size
+[mean resource screen](benchmarks/margarine_vector_expand_row_resources_2026-09-26.tsv):
+4.370076×/4.252029× at 1 MP/8.44 MP, with 18.6441%/8.1470% total-process
+RSS. Both small cases are below teacher time and RSS. This uses one source
+pair cropped to four sizes, so content-diverse resource qualification remains.
+Its streamed [AIC4 panel](benchmarks/margarine_vector_expand_row_aic4_2026-09-26.tsv)
+retains all 300 pairs: primary SROCC loss 0.000442227 and KROCC loss
+0.001694537 versus teacher max. The other human corpora and choice diagnostics
+are still required for this frozen build and execution geometry.

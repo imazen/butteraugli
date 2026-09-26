@@ -1,0 +1,16 @@
+{
+  "reference_build": "404280bae6575e2ad36fd93f40ffb3c0bb958fda",
+  "candidate_build": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+  "reference_execution": "full height",
+  "candidate_execution": {
+    "strip_rows": 128,
+    "tile_columns": 512
+  },
+  "pairs": 344,
+  "ledger_byte_identical": true,
+  "sha256": "2e531fda68218673f3b0b7d8b453e2fd1001296d635500272664c1673dbdcf6b",
+  "ledgers": [
+    "/Users/lilith/work/codec-artifacts/margarine/simd-malta-live1-2026-09-26/cells.jsonl",
+    "/Users/lilith/work/codec-artifacts/margarine/vector-expand-full-streamed-live1-2026-09-26/cells.jsonl"
+  ]
+}
