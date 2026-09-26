@@ -220,15 +220,22 @@ pub(super) fn crops(args: &[String]) -> Result<(), Box<dyn Error>> {
         return Err("usage: --resource-crops REF DIST NEW_DIRECTORY".into());
     }
     let (a, b) = (decode(&args[1])?, decode(&args[2])?);
-    if a.dimensions() != b.dimensions() || a.width().min(a.height()) < 1024 {
-        return Err("resource crop source pair must match and contain 1024-square crops".into());
+    if a.dimensions() != b.dimensions() {
+        return Err("resource crop source pair dimensions must match".into());
     }
     let out = Path::new(&args[3]);
     std::fs::create_dir(out)?;
     let mut log = std::fs::File::create(out.join("progress.log"))?;
     let mut manifest = std::fs::File::create(out.join("crops.tsv"))?;
     writeln!(manifest, "width\theight\tx\ty\treference\tdistorted")?;
-    for (w, h) in [(64, 64), (256, 256), (1024, 1024), a.dimensions()] {
+    let mut sizes: Vec<_> = [(64, 64), (256, 256), (1024, 1024)]
+        .into_iter()
+        .filter(|&(w, h)| w <= a.width() && h <= a.height())
+        .collect();
+    if !sizes.contains(&a.dimensions()) {
+        sizes.push(a.dimensions());
+    }
+    for (w, h) in sizes {
         let (x, y) = ((a.width() - w) / 2, (a.height() - h) / 2);
         let name = format!("{w}x{h}");
         let (rp, dp) = (
@@ -258,7 +265,7 @@ pub(super) fn crops(args: &[String]) -> Result<(), Box<dyn Error>> {
 }
 
 fn decode(path: &str) -> Result<image_io::RgbImage, Box<dyn Error>> {
-    match ImageReader::open(path)?.decode()? {
+    match ImageReader::open(path)?.with_guessed_format()?.decode()? {
         DynamicImage::ImageRgb8(image) => Ok(image),
         _ => Err("native RGB8 probe requires RGB8 input; no precision conversion".into()),
     }

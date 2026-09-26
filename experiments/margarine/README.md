@@ -694,3 +694,10 @@ ARM. Cross-compilation lint checks pass for x86; runtime qualification there
 is separate. The pinned backend supports the integer bitcasts at the AVX2
 tier, so this kernel uses AVX2 on AVX-512 hosts. The frozen `6bb371fb` resource
 and corpus results above do not enable this experiment.
+
+Resource crop generation keeps native dimensions when an image is too narrow
+for a 1024-square crop, and emits a native 1024-square only once. It probes
+encoded file signatures, allowing content-addressed JPEGs without extensions.
+The RGB8 requirement is unchanged. Four held-out pilot pairs (photo, screen,
+line art and mixed) were cropped successfully at q50 without resampling; these
+are additional diagnostic content cases, not a fitted calibration grid.
