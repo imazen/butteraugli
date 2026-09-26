@@ -820,3 +820,11 @@ small time/RAM remain below teacher in this run. Full maps are in r5900xt
 `fused-malta-aic4-2026-09-26/`; resources and compact replay metadata also
 exist on the Mac. Fewer live map intermediates did not lower measured peak RSS
 in this run; the measured process peak, not a buffer count, remains the gate.
+
+Moving the fine Gaussian band onto a reduced grid (`f2e0b55a`) fails the
+[AIC4 rank screen](benchmarks/margarine_coarse_gaussian_rejected_2026-09-26.tsv):
+max KROCC loses 0.01132664 and p6 KROCC loses 0.01123746. All five SROCC
+losses remain below 0.01, but that does not excuse the KROCC failures.
+No resource qualification or further corpus evaluation was run. Full maps
+remain in r5900xt `coarse-gaussian-aic4-2026-09-26/`; compact metadata and
+panels also exist on the Mac.
