@@ -68,6 +68,7 @@ fn pnorm(map: &image::ImageF, p: f64) -> f64 {
         / 3.0
 }
 
+mod learned;
 #[path = "resources.rs"]
 mod resources;
 mod resources_rgb8;
@@ -76,6 +77,9 @@ mod student;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--student") {
+        return learned::run(&args);
+    }
     if args.first().is_some_and(|arg| arg == "--resource-crops") {
         return resources_rgb8::crops(&args);
     }

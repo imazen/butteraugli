@@ -6,17 +6,15 @@ use image_io::{DynamicImage, ImageReader};
 use std::{error::Error, hint::black_box, path::Path, time::Duration};
 use zensim::{PixelFormat, StridedBytes, Zensim};
 
-/// Persist the measured extractor's features without assigning a quality score.
 /// RGB8 takes the measured native path; higher precision uses the shared ingress.
-pub(super) fn export_edges(args: &[String]) -> Result<(), Box<dyn Error>> {
-    use std::io::Write;
-    if args.len() != 4 {
-        return Err("usage: --export-edges REF DIST NEW.tsv".into());
-    }
-    let a = ImageReader::open(&args[1])?
+pub(super) fn edge_features(
+    reference: &str,
+    distorted: &str,
+) -> Result<(usize, usize, Vec<f64>), Box<dyn Error>> {
+    let a = ImageReader::open(reference)?
         .with_guessed_format()?
         .decode()?;
-    let b = ImageReader::open(&args[2])?
+    let b = ImageReader::open(distorted)?
         .with_guessed_format()?
         .decode()?;
     if (a.width(), a.height()) != (b.width(), b.height()) {
@@ -44,6 +42,16 @@ pub(super) fn export_edges(args: &[String]) -> Result<(), Box<dyn Error>> {
             )?
         }
     };
+    Ok((w, h, features))
+}
+
+/// Persist the measured extractor's features without assigning a quality score.
+pub(super) fn export_edges(args: &[String]) -> Result<(), Box<dyn Error>> {
+    use std::io::Write;
+    if args.len() != 4 {
+        return Err("usage: --export-edges REF DIST NEW.tsv".into());
+    }
+    let (w, h, features) = edge_features(&args[1], &args[2])?;
     let mut out = std::io::BufWriter::new(std::fs::File::create_new(&args[3])?);
     write!(out, "width\theight")?;
     for i in (0..228).filter(|&i| student::edge_feature(i)) {
@@ -64,7 +72,7 @@ pub(super) fn export_edges(args: &[String]) -> Result<(), Box<dyn Error>> {
 }
 
 /// Prepare twenty log-spaced reference sizes, capped at native size/4096.
-/// The caller records source lineage and hashes and registers the variant set.
+/// The caller records source lineage and hashes in the project artifact manifest.
 pub(super) fn render_dense(args: &[String]) -> Result<(), Box<dyn Error>> {
     use std::io::Write;
     if args.len() != 3 {

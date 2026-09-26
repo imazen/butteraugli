@@ -61,6 +61,14 @@ chooses regularization using tuning sources only. Final test sources do not
 change the model. Its reports describe teacher agreement, not human-quality
 acceptance or full corpus coverage. Weights remain experiment artifacts.
 
+`--student MODEL.tsv REF DIST` evaluates the private fitted model and emits
+all five norm predictions. It validates the 168-row layout, scales and weights;
+it does not produce a spatial map. Formula tests and a real-image runtime smoke
+check are separate from human-quality qualification. The runtime now pins
+zensim `ad18b444`; the older frozen extraction must have its features refreshed
+before fitting a compatible model. `compare_features.py` records paired exports
+and exact differences for explicit manifests without applying a tolerance.
+
 Install `requirements-training.txt` in a virtual environment, then run
 `just margarine-fit-check /absolute/path/to/venv/bin/python`. The fitter uses
 [SciPy NNLS](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.nnls.html)

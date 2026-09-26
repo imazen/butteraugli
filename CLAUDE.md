@@ -14,17 +14,16 @@ last reference strip is padded from 41 to 64 rows while distorted storage stays
 minimum halo and tests that bottom-tail case. Production Butteraugli is not
 involved; no sibling source was changed.
 
-Margarine x86 ablation check (2026-09-26): on dev/Zen 5, the pinned zensim
-edge-only extractor differs from the retained full-extractor features at
-`resources_rgb8::tests::native_features_accept_strided_rows` (second assertion;
-the tight/strided assertion passes). Thirty values differ, maximum absolute
-5.960464477539063e-8. The x86 H-blur scalar tails use `sum += add - remove`
-while the full-feature path uses `(sum + add) - remove`. An isolated source
-copy with six replacements across v3/v4/v4x passes the unchanged lab suite
-and clippy. No sibling checkout changes or test relaxations were made.
+Margarine x86 ablation check (2026-09-26): the edge-only/full-feature tail
+mismatch is fixed in zensim `7d6d7451`; the lab pins `ad18b444`, which also fixes
+helper feature gating. The unchanged lab tests and clippy pass on dev/Zen 5.
+The broader dependency sync changes 11,869 of 26,544 feature values across
+94/158 real pairs from 50 sources, compared with the old pin plus the isolated
+tail repair (maximum absolute change 0.04966183564163751). Existing frozen
+teacher scores/maps remain valid; training features must be refreshed before
+using the updated runtime. This is not a quality or performance result.
 [Diagnostic provenance](benchmarks/margarine_x86_edge_tail_2026-09-26.json)
-pins logs and the proposed patch. Landing that dependency repair awaits the
-explicit cross-repository exception; fitted-score runtime changes remain local.
+records both binaries and the comparison artifacts.
 
 ## Planar pre-allocation accounting (2026-09-08)
 
