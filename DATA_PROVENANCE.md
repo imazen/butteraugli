@@ -346,3 +346,11 @@ means are teacher 144.858 ms and candidate 93.476 ms over twenty rounds.
 It remains unqualified for speed; CID22 and other corpora are unmeasured for
 this candidate. All native maps remain on r5900xt under
 `compact-aic4-2026-09-26/`, with compact ledgers/panels copied to the Mac.
+
+The four-direction Malta candidate `e725f169` is rejected: all five pooled
+AIC4 SROCC losses exceed 0.01 (p1 loses 0.01004989; max loses 0.03633374).
+The [full corpus panel](benchmarks/margarine_compact4_rejected_2026-09-26.tsv) records
+the other statistics. Its 1 MP means are teacher 137.480 ms and candidate
+91.666 ms over 21 rounds, so the approximation also fails the speed target.
+The full directional bank remains the retained approach. Native maps and
+logs are preserved on r5900xt under `compact4-aic4-2026-09-26/`.
