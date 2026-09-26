@@ -56,6 +56,10 @@ def records(dataset, root):
     elif dataset == 'aic3':
         labels = [root/'decoded/info.csv']
         for r in csv.DictReader(io.StringIO(labels[0].read_text())):
+            if not any(r.values()):
+                continue  # empty CSV separator, not an image row
+            if r['method'] not in ('subjective', 'estimated'):
+                raise ValueError('unknown AIC3 label provenance')
             source, codec, quality = r['img.name'], r['codec'], r['quality']
             rows.append((root/'original'/f'{source}.png',
                          root/'decoded'/source/f'{codec}_{source}_{quality}.png',
@@ -143,6 +147,12 @@ def main():
         records_in, labels = records(args.dataset,root)
         if len(records_in)!=EXPECTED[args.dataset]:
             raise ValueError(f'expected {EXPECTED[args.dataset]} pairs, got {len(records_in)}')
+        methods = {}
+        if args.dataset == 'aic3':
+            for r in csv.DictReader(io.StringIO(labels[0].read_text())):
+                if any(r.values()):
+                    name=f"{r['codec']}_{r['img.name']}_{r['quality']}.png"
+                    methods[name]=r['method']
         rows, images, seen = [], {}, set()
         for i,(reference,distorted,family,target,direction,sigma) in enumerate(records_in):
             ref,dist = reference.relative_to(root), distorted.relative_to(root)
@@ -165,11 +175,13 @@ def main():
                 paths.append(str((args.destination_root or root)/rel))
             if not args.labels_only and images[str(ref)]['dimensions']!=images[str(dist)]['dimensions']:
                 raise ValueError(f'pair dimensions differ: {dist}')
-            rows.append(dict(zip(FIELDS,(args.dataset,str(ref),family,str(dist),target,direction,*paths)),
-                             sigma='' if sigma is None else sigma))
+            method=methods[dist.name] if methods else 'published'
+            dataset=args.dataset+'_'+method if methods else args.dataset
+            rows.append(dict(zip(FIELDS,(dataset,str(ref),family,str(dist),target,direction,*paths)),
+                             sigma='' if sigma is None else sigma, label_method=method))
             if (i+1)%100==0: report(f'Prepared {i+1}/{len(records_in)} rows')
         with (args.output/'pairs.tsv').open('x',newline='') as f:
-            writer=csv.DictWriter(f,fieldnames=FIELDS+['sigma'],delimiter='\t')
+            writer=csv.DictWriter(f,fieldnames=FIELDS+['sigma','label_method'],delimiter='\t')
             writer.writeheader();writer.writerows(rows)
         (args.output/'labels').mkdir()
         label_provenance={}
@@ -181,6 +193,7 @@ def main():
                       n_sources=len({r['source'] for r in rows}),root=str(root),
                       destination_root=str(args.destination_root or root),labels=label_provenance,
                       target_units='native raw labels; sigma in the same units',
+                      label_method_counts={k:sum(r['label_method']==k for r in rows) for k in sorted({r['label_method'] for r in rows})},
                       status='labels-only' if args.labels_only else 'images-audited',
                       images=images,pairs_sha256=digest(args.output/'pairs.tsv'))
         (args.output/'_MANIFEST.json').write_text(json.dumps(manifest,indent=2)+'\n')

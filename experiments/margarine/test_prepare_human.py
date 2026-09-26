@@ -34,6 +34,18 @@ class HumanInputs(unittest.TestCase):
         self.assertEqual(rows[0][1].name,'I25_01_1.png')
         self.assertEqual(rows[0][3:],(5.5,'quality',0.25))
 
+    def test_aic3_separators_do_not_hide_unlabeled_stimuli(self):
+        (self.root/'decoded').mkdir()
+        p=self.root/'decoded/info.csv'
+        header='score.jnd,codec,img.number,img.name,quality,quality.selected,method\n'
+        row='-0.25,AVIF,1,00001_1192x832,1,20,estimated\n'
+        p.write_text(header+row+',,,,,,\n')
+        rows,_=records('aic3',self.root)
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0][3:5],(-0.25,'quality'))
+        p.write_text(header+row+',AVIF,1,00001_1192x832,2,25,subjective\n')
+        with self.assertRaises(ValueError):records('aic3',self.root)
+
     def test_bmp_audit_rejects_truncation_and_unaudited_color_headers(self):
         pixels=bytes(16)
         file_header=struct.pack('<2sIHHI',b'BM',54+len(pixels),0,0,54)
