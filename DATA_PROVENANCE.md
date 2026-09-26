@@ -1104,3 +1104,15 @@ scaled-difference transform. A direct comparison against the shared native
 kernel verifies every output at tiny/odd/vector-tail dimensions, both banks
 and asymmetric weights. Existing seam and frequency tests remain unchanged.
 No speed gain or corpus bit parity is inferred before replay and measurement.
+
+The fixed-width opsin rewrite (`fde7c208`, measured from `a357f0cf`) is
+reverted after a measured regression. [All 344 LIVE maps and five scalar
+norms remain identical](benchmarks/margarine_opsin_lanes_live1_parity_2026-09-26.json),
+but [metric speed](benchmarks/margarine_opsin_lanes_resources_2026-09-26.tsv)
+is only 1.957×/2.136× teacher at 1 MP/8.44 MP, versus 2.659×/2.943× for
+the prior full-Malta build. Candidate means rose from 51.31/446.46 ms to
+69.09/602.91 ms while teacher means stayed within the measured baseline
+range. The row transform's previous loop is restored; the separate Malta
+row-window kernel remains for its own measurement. Raw maps and resource
+records remain on r5900xt in `opsin-lanes-{live1,resources}-2026-09-26/`, with
+compact records on the Mac. No test expectation was relaxed.

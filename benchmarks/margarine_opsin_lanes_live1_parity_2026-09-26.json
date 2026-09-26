@@ -1,0 +1,9 @@
+{
+  "pairs": 344,
+  "differing_maps": 0,
+  "differing_scalar_norms": 0,
+  "ledgers": {
+    "/Users/lilith/work/codec-artifacts/margarine/full-malta-live1-2026-09-26/cells.jsonl": "a7c8abc97f0e9d91945039cb712b36dd0e99c3928fa2c8b6e00fa55385683d6a",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-lanes-live1-2026-09-26/cells.jsonl": "a7c8abc97f0e9d91945039cb712b36dd0e99c3928fa2c8b6e00fa55385683d6a"
+  }
+}

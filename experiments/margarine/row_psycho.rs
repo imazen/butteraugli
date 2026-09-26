@@ -353,58 +353,20 @@ fn opsin_row(
     w: usize,
     out: &mut [f32],
 ) {
-    let (a0, a12) = a.split_at(w);
-    let (a1, a2) = a12.split_at(w);
-    let (b0, b12) = b.split_at(w);
-    let (b1, b2) = b12.split_at(w);
-    let (o0, o12) = out.split_at_mut(w);
-    let (o1, o2) = o12.split_at_mut(w);
-    let full = w / 8 * 8;
-    for start in (0..full).step_by(8) {
-        opsin_pixels::<8>(
-            [a0, a1, a2].map(|row| row[start..start + 8].try_into().unwrap()),
-            [b0, b1, b2].map(|row| row[start..start + 8].try_into().unwrap()),
-            intensity,
-            [
-                &mut o0[start..start + 8],
-                &mut o1[start..start + 8],
-                &mut o2[start..start + 8],
-            ]
-            .map(|row| row.try_into().unwrap()),
-        );
-    }
-    for x in full..w {
-        opsin_pixels::<1>(
-            [a0, a1, a2].map(|row| row[x..x + 1].try_into().unwrap()),
-            [b0, b1, b2].map(|row| row[x..x + 1].try_into().unwrap()),
-            intensity,
-            [&mut o0[x..x + 1], &mut o1[x..x + 1], &mut o2[x..x + 1]]
-                .map(|row| row.try_into().unwrap()),
-        );
-    }
-}
-
-#[inline(always)]
-fn opsin_pixels<const N: usize>(
-    a: [&[f32; N]; 3],
-    b: [&[f32; N]; 3],
-    intensity: f32,
-    out: [&mut [f32; N]; 3],
-) {
     let (min0, min1, min2) = opsin::opsin_absorbance(0.0, 0.0, 0.0, false);
-    for x in 0..N {
+    for x in 0..w {
         let (p0, p1, p2) = opsin::opsin_absorbance(
-            b[0][x] * intensity,
-            b[1][x] * intensity,
-            b[2][x] * intensity,
+            b[x] * intensity,
+            b[w + x] * intensity,
+            b[2 * w + x] * intensity,
             true,
         );
         let [p0, p1, p2] = [p0, p1, p2].map(|p| p.max(1e-4));
         let [s0, s1, s2] = [p0, p1, p2].map(|p| (opsin::gamma(p) / p).max(1e-4));
         let (v0, v1, v2) = opsin::opsin_absorbance(
-            a[0][x] * intensity,
-            a[1][x] * intensity,
-            a[2][x] * intensity,
+            a[x] * intensity,
+            a[w + x] * intensity,
+            a[2 * w + x] * intensity,
             false,
         );
         let (v0, v1, v2) = (
@@ -412,9 +374,9 @@ fn opsin_pixels<const N: usize>(
             (v1 * s1).max(min1),
             (v2 * s2).max(min2),
         );
-        out[0][x] = v0 - v1;
-        out[1][x] = v0 + v1;
-        out[2][x] = v2;
+        out[x] = v0 - v1;
+        out[w + x] = v0 + v1;
+        out[2 * w + x] = v2;
     }
 }
 #[archmage::autoversion]
