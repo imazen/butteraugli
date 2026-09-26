@@ -59,8 +59,14 @@ encoder-choice reversals. Do not mistake a confidence interval containing zero
 for evidence of non-inferiority against those margins. The material-choice
 definition must be explicit in each decision panel; zero-epsilon pair counts
 are diagnostic counts, not that acceptance gate.
-Source-cluster resampling is needed for uncertainty across
-independent contents; zenstats' existing bootstrap resamples rows instead.
+`margarine-eval --bootstrap SCORES.tsv OUT.tsv DRAWS SEED` resamples whole
+source groups with replacement, pairing candidate and teacher on every draw.
+It refits each logistic mapping within each draw and reports central 95%
+percentile intervals for candidate-minus-teacher deltas on the individual
+statistics and composites. Any undefined draw makes that interval unavailable.
+The seed and draw count are explicit. These intervals describe the sampled
+source population; five AIC4_sample sources provide limited population coverage.
+This differs from zenstats' existing row bootstrap.
 
 The second panel checks encoder behavior: within-source candidate ordering,
 material inversions, ties/dead zones, and teacher regret at matched byte budgets

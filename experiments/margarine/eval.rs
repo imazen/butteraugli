@@ -5,6 +5,8 @@ use std::error::Error;
 use std::io::{BufWriter, Write};
 use zenstats::{LightPanel, ValAggregate, compute_panel, spearman};
 
+mod uncertainty;
+
 const HEADER: &str = "dataset\tsource\tcodec\tpair\ttarget\tdirection\tteacher\tcandidate";
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -160,6 +162,13 @@ fn orders(rows: &[&Row], epsilon: f64) -> Orders {
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--bootstrap") {
+        if args.len() != 5 {
+            return Err("usage: margarine-eval --bootstrap SCORES.tsv OUT.tsv DRAWS SEED".into());
+        }
+        let rows = parse(&std::fs::read_to_string(&args[1])?)?;
+        return uncertainty::run(&rows, &args[2], args[3].parse()?, args[4].parse()?);
+    }
     if args.len() != 3 {
         return Err("usage: margarine-eval SCORES.tsv OUTPUT.tsv TEACHER_TIE_EPSILON\nDistances must be lower-is-better. No acceptance thresholds are implicit.".into());
     }
