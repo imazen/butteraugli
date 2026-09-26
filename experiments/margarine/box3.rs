@@ -25,7 +25,9 @@ const CANDIDATE: &str = if cfg!(feature = "tiles") {
         "tiles"
     }
 } else if cfg!(feature = "lattice") {
-    if cfg!(feature = "planar") {
+    if cfg!(feature = "stream-blur") {
+        "stream-blur"
+    } else if cfg!(feature = "planar") {
         "planar"
     } else {
         "lattice"
@@ -163,6 +165,8 @@ mod refined;
 #[path = "resources.rs"]
 mod resources;
 mod resources_rgb8;
+#[cfg(feature = "stream-blur")]
+mod stream_blur;
 mod strips;
 #[cfg(feature = "tiles")]
 mod tiles;

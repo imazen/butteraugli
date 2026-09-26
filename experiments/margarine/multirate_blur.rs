@@ -199,14 +199,25 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     };
     let (factor, reduced_sigma) = geometry(sigma);
     if factor == 1 {
-        return crate::exact_blur::gaussian_blur(input, sigma, pool);
+        return fir(input, sigma, pool);
     }
     let reduced = reduce(input, factor, pool);
-    let filtered = crate::exact_blur::gaussian_blur(&reduced, reduced_sigma, pool);
+    let filtered = fir(&reduced, reduced_sigma, pool);
     let output = expand(&filtered, input.width(), input.height(), factor, pool);
     reduced.recycle(pool);
     filtered.recycle(pool);
     output
+}
+
+fn fir(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
+    #[cfg(feature = "stream-blur")]
+    {
+        crate::stream_blur::gaussian_blur(input, sigma, pool)
+    }
+    #[cfg(not(feature = "stream-blur"))]
+    {
+        crate::exact_blur::gaussian_blur(input, sigma, pool)
+    }
 }
 
 #[cfg(test)]

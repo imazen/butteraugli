@@ -558,6 +558,14 @@ its strided input region; global sampling phases and halos are unchanged.
 The existing bitwise tile/strip comparison passes across both axes and odd
 RGB16 edges. This is a storage experiment without a resource acceptance claim.
 
+`stream-blur` retains planar lattice scoring and computes separable Gaussian
+passes through a rolling horizontal-result buffer. Scratch height is bounded
+by the kernel support. Coefficients and clipped-edge normalization come from
+the original Gaussian; normalized border accumulation can differ by rounding
+from its scalar tails. Strided/tiny/odd tests bound the difference at 1e-6 on
+unit-range inputs, and the unchanged full-pipeline tests pass. This is an
+experimental scheduling change; corpus and resource measurements are required.
+
 ### Reference-only region selection
 
 The `reference-regions` experiment uses the same paired-RGB proxy and original
