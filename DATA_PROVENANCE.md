@@ -1135,3 +1135,19 @@ the reports; earlier matching-norm screens remain diagnostics. The user has
 no additional AIC4 original bitstreams or bitrate table, so its matched-byte
 choice result remains unavailable. Human-ranking and published-interval
 diagnostics retain all audited pairs.
+
+## Native Malta tail repair and replay (2026-09-26)
+
+The separate final-block path introduced in `a85ba912` fails an expanded
+exact comparison on optimized x86 (first reproduction: 3×5, LF bank).
+`2d9d736a` uses one overlapping-block loop and adds release tests to the
+research recipe and CI. [All 344 LIVE maps and all five norms reproduce the
+prior full-Malta implementation exactly](benchmarks/margarine_malta_uniform_live1_parity_2026-09-26.json).
+The [fresh resource sweep](benchmarks/margarine_malta_uniform_resources_2026-09-26.tsv)
+measures 2.736×/2.690× scoring speed and 17.566%/8.046% total-process RSS
+at 1 MP/8.44 MP. Small-image time and RSS remain below the teacher on the
+measured crop family. Speed still fails the target; corpus parity does not
+qualify resources. Full artifacts live in r5900xt
+`malta-uniform-{live1,resources}-2026-09-26/`, with compact records on the Mac.
+The old `malta-windows-*` and `coarse-full-*` runs from `f6cbfe73` retain the
+incorrect tail path and must not be used as accepted candidate results.

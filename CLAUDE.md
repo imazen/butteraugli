@@ -8,8 +8,8 @@ The experimental full-Malta row-window implementation in `a85ba912` produced
 incorrect LF responses in its separate final-block path on optimized x86.
 The expanded exact comparison reproduces it at 3×5; the LIVE replay found
 69 of 344 maps changed near the right edge. The uniform overlapping-block
-loop passes the expanded release test. Corpus replay is required before
-claiming the experiment is repaired. Production Butteraugli is the unchanged
+loop in `2d9d736a` passes the expanded release test and reproduces all 344
+LIVE maps and all five norms bit for bit against the prior native kernel. Production Butteraugli is the unchanged
 reference for this comparison.
 
 For the production library, parity with libjxl `butteraugli_main` verified at <0.0003% on
