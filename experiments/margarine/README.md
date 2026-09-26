@@ -668,3 +668,9 @@ that the derived cache support retains every requested input. This removes
 per-row `Arc` allocation and cloning; it does not change cache geometry or
 filter arithmetic. Exact row/strip tests pass on ARM and x86, with ARM checks
 also covering phase rows, native Gaussian and alternate-row Malta.
+
+Row-cache capacities round up to powers of two, so recursive lookups use an
+index mask instead of division. The stored-row assertion remains active and
+exact row/strip tests retain their original expectations. Additional retained
+rows can increase memory, so this scheduling change requires a fresh process
+RSS measurement before acceptance.

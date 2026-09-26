@@ -87,7 +87,13 @@ impl<'a, 'b> Graph<'a, 'b> {
             } else {
                 2 * lookahead[id] + 9
             };
-            node.cache = vec![None; support.div_ceil(node.step).min(node.height)];
+            // Rows are visited through a circular cache. A power-of-two capacity
+            // replaces division on every recursive producer/consumer lookup.
+            let capacity = support
+                .div_ceil(node.step)
+                .min(node.height)
+                .next_power_of_two();
+            node.cache = vec![None; capacity];
         }
         g
     }
@@ -153,7 +159,7 @@ impl<'a, 'b> Graph<'a, 'b> {
     }
     fn cached(&self, id: usize, y: usize) -> &[f32] {
         let node = &self.nodes[id];
-        let (stored, row) = node.cache[y % node.cache.len()].as_ref().unwrap();
+        let (stored, row) = node.cache[y & (node.cache.len() - 1)].as_ref().unwrap();
         assert_eq!(
             *stored, y,
             "row-cache support must retain all consumer inputs"
@@ -162,7 +168,7 @@ impl<'a, 'b> Graph<'a, 'b> {
     }
     fn ensure(&mut self, id: usize, y: usize) {
         let node = &mut self.nodes[id];
-        let slot = y % node.cache.len();
+        let slot = y & (node.cache.len() - 1);
         if node.cache[slot]
             .as_ref()
             .is_some_and(|(stored, _)| *stored == y)
