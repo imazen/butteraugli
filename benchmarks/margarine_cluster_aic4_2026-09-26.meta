@@ -1,0 +1,9 @@
+Evaluator: e81d68f79bdf2cb6cdc6e3db42a43de6b02fe86b
+Input frozen score ledger: 3fcc5e2e763ca8a34404457b1d7da576e16c82a99d1e2ceb0f99c546cc860d4e
+Command per pooling: margarine-eval --bootstrap scores-NORM.tsv NORM.tsv 2000 20260926
+Paired source-cluster bootstrap, all 5 sources and 300 pairs, central 95%
+percentile intervals; both arms use the same source draws, refitting their
+logistic transforms on every draw. Every sampled panel was defined.
+Only five source contents: these intervals do not establish generalization
+to unseen content classes or other datasets. No multiplicity adjustment.
+Logs: /Users/lilith/work/codec-artifacts/margarine/cluster-aic4-2026-09-26/

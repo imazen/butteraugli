@@ -1,0 +1,17 @@
+Scorer and evaluator: f1c52826dc24b72f1e9d5278b25a4bdd14327909
+Host: r5900xt, Zen 3, two Rayon threads, run-heavy 12 GiB cgroup.
+Canonical result: /home/lilith/work/codec-artifacts/margarine/box3-cid22-2026-09-26/
+Local metadata copy: /Users/lilith/work/codec-artifacts/margarine/box3-cid22-2026-09-26/
+Ledger SHA256: 9d3a64cf8024ea67b87a4993d4ded4edd1f68e703e14e78009aec1c705023590
+Command: score_manifest.py cid22-audit-2026-09-26/pairs.tsv experiments/margarine/target/release box3-cid22-2026-09-26 --ingress cid22-srgb --build-commit f1c52826dc24b72f1e9d5278b25a4bdd14327909
+4292 rated distortions, 49 sources; 49 zero-opinion identity rows excluded.
+MCOS target, larger is better. Common encoded-sRGB policy, RGB16 preserved,
+opaque alpha required, only three audited ICC identities admitted.
+All max/p1/p2/p3/p6 scores and both full 512x512 maps retained for every pair.
+The TSVs retain all six statistics and three repository composites, with
+worst subgroup deltas reported separately. Positive delta is worse for
+OR and Z-RMSE; negative delta is worse for correlations and composites.
+No quality-band panel or clustered CID22 uncertainty in these files.
+Not a timing benchmark: the serial run took 748 s including decoding, map
+writes, hashes and evaluation. Resource-wrapper peak RSS 0.06 GiB,
+minimum available RAM 57458 MiB. Not a quarter-RAM measurement.
