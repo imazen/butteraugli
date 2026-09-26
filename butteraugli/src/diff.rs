@@ -79,7 +79,12 @@ fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
 /// Processes pairs of destination pixels that share the same source pixel,
 /// enabling sequential access on both src and dst for better vectorization.
 #[archmage::autoversion]
-fn add_supersampled_2x(_token: archmage::SimdToken, src: &ImageF, weight: f32, dest: &mut ImageF) {
+pub(crate) fn add_supersampled_2x(
+    _token: archmage::SimdToken,
+    src: &ImageF,
+    weight: f32,
+    dest: &mut ImageF,
+) {
     let dest_width = dest.width();
     let dest_height = dest.height();
     const K_HEURISTIC_MIXING_VALUE: f32 = 0.3;
@@ -551,7 +556,11 @@ pub(crate) fn compute_score_from_diffmap(
 }
 
 /// Subsamples linear RGB f32 buffer by 2x for multi-resolution processing.
-fn subsample_linear_rgb_2x(rgb: &[f32], width: usize, height: usize) -> (Vec<f32>, usize, usize) {
+pub(crate) fn subsample_linear_rgb_2x(
+    rgb: &[f32],
+    width: usize,
+    height: usize,
+) -> (Vec<f32>, usize, usize) {
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
     let mut output = vec![0.0f32; out_width * out_height * 3];

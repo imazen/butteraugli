@@ -32,6 +32,7 @@ pub(super) fn bench_direct(args: &[String]) -> Result<(), Box<dyn Error>> {
                 .config()
                 .min_rounds(20)
                 .max_rounds(40)
+                .max_wall_time(std::time::Duration::from_secs(300))
                 .warmup_time(Duration::from_millis(200));
             group.bench("teacher_metric", move |bench| {
                 bench.iter(|| {

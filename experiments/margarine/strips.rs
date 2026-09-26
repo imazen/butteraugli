@@ -5,14 +5,14 @@ use super::*;
 fn halo() -> usize {
     // RGB opsin preprocessing has radius 2. The longest band path traverses
     // LF, HF and UHF filters. Masking adds its blur plus fuzzy erosion's
-    // 3-pixel offsets; Malta needs at most 4 pixels. The half-resolution
-    // path doubles support; two extra rows cover downsampling/rounding.
+    // 3-pixel offsets; Malta needs at most 4 pixels. Each scale now walks
+    // its own strips, so support is measured in that scale’s pixels.
     let band = 2
         + blur::support(consts::SIGMA_LF as f32)
         + blur::support(consts::SIGMA_HF as f32)
         + blur::support(consts::SIGMA_UHF as f32);
     let local = 4.max(blur::support(consts::MASK_RADIUS) + 3);
-    2 * (band + local) + 2
+    band + local
 }
 
 fn packed_strip(
@@ -86,25 +86,43 @@ fn compose<'a>(
     params: &ButteraugliParams,
     mut load: impl FnMut(usize, usize) -> (std::borrow::Cow<'a, [f32]>, std::borrow::Cow<'a, [f32]>),
 ) -> Result<diff::InternalResult, Box<dyn Error>> {
-    let mut map = image::ImageF::new(w, h);
-    let halo = halo();
-    for start in (0..h).step_by(rows) {
-        let end = start.saturating_add(rows).min(h);
-        // Align to the original 2x2 lattice, including odd final dimensions.
-        let lattice = if cfg!(feature = "multirate") { 8 } else { 2 };
-        let y0 = start.saturating_sub(halo) / lattice * lattice;
-        let y1 = end
-            .saturating_add(halo)
-            .div_ceil(lattice)
-            .saturating_mul(lattice)
-            .min(h);
-        let (a, b) = load(y0, y1);
-        // Intermediate-strip scalar reductions are discarded. Compute only
-        // the map here, then use Butteraugli's reducer on the assembled map.
-        let strip_map = diff::compute_diffmap_multiresolution_linear(&a, &b, w, y1 - y0, params);
-        for y in start..end {
-            map.row_mut(y).copy_from_slice(strip_map.row(y - y0));
+    let mut scale = |factor: usize| {
+        let sw = w.div_ceil(factor);
+        let sh = h.div_ceil(factor);
+        let mut map = image::ImageF::new(sw, sh);
+        let halo = halo();
+        let lattice = if cfg!(feature = "multirate") { 4 } else { 1 };
+        for start in (0..sh).step_by(rows) {
+            let end = start.saturating_add(rows).min(sh);
+            let y0 = start.saturating_sub(halo) / lattice * lattice;
+            let y1 = end
+                .saturating_add(halo)
+                .div_ceil(lattice)
+                .saturating_mul(lattice)
+                .min(sh);
+            let (a, b) = load(y0 * factor, (y1 * factor).min(h));
+            let map_strip = if factor == 1 {
+                diff::compute_diffmap_single_resolution_linear(&a, &b, sw, y1 - y0, params)
+            } else {
+                let height = (y1 * factor).min(h) - y0 * factor;
+                let (a, aw, ah) = diff::subsample_linear_rgb_2x(&a, w, height);
+                let (b, bw, bh) = diff::subsample_linear_rgb_2x(&b, w, height);
+                debug_assert_eq!((aw, ah), (sw, y1 - y0));
+                debug_assert_eq!((bw, bh), (sw, y1 - y0));
+                diff::compute_diffmap_single_resolution_linear(&a, &b, sw, y1 - y0, params)
+            };
+            for y in start..end {
+                map.row_mut(y).copy_from_slice(map_strip.row(y - y0));
+            }
         }
+        map
+    };
+    // Keep only the small completed map alive while processing the full scale.
+    // Original threshold and combination arithmetic are shared with Butteraugli.
+    let sub = (!params.single_resolution() && w >= 15 && h >= 15).then(|| scale(2));
+    let mut map = scale(1);
+    if let Some(sub) = sub {
+        diff::add_supersampled_2x(&sub, 0.5, &mut map);
     }
     let (score, pnorm_3) = diff::compute_score_from_diffmap(&map);
     Ok(diff::InternalResult {

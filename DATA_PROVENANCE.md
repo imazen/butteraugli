@@ -323,3 +323,11 @@ completed twenty rounds: teacher/candidate metric means 139.28/102.67 ms,
 and decode-included means 157.60/115.23 ms. The harness reported nineteen
 noisy rounds; these are optimization diagnostics, not resource qualification.
 The candidate still misses 4× speed.
+
+The experimental native-strip scheduler now walks the two scales separately,
+using a scale-local halo and retaining only the completed half-resolution map
+while processing the full scale. The [AIC4 comparison](benchmarks/margarine_independent_scales_2026-09-26.pointer.json)
+found zero changed scalar values or map bytes on all 300 pairs with 256-row
+interiors. This is arithmetic preservation, not a resource acceptance result.
+The direct timing harness now allows 300 seconds to reach its unchanged
+minimum of twenty rounds on larger images.
