@@ -106,18 +106,18 @@ mod image;
     clippy::too_many_arguments
 )]
 mod shared_malta;
-#[cfg(any(
-    feature = "full-malta",
-    not(any(
-        feature = "compact4",
-        feature = "sparse",
-        feature = "lattice",
-        feature = "physical"
-    ))
-))]
+#[cfg(not(any(
+    feature = "compact4",
+    feature = "sparse",
+    feature = "lattice",
+    feature = "physical"
+)))]
 use shared_malta as malta;
 #[cfg(feature = "physical")]
 mod half_malta_bank;
+#[cfg(feature = "full-malta")]
+#[path = "full_malta.rs"]
+mod malta;
 #[cfg(all(
     feature = "compact4",
     not(any(feature = "sparse", feature = "lattice", feature = "physical"))
@@ -130,7 +130,7 @@ mod malta;
 ))]
 #[path = "sparse_malta.rs"]
 mod malta;
-#[cfg(feature = "physical")]
+#[cfg(all(feature = "physical", not(feature = "full-malta")))]
 #[path = "physical_malta.rs"]
 mod malta;
 #[cfg(any(feature = "sparse", feature = "lattice", feature = "physical"))]

@@ -30,7 +30,7 @@ pub(crate) fn compute(a: &PsychoImage, b: &PsychoImage, asym: f32, pool: &Buffer
         #[cfg(all(feature = "lattice", not(feature = "full-malta")))]
         use crate::malta::coarse_diff_map as bank;
         #[cfg(any(not(feature = "lattice"), feature = "full-malta"))]
-        use crate::shared_malta::malta_diff_map as bank;
+        use crate::malta::malta_diff_map as bank;
         let uhf = bank(
             &a.uhf[c],
             &b.uhf[c],

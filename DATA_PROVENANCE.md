@@ -1083,3 +1083,24 @@ coarse-blur control without selecting new weights or using human labels in
 scoring. The unchanged stage/seam tests pass; corpus and resource measurements
 must determine whether restoring Malta resolves that control's earlier
 quality failure.
+
+Full-Malta streaming (`3a42d971`) [passes the twenty LIVE cohort rank
+screens](benchmarks/margarine_full_malta_live1_2026-09-26.tsv) and has
+[zero participant-supported harmful choices](benchmarks/margarine_full_malta_live1_choices_2026-09-26.tsv)
+in its 328 observed budgets per norm. Its [resource sweep](benchmarks/margarine_full_malta_resources_2026-09-26.tsv)
+measures 2.659×/2.943× metric speed and 17.99%/7.99% process RSS at
+1 MP/8.44 MP. Decode-inclusive speeds are 2.399×/2.667×; small sizes stay
+below teacher resources. The [instruction profile](benchmarks/margarine_full_malta_profile_2026-09-26.txt)
+places the native Malta dispatcher at 605,585,808 instructions (40.40% of
+1,498,962,789 including decoding). Full maps/profile remain on r5900xt in
+`full-malta-{live1,profile}-2026-09-26/`; compact records also exist on the Mac.
+[Quality provenance](benchmarks/margarine_full_malta_quality_2026-09-26.meta.json)
+pins the participant join; resource metadata pins three fresh-process peaks
+per arm. This candidate still fails 4× speed.
+
+The experimental full-Malta kernel now supplies nine fixed-size row windows
+to the existing complete stencil bank, retaining the shared nonlinear
+scaled-difference transform. A direct comparison against the shared native
+kernel verifies every output at tiny/odd/vector-tail dimensions, both banks
+and asymmetric weights. Existing seam and frequency tests remain unchanged.
+No speed gain or corpus bit parity is inferred before replay and measurement.

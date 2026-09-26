@@ -1,0 +1,67 @@
+--------------------------------------------------------------------------------
+Profile data file '/home/lilith/work/codec-artifacts/margarine/full-malta-profile-2026-09-26/callgrind.out' (creator: callgrind-3.26.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 242788510
+Trigger: Program termination
+Profiled target:  /home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3 --memory-native 128 /home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-ref.png /home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-dist.png (PID 2761427, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                     
+--------------------------------------------------------------------------------
+1,498,962,789 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                    file:function
+--------------------------------------------------------------------------------
+605,585,808 (40.40%)  ???:margarine_box3::shared_malta::__arcane_malta_diff_map_dispatch_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+122,204,458 ( 8.15%)  ???:<fdeflate::decompress::Decompressor>::read [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 71,161,856 ( 4.75%)  ???:margarine_box3::row_psycho::__arcane_opsin_row_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 66,916,846 ( 4.46%)  ./string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S:__memset_avx2_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 60,644,352 ( 4.05%)  ???:margarine_box3::row_psycho::__arcane_expand_row_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 57,840,928 ( 3.86%)  ???:png::filter::paeth::unfilter [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 55,956,500 ( 3.73%)  ???:<margarine_box3::ingress::EncodedRows>::linear_planar_region_row [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 54,995,888 ( 3.67%)  ???:margarine_box3::stream_blur::__arcane_horizontal_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 43,330,104 ( 2.89%)  ???:margarine_box3::blur::__arcane_expand_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 39,038,280 ( 2.60%)  ???:margarine_box3::shared_malta::__arcane_malta_compute_scaled_diffs_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 37,556,224 ( 2.51%)  ???:margarine_box3::row_psycho::__arcane_finish_row_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 31,147,760 ( 2.08%)  ???:<margarine_box3::row_psycho::Graph>::row'2 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 29,556,824 ( 1.97%)  ???:margarine_box3::stream_blur::__arcane_vertical_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 28,649,216 ( 1.91%)  ???:margarine_box3::row_psycho::__arcane_reduce_row_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 27,509,888 ( 1.84%)  ???:margarine_box3::mask::__arcane_fuzzy_erosion_interior_row_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 26,225,664 ( 1.75%)  ???:margarine_box3::row_psycho::__arcane_mirror_horizontal_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 19,753,726 ( 1.32%)  ???:png::filter::unfilter [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 18,391,019 ( 1.23%)  ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:__memcpy_avx_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 15,161,344 ( 1.01%)  ???:margarine_box3::row_psycho::__arcane_mirror_vertical_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+ 11,636,424 ( 0.78%)  ???:margarine_box3::diff::__arcane_l2_diff_asymmetric_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  9,480,306 ( 0.63%)  ???:margarine_box3::diff::__arcane_compute_score_from_diffmap_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  9,468,060 ( 0.63%)  ???:margarine_box3::diff::__arcane_combine_channels_to_diffmap_fused_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  7,607,128 ( 0.51%)  ???:margarine_box3::mask::__arcane_combine_and_precompute_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  6,124,544 ( 0.41%)  ???:margarine_box3::row_psycho::__arcane_high_row_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  5,832,200 ( 0.39%)  ???:margarine_box3::blur::__arcane_reduce_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  4,961,809 ( 0.33%)  ???:margarine_box3::mask::fuzzy_erosion_border_row [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  4,173,824 ( 0.28%)  ???:margarine_box3::row_psycho::__arcane_subtract_row_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  2,926,688 ( 0.20%)  ???:margarine_box3::diff::__arcane_l2_diff_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  2,518,096 ( 0.17%)  ???:margarine_box3::diff::__arcane_accumulate_two_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  2,411,083 ( 0.16%)  ./malloc/./malloc/malloc.c:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  2,148,635 ( 0.14%)  ./malloc/./malloc/malloc.c:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  1,521,976 ( 0.10%)  ???:<margarine_box3::row_psycho::Graph>::prepare [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  1,494,715 ( 0.10%)  ???:crc32fast::specialized::pclmulqdq::calculate [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+  1,463,384 ( 0.10%)  ???:margarine_box3::mask::__arcane_accumulate_mask_to_error_v3 [/home/lilith/work/codec-artifacts/margarine/full-malta-binaries-3a42d971/margarine-box3]
+
+--------------------------------------------------------------------------------
+The following files chosen for auto-annotation could not be found:
+--------------------------------------------------------------------------------
+  ./malloc/./malloc/malloc.c
+  ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+  ./string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+
