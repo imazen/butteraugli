@@ -231,8 +231,56 @@ fn orders(rows: &[&Row], epsilon: f64) -> Orders {
     result
 }
 
+// Rank bands use only human targets. Keep every equal-target block together,
+// assigning it by its first rank; populated bands can therefore differ in size.
+fn quality_bands<'a>(rows: &[&'a Row], count: usize) -> Vec<Vec<&'a Row>> {
+    let mut sorted = rows.to_vec();
+    sorted.sort_by(|a, b| a.target.total_cmp(&b.target));
+    let mut bands = vec![Vec::new(); count];
+    let mut start = 0;
+    while start < sorted.len() {
+        let mut end = start + 1;
+        while end < sorted.len() && sorted[end].target == sorted[start].target {
+            end += 1;
+        }
+        bands[start * count / sorted.len()].extend_from_slice(&sorted[start..end]);
+        start = end;
+    }
+    bands
+}
+
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--quality-bands") {
+        if args.len() != 4 {
+            return Err(
+                "usage: margarine-eval --quality-bands SCORES.tsv NEW_OUTPUT.tsv BANDS".into(),
+            );
+        }
+        let count: usize = args[3].parse()?;
+        if !(2..=100).contains(&count) {
+            return Err("quality band count must be in 2..=100".into());
+        }
+        let rows = parse(&std::fs::read_to_string(&args[1])?)?;
+        let mut groups: BTreeMap<&str, Vec<&Row>> = BTreeMap::new();
+        for row in &rows {
+            groups.entry(&row.dataset).or_default().push(row);
+        }
+        let mut out = BufWriter::new(std::fs::File::create_new(&args[2])?);
+        writeln!(
+            out,
+            "scope\tdataset\tkey\tarm\tn\tstatus\tsigned_srocc\tsrocc\tplcc\tkrocc\tor\tpwrc\tz_rmse\tgeomean3\tharmean3\tmin3"
+        )?;
+        for (dataset, rows) in groups {
+            for (i, band) in quality_bands(&rows, count).iter().enumerate() {
+                let key = format!("{}/{count}", i + 1);
+                eprintln!("quality band {dataset}/{key}: {} pairs", band.len());
+                panel(&mut out, "quality_band", dataset, &key, band)?;
+                out.flush()?;
+            }
+        }
+        return Ok(());
+    }
     if args.first().is_some_and(|a| a == "--participant-pairs") {
         if args.len() != 6 {
             return Err("usage: margarine-eval --participant-pairs SCORED_DIR OPINIONS.tsv NEW_OUTPUT_DIR DRAWS SEED".into());
@@ -350,6 +398,34 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quality_bands_keep_ties_and_every_row_with_correct_polarity() {
+        let rows = parse(&format!(
+            "{HEADER}\n{}",
+            [5, 4, 4, 3, 2, 1]
+                .iter()
+                .enumerate()
+                .map(|(i, target)| format!("d\ts\tc\tp{i}\t{target}\tdistortion\t1\t2"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ))
+        .unwrap();
+        let refs: Vec<_> = rows.iter().collect();
+        let bands = quality_bands(&refs, 3);
+        let identities: Vec<Vec<_>> = bands
+            .iter()
+            .map(|band| band.iter().map(|r| r.pair.as_str()).collect())
+            .collect();
+        assert_eq!(
+            identities,
+            [vec!["p0", "p1", "p2"], vec!["p3"], vec!["p4", "p5"]]
+        );
+        assert_eq!(bands.iter().map(Vec::len).sum::<usize>(), rows.len());
+        let mut out = Vec::new();
+        panel(&mut out, "quality_band", "d", "empty", &[]).unwrap();
+        assert!(String::from_utf8(out).unwrap().contains("\t0\tunavailable"));
+    }
 
     fn input(body: &str) -> String {
         format!("{HEADER}\n{body}")

@@ -197,6 +197,15 @@ The seed and draw count are explicit. These intervals describe the sampled
 source population; five AIC4_sample sources provide limited population coverage.
 This differs from zenstats' existing row bootstrap.
 
+`just margarine-quality-bands EVALUATOR SCORES.tsv NEW_OUTPUT.tsv BANDS`
+reports the same statistics separately across human-quality rank bands, from
+worst to best, within each dataset. The band count is explicit (recipe default
+five). Equal human targets stay together, assigned by their first rank, so band
+sizes can differ. Every row is retained exactly once for each scoring arm;
+empty or degenerate bands remain explicitly unavailable. Band assignment uses
+no metric predictions. These are conditional diagnostics with narrower label
+ranges, not substitutes for pooled panels or matched-rate choice evaluation.
+
 The second panel checks encoder behavior: within-source candidate ordering,
 material inversions, ties/dead zones, and teacher regret at matched byte budgets
 or target quality. The third checks raw tails, structural corruptions, and
