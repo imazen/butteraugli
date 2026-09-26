@@ -1530,3 +1530,9 @@ speedups are 2.174286×/2.303864× and RAM fractions 0.904573/0.736138.
 Both arms use the research harness for these process peaks; this control is
 not the standalone named command. The full logs and exact binary/input hashes
 are in the adjacent metadata file. No default has changed.
+
+The native-UHF [AIC4 panel](benchmarks/margarine_native_uhf_aic4_2026-09-26.tsv)
+contains all 300 pairs and five norms. Primary SROCC changes by
+−0.000176446, KROCC by +0.000713489, and Z-RMSE by −0.000609074
+(lower Z-RMSE is better). This remains a point panel with five source
+images; no new source-bootstrap or matched-byte choice claim is made.
