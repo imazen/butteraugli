@@ -305,3 +305,11 @@ location is `s3://codec-corpus/eval372-rev2-2026-09-06/<corpus>/`. Those objects
 and labels have not yet been independently reverified for Margarine. The
 PIPAL guide records a 23,200-pair full set versus a 21,800-row historical
 subset with unexplained exclusions; do not silently reuse that subset.
+
+The multirate CID22 run is complete for all 4,292 pairs. Its
+[corpus panel](benchmarks/margarine_multirate_cid22_2026-09-26.tsv) records
+maximum SROCC loss 0.000113683 (max pooling); p3 changes from 0.792990393
+to 0.793557406, and Z-RMSE from 0.620496825 to 0.619965005.
+Maps and logs remain on r5900xt in `multirate-cid22-2026-09-26/`; the Mac
+copy contains ledgers and panels only. Clustered uncertainty, encoder-choice
+qualification and the seven additional human corpora remain outstanding.
