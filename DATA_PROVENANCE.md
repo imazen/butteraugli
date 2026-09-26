@@ -1397,3 +1397,15 @@ At 64²/256²/1024²/3355×2516, process RSS fractions are
 unmeasured image-size guarantees. Both input buffers and decoding are included
 in fresh-process peak RSS. [Raw hashes and OLS descriptions](benchmarks/margarine_named_cli_resources_2026-09-26.meta.json)
 retain each trial and the separate time intercepts; no extrapolation is used.
+
+The native-precision resource harness at `580e05c5` retains each encoded sample
+and constructs the teacher's linear RGB input without a full-image adapter copy.
+[The baseline](benchmarks/margarine_native_precision_baseline_2026-09-26.tsv)
+uses a real CID22 RGB8 reference/RGB16 distortion at 64², 256² and native 512².
+Scoring speedups are 1.331443×, 1.232190× and 1.630612×; all process peaks
+are below the teacher. This does not measure RGB16 performance at larger sizes.
+Repeated scalar 16-bit conversion is now replaced by an exact 65,536-entry
+table when an image has at least that many RGB samples; smaller images retain
+the formula to avoid table construction. Exhaustive bit equality tests cover
+every input value. Both the common-ingress teacher harness and candidate use
+this conversion; performance after the change remains to be measured.

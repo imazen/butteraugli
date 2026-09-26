@@ -1,0 +1,115 @@
+{
+  "build_commit": "580e05c5a458923f4d657b36fe011d7085b892ca",
+  "binary": "/home/lilith/work/codec-artifacts/margarine/native-precision-binaries-580e05c5a458923f4d657b36fe011d7085b892ca/margarine-box3",
+  "binary_sha256": "8e50639af6a3e120e4ce774958684ef11d104afe587c23870bd1e532fb833966",
+  "host": "r5900xt",
+  "system": "Linux",
+  "threads": 2,
+  "crop_manifest": "/home/lilith/work/codec-artifacts/margarine/native-precision-crops-2026-09-26/crops.tsv",
+  "crop_manifest_sha256": "087b7107a10ce0d6cd70c46cc65f2c0c3154aab0d01c096bfa481e5f5ae565cd",
+  "inputs": {
+    "/home/lilith/work/codec-artifacts/margarine/native-precision-crops-2026-09-26/64x64-ref.png": "c9f3664da98662c96805ef33631ec4600a55d53076b126492826c38b1b235837",
+    "/home/lilith/work/codec-artifacts/margarine/native-precision-crops-2026-09-26/64x64-dist.png": "91fb3375209a1500caccdf699fafe0dc1cfe2f27d951aefbdc6ae17cc02c34e6",
+    "/home/lilith/work/codec-artifacts/margarine/native-precision-crops-2026-09-26/256x256-ref.png": "13e41afe579152f8971d412fc852eba0fd53fd537751ac2902ae773ff1881e2f",
+    "/home/lilith/work/codec-artifacts/margarine/native-precision-crops-2026-09-26/256x256-dist.png": "b0e7b015d7cab8d23b5e6dd815757ebfcf5139bebd58fab18e6254685125fbeb",
+    "/home/lilith/work/codec-artifacts/margarine/native-precision-crops-2026-09-26/512x512-ref.png": "cb2666e7a256508d113c4265b820fd5ca7cb53907885c44dbb98faf072d0c2b4",
+    "/home/lilith/work/codec-artifacts/margarine/native-precision-crops-2026-09-26/512x512-dist.png": "fa6718561fe0c08f8343e0ac296372b5ec769e3785d6ca295695d1f8e13662e8"
+  },
+  "timing": "interleaved metric-only and file-open/decode/metric arms; warm OS file cache",
+  "memory": "maximum across repeated fresh process platform time; decode and inputs included",
+  "memory_trials": 3,
+  "limitation": "same-image crops; no independent content coverage",
+  "candidate": "simd-row-malta",
+  "strip_rows": 128,
+  "tile_columns": 512,
+  "named_command": "/home/lilith/work/codec-artifacts/margarine/named-binaries-0dceefe0dddfce31798ea6c0c5fd7561bcd2c11f/margarine",
+  "named_command_sha256": "7386bf955aee9317cb90cfe7a7fbaf95a5ff316c3a9a43de9e4ef69f0fcb630c",
+  "candidate_memory": "standalone named command, default scalar output; native diffmap retained in memory",
+  "ingress": "common encoded sRGB, native 8/16 bits",
+  "artifacts": {
+    "64x64-teacher-memory-trial2.log": "d53638dc0f309a23a08afdc558434d0696ba50f0044eeed02a9f8f6e1677941d",
+    "512x512-bench.log": "6dfa4d46e405810c4037f78080a599eed5a0b6900d19134b01a5cd2af5307bf7",
+    "64x64-bench.log": "6652d63480bc3a43733bc36a437a0d1ab8347f108feb0381bb8cd1d4635a9818",
+    "64x64-teacher-memory-trial3.log": "6705c3e4a07492d442ff5e6238d95993080d4cc996f63974b9a6abf2e01fd966",
+    "256x256-simd-row-malta-memory.log": "f2227c0c93ddcbf28c6d5c71649e3c77a92de94ebf27a734a6162c3ece709af2",
+    "512x512-teacher-memory-trial2.log": "55d7302420445d8ab09bd7e3c6eff2a2c42c3eb866e53c71904fbf89d736dc6f",
+    "256x256.json": "2e5a9f8772eef95ec4483deb1c39d995215b9c4c69483da37d74559e7954feb2",
+    "512x512-teacher-memory-trial3.log": "cd84aa465526149e293c4d4e82755ee807e8bd1a079fcb0e053351832a71dd27",
+    "512x512.json": "ddeb358ffb843c78bcc0e33c3c9aa52a2cf736a8e4be6ee9a24e47dfb22cc52f",
+    "512x512-simd-row-malta-memory.log": "621622711e392eb0b2835b9ec73f0c3fff087af108b2597b81437afacdc6ba4c",
+    "64x64-teacher-memory.log": "fe970bc4682c6c2bdec3defde7bb0743a875be3aed710f14d95bb581cbcc8424",
+    "256x256-simd-row-malta-memory-trial2.log": "971763cd4d86d207034adc0ed95788f7a1fbb9f90b2173cfeece80fb677feb8f",
+    "256x256-teacher-memory-trial2.log": "c954a8230e0d4567b37df7054784e8de82a0a15739766a50f8dc1e8cd349f59d",
+    "64x64-simd-row-malta-memory.log": "30e52fb4c2acf39deb2965a6237d464437216e8370a1c3d39064e9744339615c",
+    "256x256-teacher-memory-trial3.log": "30bddc15abf1fd27e89bef803225bc91c1698dbbf76217495345769af3476e56",
+    "512x512-teacher-memory.log": "2df62529d72f877110e38415a4af16327087c50a346e55473fde1059b4a97107",
+    "256x256-simd-row-malta-memory-trial3.log": "9a4912fb8c6eda17f349443d6746e9e8cde9f5370f7854219ce2bdb097ffa67b",
+    "memory_trials.json": "e06c0f4632ae635123b3dfcaec5df2e4bc1474afd3279295bede4effc7e99134",
+    "256x256-bench.log": "37b8429b6804684b670743d7c623a205852ea15a71a1a26dd96a14f1660e59ad",
+    "64x64-simd-row-malta-memory-trial2.log": "cc9e6b523f6a4225c78b13d3cb37cbc07975982bb5af055d8742f833e231db6d",
+    "64x64-simd-row-malta-memory-trial3.log": "16c4d06d2ee766a18af6b214a45284e7db2f62fcf862f304c24e66b880af432c",
+    "512x512-simd-row-malta-memory-trial2.log": "3da6a4db62e36c436ad1277cca4e73f2fa0fc1ffc1dbccfcfb204496f2523aed",
+    "512x512-simd-row-malta-memory-trial3.log": "b6fa56be031ced3eed40cfee8c6cf9bce98ca754629428acfe2046da8377e45c",
+    "_MANIFEST.json": "da5aaf8b8483dce6d82b036a52ead92cdb750145d802a1c12a93e62355e7f4e5",
+    "64x64.json": "7c9e0d865d38915a286cf7ef64ce9d00d00edff27fca5d0c62c1d70f30dd7cc6",
+    "progress.log": "55a1a7c83a804096aaab89c069b49af4befb6c955aa53b65c7549133f41a2e73",
+    "256x256-teacher-memory.log": "4bb07313bd5560bf33ff2e8847e6e59d9330520ca63b349bd06583689c701e9a",
+    "time_fits.json": "1652f3980d35c4735e0861ec9bc6bb6073161cd068e6b097c5c852c81ebb386e",
+    "summary.tsv": "ee1a645ace020624944cb3691c82ea0bf170e22ab027d99b9f7f1c81f6e12cdf"
+  },
+  "time_fits": [
+    {
+      "arm": "teacher",
+      "timing": "mean_ns",
+      "alpha_ns": -1153147.6823347844,
+      "beta_ns_per_pixel": 172.15821624767935,
+      "observed_sizes": 3,
+      "residual_ns": [
+        1255765.4687033375,
+        -1648192.177673133,
+        392426.7089697942
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "teacher",
+      "timing": "decode_included_mean_ns",
+      "alpha_ns": -1201948.7072437666,
+      "beta_ns_per_pixel": 193.74957704665587,
+      "observed_sizes": 3,
+      "residual_ns": [
+        1322251.6754939975,
+        -1735455.3240858745,
+        413203.64859187603
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "simd-row-malta",
+      "timing": "mean_ns",
+      "alpha_ns": 157196.27535197698,
+      "beta_ns_per_pixel": 103.16751008466203,
+      "observed_sizes": 3,
+      "residual_ns": [
+        26923.28857934248,
+        -35336.81626038719,
+        8413.52768104896
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "simd-row-malta",
+      "timing": "decode_included_mean_ns",
+      "alpha_ns": 202820.61141692288,
+      "beta_ns_per_pixel": 123.26150577042142,
+      "observed_sizes": 3,
+      "residual_ns": [
+        23504.38368552632,
+        -30849.50358725991,
+        7345.11990173161
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    }
+  ],
+  "source": "CID22 original/162520.png (RGB8) and compressed/162520/cld_avif/q30.png (RGB16); exact center crops, no resampling"
+}

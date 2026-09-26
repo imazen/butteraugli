@@ -117,9 +117,20 @@ impl<'a> EncodedRows<'a> {
         self.linear_region(0, self.width, start, end)
     }
 
+    fn linear16_function(&self) -> fn(u16) -> f32 {
+        // Only populate the complete domain when it costs no more formula
+        // evaluations than converting one image's RGB samples directly.
+        if self.width.saturating_mul(self.height).saturating_mul(3) >= 65536 {
+            linear16_cached
+        } else {
+            linear16
+        }
+    }
+
     /// Native-precision teacher input without an intermediate full-image copy.
     pub(crate) fn linear_rgb(&self) -> Vec<butteraugli::RGB<f32>> {
         let mut out = Vec::with_capacity(self.width * self.height);
+        let linear16 = self.linear16_function();
         for y in 0..self.height {
             let range = y * self.stride..y * self.stride + self.width * self.channels;
             match self.samples {
@@ -146,6 +157,7 @@ impl<'a> EncodedRows<'a> {
     pub(crate) fn linear_region(&self, x0: usize, x1: usize, start: usize, end: usize) -> Vec<f32> {
         assert!(start <= end && end <= self.height && x0 < x1 && x1 <= self.width);
         let mut result = vec![0.0; (end - start) * (x1 - x0) * 3];
+        let linear16 = self.linear16_function();
         for (y, out) in (start..end).zip(result.chunks_exact_mut((x1 - x0) * 3)) {
             let range = y * self.stride + x0 * self.channels..y * self.stride + x1 * self.channels;
             match self.samples {
@@ -226,7 +238,7 @@ impl<'a> EncodedRows<'a> {
                 y,
                 factor,
                 out,
-                linear16,
+                self.linear16_function(),
             ),
             (Samples::U16(v), 4) => planar_row::<_, 4>(
                 &v[x0 * self.channels..],
@@ -236,7 +248,7 @@ impl<'a> EncodedRows<'a> {
                 y,
                 factor,
                 out,
-                linear16,
+                self.linear16_function(),
             ),
             _ => unreachable!(),
         }
@@ -312,6 +324,18 @@ fn linear16(value: u16) -> f32 {
     }) as f32
 }
 
+fn linear16_cached(value: u16) -> f32 {
+    static LUT: std::sync::LazyLock<Box<[f32; 65536]>> = std::sync::LazyLock::new(|| {
+        (0..=u16::MAX)
+            .map(linear16)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+            .try_into()
+            .unwrap()
+    });
+    LUT[usize::from(value)]
+}
+
 pub(crate) fn convert(input: DynamicImage) -> Result<(Vec<f32>, usize, usize)> {
     let view = EncodedRows::from_image(&input)?;
     Ok((view.linear_strip(0, view.height), view.width, view.height))
@@ -325,6 +349,13 @@ pub(crate) fn load(path: impl AsRef<Path>) -> Result<(Vec<f32>, usize, usize)> {
 mod tests {
     use super::*;
     use image_io::{ImageBuffer, Rgb, Rgba};
+
+    #[test]
+    fn native_16_table_is_bit_exact_for_the_complete_domain() {
+        for value in 0..=u16::MAX {
+            assert_eq!(linear16_cached(value).to_bits(), linear16(value).to_bits());
+        }
+    }
 
     #[cfg(feature = "planar")]
     #[test]
