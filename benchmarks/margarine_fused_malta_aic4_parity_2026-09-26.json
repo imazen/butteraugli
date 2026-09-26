@@ -1,0 +1,9 @@
+{
+  "build_commit": "bde9f310e5e5d566f7ebf04f0b7c316526806616",
+  "pairs": 300,
+  "changed_scores_or_map_hashes": 0,
+  "ledgers": {
+    "/Users/lilith/work/codec-artifacts/margarine/fused-malta-aic4-2026-09-26/cells.jsonl": "22ab2dcdc90bd04198e6835c4d611421d4d0f7a77a5912be93df6dc67f7b289f",
+    "/Users/lilith/work/codec-artifacts/margarine/stream-blur-aic4-2026-09-26/cells.jsonl": "22ab2dcdc90bd04198e6835c4d611421d4d0f7a77a5912be93df6dc67f7b289f"
+  }
+}

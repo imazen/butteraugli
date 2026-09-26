@@ -810,3 +810,13 @@ is 2.045×; 256² RSS fraction is 74.58% and speedup 1.652×. The larger-image
 requirements remain unmet: 1 MP/8.44 MP speedups are 2.249×/1.692× and RSS
 fractions 25.20%/13.93%. All sizes have at least twenty interleaved rounds.
 Full records remain in `single-region-resources-2026-09-26/` on r5900xt and Mac.
+
+Fusing the three lattice Malta reconstructions with accumulation (`bde9f310`)
+[retains every AIC4 map hash and scalar](benchmarks/margarine_fused_malta_aic4_parity_2026-09-26.json)
+from the rolling-Gaussian run. The [resource sweep](benchmarks/margarine_fused_malta_resources_2026-09-26.tsv)
+measures 2.444×/1.700× speed at 1 MP/8.44 MP and process RSS fractions
+26.01%/14.26%; it does not meet the requested larger-image targets. Tiny and
+small time/RAM remain below teacher in this run. Full maps are in r5900xt
+`fused-malta-aic4-2026-09-26/`; resources and compact replay metadata also
+exist on the Mac. Fewer live map intermediates did not lower measured peak RSS
+in this run; the measured process peak, not a buffer count, remains the gate.

@@ -1,7 +1,7 @@
 {
-  "build_commit": "21b19447ffb8e140cc78323847d25fe76ace3d1b",
-  "binary": "/home/lilith/work/codec-artifacts/margarine/single-region-binaries-21b19447/margarine-box3",
-  "binary_sha256": "d83b785c62fef0ffd1538c507635b1eafc544a7a0d0c35ef7cdc9571bb956631",
+  "build_commit": "bde9f310e5e5d566f7ebf04f0b7c316526806616",
+  "binary": "/home/lilith/work/codec-artifacts/margarine/fused-malta-binaries-bde9f310/margarine-box3",
+  "binary_sha256": "8cd853c77ae4dd37fe265a385619b971255d50c6b43d2ac4e6344f10567ed021",
   "host": "r5900xt",
   "system": "Linux",
   "threads": 2,
@@ -26,59 +26,59 @@
     {
       "arm": "teacher",
       "timing": "mean_ns",
-      "alpha_ns": -7617049.310923338,
-      "beta_ns_per_pixel": 155.72449768128143,
+      "alpha_ns": -4620911.191937268,
+      "beta_ns_per_pixel": 153.55989340710028,
       "observed_sizes": 4,
       "residual_ns": [
-        7597178.690196603,
-        3300961.90588288,
-        -12410473.569724023,
-        1512332.9736442566
+        4588909.670178689,
+        910880.7426095437,
+        -6269269.82457903,
+        769479.4117908478
       ],
       "note": "OLS description of measured sizes, not extrapolation or a performance gate"
     },
     {
       "arm": "teacher",
       "timing": "decode_included_mean_ns",
-      "alpha_ns": -6794600.4737302065,
-      "beta_ns_per_pixel": 171.34582604022003,
+      "alpha_ns": -3905713.228872597,
+      "beta_ns_per_pixel": 168.70861210187078,
       "observed_sizes": 4,
       "residual_ns": [
-        6796010.168880576,
-        2406805.443358345,
-        -10483052.281784803,
-        1280236.6695456505
+        3909141.8364910325,
+        376513.70116439275,
+        -4888034.414458692,
+        602378.8768031597
       ],
       "note": "OLS description of measured sizes, not extrapolation or a performance gate"
     },
     {
       "arm": "stream-blur",
       "timing": "mean_ns",
-      "alpha_ns": -11094366.089832783,
-      "beta_ns_per_pixel": 92.61078567663156,
+      "alpha_ns": -11165870.68845725,
+      "beta_ns_per_pixel": 91.03255306752698,
       "observed_sizes": 4,
       "residual_ns": [
-        11017290.045133838,
-        8589559.014729057,
-        -22305657.111826837,
-        2698808.0519639254
+        11103742.78670774,
+        9002513.690623803,
+        -22872192.313241556,
+        2765935.835910082
       ],
       "note": "OLS description of measured sizes, not extrapolation or a performance gate"
     },
     {
       "arm": "stream-blur",
       "timing": "decode_included_mean_ns",
-      "alpha_ns": -10707685.872771889,
-      "beta_ns_per_pixel": 104.59965692112146,
+      "alpha_ns": -10663449.4103145,
+      "beta_ns_per_pixel": 102.863576523225,
       "observed_sizes": 4,
       "residual_ns": [
-        10677491.06934242,
-        8264442.756789273,
-        -21549499.939471707,
-        2607566.113339901
+        10645072.396907115,
+        8784501.534288429,
+        -22101715.11519359,
+        2672141.1839979887
       ],
       "note": "OLS description of measured sizes, not extrapolation or a performance gate"
     }
   ],
-  "run_heavy": "rc=0 133s | peak-RSS 1.60GiB | min-avail 56736MiB | peak-load 1.45"
+  "run_heavy": "rc=0 133s | peak-RSS 1.57GiB | min-avail 56700MiB | peak-load 1.55"
 }
