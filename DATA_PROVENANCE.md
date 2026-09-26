@@ -688,6 +688,14 @@ are below 0.01. This does not imply every distortion family passes:
 loses 0.01040244 SROCC for max and 0.01107207 for p6. Full family and source
 panels remain with the participant artifacts below and in the Mac metadata copy.
 
+Restricting the same participant disagreements to KADID's published JPEG and
+JPEG2000 distortion classes gives [35 max-norm reversals among 2,025 cross-codec pairs](benchmarks/margarine_lattice_kadid_compression_2026-09-26.tsv),
+with four pointwise 95% harmful decreases and none under the simultaneous
+family bounds. p1/p2/p3/p6 have no pointwise harmful decreases in that subset.
+The denominator includes every combination of five levels per codec for each
+of 81 sources. It is not matched by bitrate and cannot replace encoder-choice
+acceptance. Class identities follow the [KADID distortion catalog](https://database.mmsp-kn.de/kadid-10k-database.html).
+
 The [participant diagnostic](benchmarks/margarine_lattice_kadid_participants_2026-09-26.tsv)
 uses 2,000 worker-cluster bootstrap draws over 2,058 workers and 304,406
 observations, retaining all 10,125 images. Among 627,750 within-source pairs,

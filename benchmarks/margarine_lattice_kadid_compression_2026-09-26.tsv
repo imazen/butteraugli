@@ -1,0 +1,6 @@
+norm	sources	cross_codec_pairs	reversals	pointwise_95_harm	pointwise_95_benefit	simultaneous_95_harm	scope
+max	81	2025	35	4	11	0	all 5 by 5 JPEG/JPEG2000 levels per source; not matched bitrate
+p1	81	2025	0	0	0	0	all 5 by 5 JPEG/JPEG2000 levels per source; not matched bitrate
+p2	81	2025	6	0	0	0	all 5 by 5 JPEG/JPEG2000 levels per source; not matched bitrate
+p3	81	2025	8	0	2	0	all 5 by 5 JPEG/JPEG2000 levels per source; not matched bitrate
+p6	81	2025	8	0	1	0	all 5 by 5 JPEG/JPEG2000 levels per source; not matched bitrate
