@@ -18,6 +18,7 @@ sparse = ["reuse"]
 pooled = ["reuse"]
 perceptual = ["reuse"]
 physical = ["perceptual"]
+refined = ["pooled"]
 
 [dependencies]
 butteraugli = { path = "../../butteraugli", features = ["internals"] }

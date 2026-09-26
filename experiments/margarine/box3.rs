@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "physical") {
+const CANDIDATE: &str = if cfg!(feature = "refined") {
+    "refined"
+} else if cfg!(feature = "physical") {
     "physical"
 } else if cfg!(feature = "perceptual") {
     "perceptual"
@@ -118,6 +120,8 @@ mod learned;
 mod paired_pool;
 #[cfg(feature = "perceptual")]
 mod perceptual_pool;
+#[cfg(feature = "refined")]
+mod refined;
 #[path = "resources.rs"]
 mod resources;
 mod resources_rgb8;
@@ -129,11 +133,18 @@ fn candidate_encoded(
     rows: usize,
     params: &ButteraugliParams,
 ) -> Result<diff::InternalResult, Box<dyn Error>> {
-    #[cfg(feature = "perceptual")]
+    #[cfg(feature = "refined")]
+    {
+        refined::compute(a, b, rows, params)
+    }
+    #[cfg(all(feature = "perceptual", not(feature = "refined")))]
     {
         perceptual_pool::compute(a, b, rows, params)
     }
-    #[cfg(all(feature = "pooled", not(feature = "perceptual")))]
+    #[cfg(all(
+        feature = "pooled",
+        not(any(feature = "perceptual", feature = "refined"))
+    ))]
     {
         paired_pool::compute(a, b, rows, params)
     }
