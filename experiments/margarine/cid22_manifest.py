@@ -52,6 +52,20 @@ def audit(path):
                     if dimensions is None:
                         raise ValueError("missing PNG dimensions")
                     return dimensions
+        if signature[:2] == b"BM":
+            # Uncompressed 24-bit BITMAPINFOHEADER: no embedded color profile.
+            f.seek(0)
+            header = f.read(54)
+            if len(header) != 54:
+                raise ValueError("truncated BMP header")
+            offset = int.from_bytes(header[10:14], "little")
+            size, width, height, planes, bits, compression = struct.unpack("<IiiHHI", header[14:34])
+            if size != 40 or width <= 0 or height == 0 or planes != 1 or bits != 24 or compression != 0:
+                raise ValueError(f"unaudited BMP layout: {path}")
+            row_bytes = (width*3+3)//4*4
+            if offset < 54 or path.stat().st_size < offset + row_bytes*abs(height):
+                raise ValueError("truncated BMP pixels")
+            return width, abs(height)
         if signature[:2] != b"\xff\xd8":
             raise ValueError(f"unsupported image: {path}")
         f.seek(2)

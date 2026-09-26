@@ -144,7 +144,7 @@ def main():
     parser.add_argument("binaries", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--build-commit", required=True)
-    parser.add_argument("--ingress", choices=("aic-rgb8", "cid22-srgb"), default="aic-rgb8")
+    parser.add_argument("--ingress", choices=("aic-rgb8", "cid22-srgb", "common-srgb"), default="aic-rgb8")
     parser.add_argument("--teacher-features", action="store_true",
                         help="extract teacher maps/norms plus a separate 168-feature sidecar; no labels or quality evaluation")
     parser.add_argument("--features-only", action="store_true",
@@ -216,7 +216,7 @@ def main():
     shutil.copyfile(args.manifest, args.output / "input_pairs.tsv")
     manifest_path = args.output / "_MANIFEST.json"
     manifest_path.write_text(json.dumps(provenance, indent=2) + "\n")
-    if args.ingress == "cid22-srgb":
+    if args.ingress in ("cid22-srgb", "common-srgb"):
         from cid22_manifest import audit as audit_image
     else:
         audit_image = audit_png
