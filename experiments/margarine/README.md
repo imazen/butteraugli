@@ -440,3 +440,10 @@ strips of the compact candidate. It clears the pool when strip geometry
 changes and between scales. Production Butteraugli retains its eight-buffer
 default. This changes allocation scheduling only; total-process memory must
 be measured before selecting a strip height or claiming a resource pass.
+
+`--features sparse` retains all sixteen Malta patterns and native scaled
+differences, evaluating responses on the even-coordinate lattice and linearly
+reconstructing the intervening map values. Four phase planes make the sampled
+stencil loads contiguous. Tests require exact agreement with the full bank
+at sampled nodes, including odd dimensions and poisoned input padding.
+This is a spatial approximation and requires its own human-quality panel.

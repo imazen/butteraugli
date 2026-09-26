@@ -1345,14 +1345,8 @@ fn malta_compute_scaled_diffs(
     }
 }
 
-/// Shared implementation for Malta diff map.
-///
-/// The `interior_row` closure processes `count` pixels starting from
-/// `data[center_base]`, writing to `out[0..count]`. All pixels use the
-/// fast interior path thanks to zero-padded borders on the diff image.
-#[allow(clippy::inline_always, clippy::too_many_arguments)]
-#[inline(always)]
-pub(crate) fn malta_diff_map_impl<F>(
+/// Computes the original normalized, zero-padded Malta differences.
+pub(crate) fn malta_scaled_differences(
     lum0: &ImageF,
     lum1: &ImageF,
     w_0gt1: f64,
@@ -1360,11 +1354,7 @@ pub(crate) fn malta_diff_map_impl<F>(
     norm1: f64,
     use_lf: bool,
     pool: &BufferPool,
-    interior_row: F,
-) -> ImageF
-where
-    F: Fn(&[f32], usize, usize, usize, bool, &mut [f32]),
-{
+) -> ImageF {
     let width = lum0.width();
     let height = lum0.height();
 
@@ -1421,6 +1411,35 @@ where
         &mut padded,
         PAD,
     );
+
+    padded
+}
+
+/// Shared implementation for Malta diff map.
+///
+/// The `interior_row` closure processes `count` pixels starting from
+/// `data[center_base]`, writing to `out[0..count]`. All pixels use the
+/// fast interior path thanks to zero-padded borders on the diff image.
+#[allow(clippy::inline_always, clippy::too_many_arguments)]
+#[inline(always)]
+pub(crate) fn malta_diff_map_impl<F>(
+    lum0: &ImageF,
+    lum1: &ImageF,
+    w_0gt1: f64,
+    w_0lt1: f64,
+    norm1: f64,
+    use_lf: bool,
+    pool: &BufferPool,
+    interior_row: F,
+) -> ImageF
+where
+    F: Fn(&[f32], usize, usize, usize, bool, &mut [f32]),
+{
+    let width = lum0.width();
+    let height = lum0.height();
+    const PAD: usize = 4;
+    let padded = malta_scaled_differences(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool);
+    let pad_stride = padded.stride();
 
     let mut block_diff_ac = ImageF::from_pool_dirty(width, height, pool);
     let pad_data = padded.data();

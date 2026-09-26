@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "compact4") {
+const CANDIDATE: &str = if cfg!(feature = "sparse") {
+    "sparse"
+} else if cfg!(feature = "compact4") {
     "compact4"
 } else if cfg!(feature = "compact") {
     "compact"
@@ -44,10 +46,13 @@ mod image;
     clippy::too_many_arguments
 )]
 mod shared_malta;
-#[cfg(not(feature = "compact4"))]
+#[cfg(not(any(feature = "compact4", feature = "sparse")))]
 use shared_malta as malta;
-#[cfg(feature = "compact4")]
+#[cfg(all(feature = "compact4", not(feature = "sparse")))]
 #[path = "directional_malta.rs"]
+mod malta;
+#[cfg(feature = "sparse")]
+#[path = "sparse_malta.rs"]
 mod malta;
 #[path = "../../butteraugli/src/mask.rs"]
 mod mask;
