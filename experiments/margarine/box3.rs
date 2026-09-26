@@ -77,14 +77,19 @@ fn pnorm(map: &image::ImageF, p: f64) -> f64 {
 
 #[path = "resources.rs"]
 mod resources;
+mod strips;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<_> = std::env::args().skip(1).collect();
+    let mut args: Vec<_> = std::env::args().skip(1).collect();
     if matches!(
         args.first().map(String::as_str),
         Some("--bench" | "--memory")
     ) {
         return resources::run(&args);
+    }
+    let strip = args.first().is_some_and(|a| a == "--strip");
+    if strip {
+        args.remove(0);
     }
     if args.len() != 3 {
         return Err("usage: margarine-box3 REF DIST DIFFMAP.f32le".into());
@@ -94,14 +99,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     if (w, h) != (dw, dh) {
         return Err("image dimensions differ".into());
     }
-    let result = diff::compute_butteraugli_linear_impl(
-        &reference,
-        &distorted,
-        w,
-        h,
-        &ButteraugliParams::default(),
-        &enough::Unstoppable,
-    )?;
+    let result = if strip {
+        strips::compute(
+            &reference,
+            &distorted,
+            w,
+            h,
+            3 * w,
+            32,
+            &ButteraugliParams::default(),
+        )?
+    } else {
+        diff::compute_butteraugli_linear_impl(
+            &reference,
+            &distorted,
+            w,
+            h,
+            &ButteraugliParams::default(),
+            &enough::Unstoppable,
+        )?
+    };
     let map = result.diffmap.as_ref().ok_or("missing diffmap")?;
     let mut out = BufWriter::new(std::fs::File::create_new(&args[2])?);
     for y in 0..map.height() {
@@ -112,7 +129,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     out.flush()?;
     println!("mode\twidth\theight\tmax\tp1\tp2\tp3\tp6\tdiffmap");
     println!(
-        "box3\t{w}\t{h}\t{:.17}\t{:.17}\t{:.17}\t{:.17}\t{:.17}\t{}",
+        "{}\t{w}\t{h}\t{:.17}\t{:.17}\t{:.17}\t{:.17}\t{:.17}\t{}",
+        if strip { "box3-strip" } else { "box3" },
         result.score,
         pnorm(map, 1.0),
         pnorm(map, 2.0),

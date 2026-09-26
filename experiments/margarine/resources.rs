@@ -53,7 +53,12 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 black_box(&result);
                 (result.score, result.pnorm_3)
             }
-            _ => return Err("memory arm must be teacher or box3".into()),
+            "box3-strip" => {
+                let result = strips::compute(&reference, &distorted, w, h, 3 * w, 32, &params)?;
+                black_box(&result);
+                (result.score, result.pnorm_3)
+            }
+            _ => return Err("memory arm must be teacher, box3 or box3-strip".into()),
         };
         println!("{}\t{w}\t{h}\t{score}\t{p3}", args[1]);
         return Ok(());

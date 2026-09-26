@@ -25,6 +25,10 @@ fn radii(sigma: f32) -> [usize; 3] {
     std::array::from_fn(|i| if i < n_low { lower / 2 } else { upper / 2 })
 }
 
+pub(crate) fn support(sigma: f32) -> usize {
+    radii(sigma).iter().sum()
+}
+
 fn box_pass(input: &ImageF, radius: usize, pool: &BufferPool) -> ImageF {
     let (w, h) = (input.width(), input.height());
     if radius == 0 {

@@ -21,6 +21,19 @@ Clipped, renormalized box boundaries differ from the teacher's Gaussian filter.
 The experiment retains the teacher's full-image intermediate storage; this is
 an accuracy/cost control, not an implementation of the memory target.
 
+`margarine-box3 --strip REF DIST MAP` processes 32-row interiors with a halo
+derived from the complete filter support, including the half-resolution path.
+It accepts strided linear input internally and aligns each slice to the global
+2×2 sampling lattice. The whole output map is retained. This bounds scratch
+height, at the cost of repeated halo computation; it is a memory control, not
+a speed optimization. `--memory box3-strip REF DIST` measures this arm.
+
+On the first 620×800 AIC pair, the strip map's SHA-256 matched whole-image
+box3 exactly. Mac fresh-process peak RSS was 43,712,512 bytes for strips and
+103,530,496 bytes for teacher (platform `time -l`, two Rayon threads, including
+decode and caller buffers). This measured pair still fails the quarter-RAM
+target. Artifacts: `/Users/lilith/work/codec-artifacts/margarine/box3-strip-smoke-2026-09-25/`.
+
 ## Evaluation contract
 
 Compare against this repository's FIR, multiresolution Butteraugli with the
