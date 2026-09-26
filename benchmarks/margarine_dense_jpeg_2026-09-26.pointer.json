@@ -37,5 +37,6 @@
   "binary_freeze": "teacher-feature-binaries-8fe68ff7",
   "model_status": "not fitted",
   "encoder_remote_copy": "dev:/home/lilith/work/codec-artifacts/margarine/dense-jpeg-pilot-2026-09-26/",
-  "tower_encoded_mirror": null
+  "tower_encoded_mirror": "tower:/mnt/user/coefficient/output/margarine/dense-jpeg-pilot-2026-09-26/",
+  "tower_verification": "Stage manifest, pairs export and three deterministic blob hashes verified. refs/ excluded: bytes already live in dense-references-pilot-2026-09-26/."
 }

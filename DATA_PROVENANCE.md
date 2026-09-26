@@ -189,3 +189,10 @@ and 100-job recycle limit inside a 12 GiB container. A three-cell smoke produced
 byte-identical encoded outputs with warm and fresh executors. It auto-folds
 existing sidecars beside `--ledger-out`, so isolated comparison runs need
 separate ledger directories. Completed cells were reused when enabling warmth.
+
+The encoded stage is mirrored at Tower
+`/mnt/user/coefficient/output/margarine/dense-jpeg-pilot-2026-09-26/`. Its stage
+manifest, complete pairs export and three deterministic encoded-blob hashes
+match the Mac copy. `refs/` was excluded from this mirror because those bytes
+already live in `dense-references-pilot-2026-09-26/`; the stage manifest maps the
+flat source/size names to the same source IDs, dimensions and hashes.
