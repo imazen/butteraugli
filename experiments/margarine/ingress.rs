@@ -117,6 +117,32 @@ impl<'a> EncodedRows<'a> {
         self.linear_region(0, self.width, start, end)
     }
 
+    /// Native-precision teacher input without an intermediate full-image copy.
+    pub(crate) fn linear_rgb(&self) -> Vec<butteraugli::RGB<f32>> {
+        let mut out = Vec::with_capacity(self.width * self.height);
+        for y in 0..self.height {
+            let range = y * self.stride..y * self.stride + self.width * self.channels;
+            match self.samples {
+                Samples::U8(v) => {
+                    let lut = linear8_table();
+                    out.extend(v[range].chunks_exact(self.channels).map(|p| {
+                        butteraugli::RGB::new(
+                            lut[p[0] as usize],
+                            lut[p[1] as usize],
+                            lut[p[2] as usize],
+                        )
+                    }));
+                }
+                Samples::U16(v) => {
+                    out.extend(v[range].chunks_exact(self.channels).map(|p| {
+                        butteraugli::RGB::new(linear16(p[0]), linear16(p[1]), linear16(p[2]))
+                    }));
+                }
+            }
+        }
+        out
+    }
+
     pub(crate) fn linear_region(&self, x0: usize, x1: usize, start: usize, end: usize) -> Vec<f32> {
         assert!(start <= end && end <= self.height && x0 < x1 && x1 <= self.width);
         let mut result = vec![0.0; (end - start) * (x1 - x0) * 3];
@@ -324,6 +350,11 @@ mod tests {
                 for samples in [Samples::U8(&a), Samples::U16(&b)] {
                     let view = EncodedRows::new(samples, w, h, stride, channels).unwrap();
                     let packed = view.linear_strip(0, h);
+                    let rgb = view.linear_rgb();
+                    assert_eq!(rgb.len(), w * h);
+                    for (p, v) in rgb.iter().zip(packed.chunks_exact(3)) {
+                        assert_eq!([p.r, p.g, p.b], v);
+                    }
                     for factor in [1, 2] {
                         for y in (0..h).step_by(factor) {
                             let width = w.div_ceil(factor);

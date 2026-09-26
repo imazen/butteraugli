@@ -52,8 +52,10 @@ def main():
     parser.add_argument("--model", type=Path, help="measure fitted student scores instead of feature probes")
     parser.add_argument("--named-command", type=Path,
                         help="measure candidate process RSS with the standalone command; timing still uses the shared-kernel harness")
+    parser.add_argument("--encoded", action="store_true", help="benchmark common native 8/16-bit ingress instead of the RGB8-only teacher API")
     args = parser.parse_args()
     if args.model and args.direct: parser.error("choose a fitted model or direct candidate")
+    if args.encoded and not args.direct: parser.error("encoded ingress requires a direct candidate")
     if args.named_command and (args.direct != "simd-row-malta" or args.strip_rows != 128 or args.tile_columns != 512):
         parser.error("the named command requires simd-row-malta with 128 rows and 512 columns")
     if args.memory_trials < 1: parser.error("memory trials must be positive")
@@ -98,6 +100,7 @@ def main():
         provenance.update(named_command=str(args.named_command),
                           named_command_sha256=sha(args.named_command),
                           candidate_memory="standalone named command, default scalar output; native diffmap retained in memory")
+    provenance["ingress"] = "common encoded sRGB, native 8/16 bits" if args.encoded else "RGB8"
     with (args.output / "progress.log").open("x", buffering=1) as progress:
         def report(message):
             print(message, file=progress, flush=True)
@@ -114,6 +117,8 @@ def main():
                     suffix = "" if trial == 0 else f"-trial{trial + 1}"
                     log = args.output / f"{name}-{arm}-memory{suffix}.log"
                     command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-rgb8", arm, *pair]
+                    if args.encoded and arm == "teacher":
+                        command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-encoded-teacher", *pair]
                     if args.direct and arm == args.direct:
                         command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-native", str(args.strip_rows), *pair]
                         if args.named_command:
@@ -133,7 +138,7 @@ def main():
                 command = ([str(args.binary), "--bench-student", str(args.model)] if args.model
                            else [str(args.binary), "--bench-rgb8"])
                 if args.direct:
-                    command = [str(args.binary), "--bench-direct", str(args.strip_rows)]
+                    command = [str(args.binary), "--bench-encoded" if args.encoded else "--bench-direct", str(args.strip_rows)]
                 with subprocess.Popen(command + [*pair, str(result_path)],
                         stdout=out, stderr=subprocess.STDOUT, env=environment) as process:
                     while True:

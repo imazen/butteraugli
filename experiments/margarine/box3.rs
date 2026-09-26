@@ -14,12 +14,19 @@ use ingress::load;
 use std::io::{BufWriter, Write};
 mod learned;
 mod resources;
+mod resources_encoded;
 mod resources_rgb8;
 
 mod student;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<_> = std::env::args().skip(1).collect();
+    if matches!(
+        args.first().map(String::as_str),
+        Some("--bench-encoded" | "--memory-encoded-teacher")
+    ) {
+        return resources_encoded::run(&args);
+    }
     if args.first().is_some_and(|arg| arg == "--bench-direct") {
         return resources_rgb8::bench_direct(&args);
     }

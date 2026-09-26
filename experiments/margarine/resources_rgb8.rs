@@ -219,8 +219,11 @@ pub(super) fn crops(args: &[String]) -> Result<(), Box<dyn Error>> {
     if args.len() != 4 {
         return Err("usage: --resource-crops REF DIST NEW_DIRECTORY".into());
     }
-    let (a, b) = (decode(&args[1])?, decode(&args[2])?);
-    if a.dimensions() != b.dimensions() {
+    let (a, b) = (
+        super::ingress::decode(&args[1])?,
+        super::ingress::decode(&args[2])?,
+    );
+    if (a.width(), a.height()) != (b.width(), b.height()) {
         return Err("resource crop source pair dimensions must match".into());
     }
     let out = Path::new(&args[3]);
@@ -232,8 +235,8 @@ pub(super) fn crops(args: &[String]) -> Result<(), Box<dyn Error>> {
         .into_iter()
         .filter(|&(w, h)| w <= a.width() && h <= a.height())
         .collect();
-    if !sizes.contains(&a.dimensions()) {
-        sizes.push(a.dimensions());
+    if !sizes.contains(&(a.width(), a.height())) {
+        sizes.push((a.width(), a.height()));
     }
     for (w, h) in sizes {
         let (x, y) = ((a.width() - w) / 2, (a.height() - h) / 2);
@@ -242,8 +245,8 @@ pub(super) fn crops(args: &[String]) -> Result<(), Box<dyn Error>> {
             out.join(format!("{name}-ref.png")),
             out.join(format!("{name}-dist.png")),
         );
-        let ac = image_io::imageops::crop_imm(&a, x, y, w, h).to_image();
-        let bc = image_io::imageops::crop_imm(&b, x, y, w, h).to_image();
+        let ac = a.crop_imm(x, y, w, h);
+        let bc = b.crop_imm(x, y, w, h);
         if ac == bc {
             return Err(
                 format!("identity crop at {name}; cannot benchmark comparison work").into(),
