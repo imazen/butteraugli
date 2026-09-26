@@ -12,6 +12,7 @@ rayon = ["dep:rayon"]
 avx512 = ["archmage/avx512", "magetypes/avx512"]
 multirate = []
 compact = ["multirate"]
+compact4 = ["compact"]
 
 [dependencies]
 butteraugli = { path = "../../butteraugli", features = ["internals"] }

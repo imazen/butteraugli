@@ -428,3 +428,9 @@ and Butteraugli's nonlinear transforms, directional scoring and masking remain
 shared. This first version reconstructs LF/MF before scoring; it does not yet
 reduce their retained plane storage. Its constants are analytical, with no
 human-label fitting. Quality and resource qualification are separate gates.
+
+`--features compact4` additionally replaces the sixteen-direction Malta bank
+with its axial and diagonal lines. The constant-response multiplier follows
+the original tap counts (1104/260 for UHF, 4 for HF/MF). It shares the
+asymmetric difference normalization and zero-border behavior. This is an
+approximation experiment; angular-detail fidelity requires human evaluation.

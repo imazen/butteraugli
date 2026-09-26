@@ -1352,7 +1352,7 @@ fn malta_compute_scaled_diffs(
 /// fast interior path thanks to zero-padded borders on the diff image.
 #[allow(clippy::inline_always, clippy::too_many_arguments)]
 #[inline(always)]
-fn malta_diff_map_impl<F>(
+pub(crate) fn malta_diff_map_impl<F>(
     lum0: &ImageF,
     lum1: &ImageF,
     w_0gt1: f64,
