@@ -23,8 +23,14 @@ pub(crate) fn support(sigma: f32) -> usize {
     factor * ((2.25 * reduced_sigma).floor() as usize + 2)
 }
 
+#[cfg(test)]
 #[archmage::autoversion]
-fn reduce(_token: archmage::SimdToken, input: &ImageF, factor: usize, pool: &BufferPool) -> ImageF {
+fn reduce_reference(
+    _token: archmage::SimdToken,
+    input: &ImageF,
+    factor: usize,
+    pool: &BufferPool,
+) -> ImageF {
     let (w, h) = (input.width(), input.height());
     let mut result = ImageF::from_pool_dirty(w.div_ceil(factor), h.div_ceil(factor), pool);
     for oy in 0..result.height() {
@@ -51,8 +57,9 @@ fn coordinate(pixel: usize, factor: usize, length: usize) -> (usize, usize, f32)
     (a, (a + 1).min(length - 1), position - a as f32)
 }
 
+#[cfg(test)]
 #[archmage::autoversion]
-fn expand(
+fn expand_reference(
     _token: archmage::SimdToken,
     input: &ImageF,
     w: usize,
@@ -76,6 +83,104 @@ fn expand(
     output
 }
 
+#[inline(always)]
+fn reduce_fixed<const F: usize>(input: &ImageF, pool: &BufferPool) -> ImageF {
+    let (w, h) = (input.width(), input.height());
+    let mut result = ImageF::from_pool_dirty(w.div_ceil(F), h.div_ceil(F), pool);
+    for oy in 0..h.div_ceil(F) {
+        let y0 = oy * F;
+        let y1 = (y0 + F).min(h);
+        let dst = result.row_mut(oy);
+        let full = if y1 - y0 == F { w / F / 8 * 8 } else { 0 };
+        for (block, out) in dst[..full].as_chunks_mut::<8>().0.iter_mut().enumerate() {
+            let mut sums = [0.0f32; 8];
+            for y in y0..y1 {
+                let row = &input.row(y)[block * 8 * F..(block + 1) * 8 * F];
+                for k in 0..F {
+                    for lane in 0..8 {
+                        sums[lane] += row[lane * F + k];
+                    }
+                }
+            }
+            for lane in 0..8 {
+                out[lane] = sums[lane] / (F * F) as f32;
+            }
+        }
+        for (ox, out) in dst.iter_mut().enumerate().skip(full) {
+            let x0 = ox * F;
+            let x1 = (x0 + F).min(w);
+            let mut sum = 0.0;
+            for y in y0..y1 {
+                for &v in &input.row(y)[x0..x1] {
+                    sum += v;
+                }
+            }
+            *out = sum / ((x1 - x0) * (y1 - y0)) as f32;
+        }
+    }
+    result
+}
+
+#[archmage::autoversion]
+fn reduce(_token: archmage::SimdToken, input: &ImageF, factor: usize, pool: &BufferPool) -> ImageF {
+    match factor {
+        2 => reduce_fixed::<2>(input, pool),
+        4 => reduce_fixed::<4>(input, pool),
+        _ => unreachable!(),
+    }
+}
+
+#[inline(always)]
+fn expand_row<const F: usize>(a: &[f32], b: &[f32], fy: f32, out: &mut [f32]) {
+    let left = (F / 2).min(out.len());
+    out[..left].fill(a[0] + fy * (b[0] - a[0]));
+    let interior = ((a.len() - 1) * F).min(out.len() - left) / F * F;
+    for ((dst, a), b) in out[left..left + interior]
+        .as_chunks_mut::<F>()
+        .0
+        .iter_mut()
+        .zip(a.windows(2))
+        .zip(b.windows(2))
+    {
+        let [a0, a1]: [f32; 2] = a.try_into().unwrap();
+        let [b0, b1]: [f32; 2] = b.try_into().unwrap();
+        for (phase, d) in dst.iter_mut().enumerate() {
+            let fx = (phase as f32 + 0.5) / F as f32;
+            let top = a0 + fx * (a1 - a0);
+            let bottom = b0 + fx * (b1 - b0);
+            *d = top + fy * (bottom - top);
+        }
+    }
+    for (x, d) in out.iter_mut().enumerate().skip(left + interior) {
+        let (x0, x1, fx) = coordinate(x, F, a.len());
+        let top = a[x0] + fx * (a[x1] - a[x0]);
+        let bottom = b[x0] + fx * (b[x1] - b[x0]);
+        *d = top + fy * (bottom - top);
+    }
+}
+
+#[archmage::autoversion]
+fn expand(
+    _token: archmage::SimdToken,
+    input: &ImageF,
+    w: usize,
+    h: usize,
+    factor: usize,
+    pool: &BufferPool,
+) -> ImageF {
+    let mut output = ImageF::from_pool_dirty(w, h, pool);
+    for y in 0..h {
+        let (a, b, fy) = coordinate(y, factor, input.height());
+        let (a, b) = (input.row(a), input.row(b));
+        match factor {
+            2 => expand_row::<2>(a, b, fy, output.row_mut(y)),
+            4 => expand_row::<4>(a, b, fy, output.row_mut(y)),
+            _ => unreachable!(),
+        }
+    }
+    output
+}
+
 pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     let (factor, reduced_sigma) = geometry(sigma);
     if factor == 1 {
@@ -92,6 +197,31 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resampling_matches_original_arithmetic_exactly() {
+        let pool = BufferPool::new();
+        for (w, h) in [(1, 1), (3, 5), (31, 27), (65, 69), (128, 129)] {
+            let mut input = ImageF::new(w, h);
+            for y in 0..h {
+                for (x, v) in input.row_mut(y).iter_mut().enumerate() {
+                    *v = (((x * 331 + y * 119 + x * y) % 997) as f32 - 498.0) * 0.113;
+                }
+            }
+            for factor in [2, 4] {
+                let a = reduce(&input, factor, &pool);
+                let b = reduce_reference(&input, factor, &pool);
+                for y in 0..a.height() {
+                    assert_eq!(a.row(y), b.row(y), "reduce {w}x{h} factor={factor}");
+                }
+                let a = expand(&a, w, h, factor, &pool);
+                let b = expand_reference(&b, w, h, factor, &pool);
+                for y in 0..h {
+                    assert_eq!(a.row(y), b.row(y), "expand {w}x{h} factor={factor} y={y}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn strided_odd_and_tiny_inputs_match_packed() {

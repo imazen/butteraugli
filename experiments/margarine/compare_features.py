@@ -20,7 +20,11 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--build-commit", required=True)
     parser.add_argument("--diffmaps", action="store_true", help="compare box3 scalar scores and persisted native maps")
+    parser.add_argument("--candidate", default="box3", choices=["box3", "multirate"])
+    parser.add_argument("--after-strip-rows", type=int)
     args = parser.parse_args()
+    if args.after_strip_rows is not None and (not args.diffmaps or args.after_strip_rows <= 0):
+        parser.error("after-strip-rows requires diffmaps and positive rows")
     args.output.mkdir(parents=True, exist_ok=False)
     with args.pairs.open() as file:
         pairs = list(csv.DictReader(file, delimiter="\t"))
@@ -31,6 +35,8 @@ def main():
                    pairs=len(pairs), changed_pairs=0, changed_values=0, max_absolute=0.0,
                    max_relative=0.0, status="running")
     summary["mode"] = "diffmaps" if args.diffmaps else "features"
+    summary["candidate"] = args.candidate
+    summary["after_strip_rows"] = args.after_strip_rows
     summary["changed_map_samples"] = 0
     summary["changed_map_pairs"] = 0
     summary["max_map_absolute"] = 0.0
@@ -42,6 +48,8 @@ def main():
             for name in ("before", "after"):
                 output = args.output / f"{i}-{name}.{'f32le' if args.diffmaps else 'tsv'}"
                 command = [str(getattr(args, name))] + ([] if args.diffmaps else ["--export-edges"])
+                if args.diffmaps and name == "after" and args.after_strip_rows:
+                    command += ["--native-strip", str(args.after_strip_rows)]
                 run = subprocess.run(command + [row["reference"], row["distorted"], str(output)],
                                      capture_output=True, text=True, check=False)
                 (args.output / f"{i}-{name}.log").write_text(run.stdout + run.stderr)
@@ -53,7 +61,8 @@ def main():
                         extracted = next(csv.DictReader(file, delimiter="\t"))
                 dimensions = int(extracted["width"]), int(extracted["height"])
                 if args.diffmaps:
-                    scores = parse_score(run.stdout, "box3", dimensions, output)
+                    mode = args.candidate + ("-native-strip" if name == "after" and args.after_strip_rows else "")
+                    scores = parse_score(run.stdout, mode, dimensions, output)
                     values.append([scores[n] for n in NORMS])
                     maps.append(output)
                 else:

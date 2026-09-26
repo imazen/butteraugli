@@ -313,3 +313,13 @@ to 0.793557406, and Z-RMSE from 0.620496825 to 0.619965005.
 Maps and logs remain on r5900xt in `multirate-cid22-2026-09-26/`; the Mac
 copy contains ledgers and panels only. Clustered uncertainty, encoder-choice
 qualification and the seven additional human corpora remain outstanding.
+
+The resampling loops now use fixed factors and process eight reduction outputs
+together. The [native-strip verification](benchmarks/margarine_multirate_native_parity_2026-09-26.pointer.json)
+found every map byte and all five norms identical to the frozen whole-image
+multirate candidate on all 300 AIC4 pairs. The
+[1 MP timing repeat](benchmarks/margarine_multirate_optimized_1mp_2026-09-26.json)
+completed twenty rounds: teacher/candidate metric means 139.28/102.67 ms,
+and decode-included means 157.60/115.23 ms. The harness reported nineteen
+noisy rounds; these are optimization diagnostics, not resource qualification.
+The candidate still misses 4× speed.
