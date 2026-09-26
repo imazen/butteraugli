@@ -77,7 +77,7 @@ fn planar_and_rgb(bytes: &[u8]) -> ([Vec<f32>; 3], Vec<f32>) {
     let n = bytes.len() / 3;
     let mut planar = std::array::from_fn(|_| Vec::with_capacity(n));
     let mut rgb = Vec::with_capacity(bytes.len());
-    for px in bytes.chunks_exact(3) {
+    for px in bytes.as_chunks::<3>().0 {
         for c in 0..3 {
             let v = linear_srgb::default::srgb_u8_to_linear(px[c]);
             planar[c].push(v);
