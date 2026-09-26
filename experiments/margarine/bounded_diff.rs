@@ -27,10 +27,10 @@ pub(crate) fn compute(a: &PsychoImage, b: &PsychoImage, asym: f32, pool: &Buffer
             )
         };
         let sqrt_asym = asym.sqrt();
-        #[cfg(feature = "lattice")]
+        #[cfg(all(feature = "lattice", not(feature = "full-malta")))]
         use crate::malta::coarse_diff_map as bank;
-        #[cfg(not(feature = "lattice"))]
-        use crate::malta::malta_diff_map as bank;
+        #[cfg(any(not(feature = "lattice"), feature = "full-malta"))]
+        use crate::shared_malta::malta_diff_map as bank;
         let uhf = bank(
             &a.uhf[c],
             &b.uhf[c],
@@ -50,14 +50,14 @@ pub(crate) fn compute(a: &PsychoImage, b: &PsychoImage, asym: f32, pool: &Buffer
             pool,
         );
         let mf = bank(a.mf.plane(c), b.mf.plane(c), wm, wm, nm, true, pool);
-        #[cfg(feature = "lattice")]
+        #[cfg(all(feature = "lattice", not(feature = "full-malta")))]
         let mut out = {
             let mut out = ImageF::from_pool_dirty(a.width(), a.height(), pool);
             crate::malta::reconstruct_sum([&uhf, &hf, &mf], &mut out);
             uhf.recycle(pool);
             out
         };
-        #[cfg(not(feature = "lattice"))]
+        #[cfg(any(not(feature = "lattice"), feature = "full-malta"))]
         let mut out = {
             let mut out = uhf;
             diff::accumulate_two(&hf, &mf, &mut out);

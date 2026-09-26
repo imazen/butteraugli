@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "native-gaussian") {
+const CANDIDATE: &str = if cfg!(feature = "full-malta") {
+    "full-malta"
+} else if cfg!(feature = "native-gaussian") {
     "native-gaussian"
 } else if cfg!(feature = "native-mask") {
     "native-mask"
@@ -100,12 +102,15 @@ mod image;
     clippy::too_many_arguments
 )]
 mod shared_malta;
-#[cfg(not(any(
-    feature = "compact4",
-    feature = "sparse",
-    feature = "lattice",
-    feature = "physical"
-)))]
+#[cfg(any(
+    feature = "full-malta",
+    not(any(
+        feature = "compact4",
+        feature = "sparse",
+        feature = "lattice",
+        feature = "physical"
+    ))
+))]
 use shared_malta as malta;
 #[cfg(feature = "physical")]
 mod half_malta_bank;
@@ -117,7 +122,7 @@ mod half_malta_bank;
 mod malta;
 #[cfg(all(
     any(feature = "sparse", feature = "lattice"),
-    not(feature = "physical")
+    not(any(feature = "physical", feature = "full-malta"))
 ))]
 #[path = "sparse_malta.rs"]
 mod malta;

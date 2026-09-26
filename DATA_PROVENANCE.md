@@ -1051,3 +1051,12 @@ minimum available RAM 56,577 MiB and peak load 1.56. Full maps remain in
 r5900xt `native-gaussian-aic4-2026-09-26/`; compact quality, choice and
 resource artifacts also exist on the Mac. This control fails speed and the
 per-cohort choice screen despite passing both measured rank panels.
+
+The `full-malta` control combines bounded frequency-row caches and column
+tiling with the shared complete Malta kernel. Both the whole-pipeline control
+and streaming path select that same bank; the first draft wired only the
+streaming arm, and the unchanged parity tests caught the mismatch. The
+corrected wiring passes the existing channel/asymmetry, seam and strided-plane
+tests. Gaussian grid reduction remains enabled. This provides a scheduled
+counterpart of `bounded` for measuring the cost of restoring native Malta
+outputs, without assuming its runtime from the sampled-kernel profile.
