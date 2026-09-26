@@ -550,3 +550,30 @@ pin the raw captures. The [native 1 MP timing](benchmarks/margarine_lattice_opt_
 still misses 4×: teacher/candidate means 149.515/78.386 ms for scoring and
 168.354/92.429 ms including decoding, across twenty-one rounds. Instruction
 reduction is not a measured proportional wall-time improvement.
+
+## Human-rated encoder-choice harm and broader evaluation
+
+The user clarified on 2026-09-26 that the 1% material-reversal limit concerns
+**human-rated quality loss**, not Butteraugli-score disagreement. Teacher regret
+curves remain diagnostics. Native human-label loss curves are available above;
+the material magnitude or uncertainty rule still needs definition. Do not
+substitute an unapproved teacher-relative percentage for this acceptance gate.
+
+The first untouched broader-corpus run, [CSIQ](benchmarks/margarine_lattice_csiq_2026-09-26.tsv),
+is complete for all 866 pairs and thirty sources using frozen lattice
+`e7bc7678`. Every staged image hash, size and dimension matched the source
+audit, and the pair-manifest bytes matched before scoring. All five pooled
+SROCC/KROCC losses are below 0.01; largest SROCC loss is 0.00551936 (max).
+Max Z-RMSE rises from 0.55586309 to 0.56352007; p1 improves, other norms
+worsen slightly. These are point panels, not uncertainty or joint acceptance.
+Full teacher/candidate maps are retained on r5900xt in
+`lattice-csiq-2026-09-26/`. Source pixels remain at
+`lilith:/mnt/v/dataset/csiq`; the staged audit is
+`human-inputs-audited-2026-09-26/csiq/` on both source and scoring hosts.
+
+The [CID22 paper](https://cloudinary-marketing-res.cloudinary.com/image/upload/v1682076683/CID22.pdf)
+explains that MCOS combines graded anchors and pairwise-derived interpolation;
+its confidence intervals bootstrap both opinion collections. Opinion counts
+alone cannot reconstruct those intervals. The local validation CSV has no
+interval columns, so uncertainty-aware materiality needs additional published
+data rather than an inferred standard error.
