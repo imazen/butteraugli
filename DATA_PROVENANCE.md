@@ -1220,3 +1220,12 @@ on the other corpora is implied. The same SIMD implementation combined with
 alternate-row sampling measures 3.629637×/3.804872× at 1 MP/8.44 MP and
 18.1818%/8.0119% process RSS; [the resource curve](benchmarks/margarine_simd_row_malta_resources_2026-09-26.tsv)
 passes the small-image taper but still misses the larger-image speed target.
+
+The `cd15be17` tile-width diagnostics did not reach 4×. Full SIMD Malta at
+768 columns × 128 rows measures 3.497244×/3.600771× at 1 MP/8.44 MP, with
+21.1863%/8.6041% process RSS. At 1024 columns × 96 rows these are
+3.542057×/3.599026× and 22.0622%/8.6070%. Tiny/small results, timing fits
+and raw artifact hashes are in `benchmarks/margarine_simd_tiles*_resources*`.
+Both runs use the same source pair across four sizes; neither chooses a new
+production geometry. The expanded geometry parity test also passes on x86
+in debug and release.

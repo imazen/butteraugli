@@ -1,0 +1,125 @@
+{
+  "build_commit": "cd15be17e52ff18370af81942d92d4b4c0950486",
+  "binary": "/home/lilith/work/codec-artifacts/margarine/simd-geometry-binaries-cd15be17e52ff18370af81942d92d4b4c0950486/margarine-box3",
+  "binary_sha256": "c27cf1e39602aa7d83ab96d3cd0d24e4d0d7e0bb8e5dcc8e6397c9e6697de968",
+  "host": "r5900xt",
+  "system": "Linux",
+  "threads": 2,
+  "crop_manifest": "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/crops-linux.tsv",
+  "crop_manifest_sha256": "6aaf8fa1f417fdcd039f22cac519b96ac5c4a56e4eb1042ed8b931afba255f5f",
+  "inputs": {
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/64x64-ref.png": "47c4196bdb2450b5a1e5e843ac132fb1b57d31ccf332e62f893f80d26c2fa188",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/64x64-dist.png": "ae36fb193a8427c22d4b80cac447c42e7110f13c920fd8831bdf5b0ad55ddefe",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/256x256-ref.png": "dfb31e29f4a06ac91f4a043c73214a4e8a8d7868a84a492f544463299096abf6",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/256x256-dist.png": "7f901c803499c2e4bc9b55a9213e57cfd75ae76b37202dcba65c2fe15644b271",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-ref.png": "19d33faa59a6354e5a5b50540f770b5f8fe5863754371a7aadca6397e07ae152",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-dist.png": "3eaa954d429ec7b4322a3fc09e6ff975b0e8f5d843c516b15adaa846564461ca",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/3355x2516-ref.png": "8cf7c241f8c00f3b92181bde4391cba15ea0fa24aa4e35942c0014fb72643b8e",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/3355x2516-dist.png": "a5c0560b2b205916398338a8bc2043ca01357ce315989087e12ff9b7c07362cf"
+  },
+  "timing": "interleaved metric-only and file-open/decode/metric arms; warm OS file cache",
+  "memory": "maximum across repeated fresh process platform time; decode and inputs included",
+  "memory_trials": 3,
+  "limitation": "same-image crops; no independent content coverage",
+  "candidate": "simd-full-malta",
+  "strip_rows": 128,
+  "tile_columns": 768,
+  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/simd-tiles768-rows128-resources-2026-09-26",
+  "artifact_sha256": {
+    "64x64-teacher-memory-trial2.log": "51cdbf0bc290a950d371cd973bc85528d263deadba799ccc067b27354217e02a",
+    "3355x2516-teacher-memory-trial2.log": "715958d9f29e74e3a5ad6ee9fc9a13e05bf4dd195c3e49ceb7cb4d7f14b20107",
+    "3355x2516-teacher-memory-trial3.log": "d17f64c3004157d81fdaa03c1f98835fd3601abc97d2975bd006e0bee97c7f2e",
+    "64x64-bench.log": "2393d8026c3b1df146ab347455f1d7e0817c4e8beb010eb3c031d150d083da0c",
+    "64x64-teacher-memory-trial3.log": "3f46895c45655c7a1abb253a2887d1cdc45247b0e24aa9c4f796f9f548e16825",
+    "1024x1024-teacher-memory.log": "94a88d51761952c75617ecf8122073454d49eb2592803c02a8361f3507a7cb64",
+    "3355x2516-teacher-memory.log": "c862160e9579dbb6f12c6f285506b7de8f4e7a8e9d4d3ba66ef9d970d4d9cd0c",
+    "256x256.json": "a4f0eacb801aa239557c4725ccc33062545305c29176cd8d0c62ef2ffc0a30e4",
+    "1024x1024.json": "445c90ccd7812102dcf7d24c4a2b135816239ae59073a64001ba59febda79ca8",
+    "256x256-simd-full-malta-memory-trial3.log": "e3b43aee44ea2c331e1a082e0a82977d3f770f871ad0f6fcd7394a83ce59451a",
+    "256x256-simd-full-malta-memory-trial2.log": "82c596df1866f83fed99f1966e9581d2994cbed06a75ebd368f5ff6f04bd5577",
+    "64x64-teacher-memory.log": "3021a14826e50b994d0413477b2a95c40f8ebbb0ba259e25b8adf3e2f3867c8a",
+    "1024x1024-simd-full-malta-memory-trial2.log": "d4305ee2dfbaca37aadcbfce892960b7205b07471a34aa3cc7dc89f2212b1614",
+    "1024x1024-simd-full-malta-memory-trial3.log": "fec483e77ee4782947577264745f6ea6fe7345f092ccc72eec17cba72cc372ce",
+    "1024x1024-teacher-memory-trial2.log": "ad28eb51dd8d1100b0c1a4e06093f03683ffbc7ef87926e38cba51f122263bbe",
+    "3355x2516-simd-full-malta-memory-trial3.log": "128e92597909a6f4cc2d9b6daea1fac550d8887c041c8b0068abbaac96f29586",
+    "256x256-teacher-memory-trial2.log": "cbf626f5f5064d2ceb98f93d9f812ec7b277886f27c98adfed44d0c931730306",
+    "1024x1024-simd-full-malta-memory.log": "f1bbec0aa8c87cba4aca9fb2adc7578587b3d2a71b53d6883123309c1eca7c3d",
+    "256x256-teacher-memory-trial3.log": "435f1ee94fc4ff4ba695c14471081b3fd01133d64ac6a8f345e5efdd061b0a5a",
+    "3355x2516-simd-full-malta-memory-trial2.log": "073bf817b651bd2ea40ad72e9a782f9dc34927f0b84fe0a6124d6e6ae28b174f",
+    "1024x1024-teacher-memory-trial3.log": "15220216cb5d46d570003396537c5a5ec8624416934bd81b1c079188ab0271a9",
+    "memory_trials.json": "115864fa6146414708f7645e8632fbd7923d1f7e632920beca91b8e3e7a043ce",
+    "64x64-simd-full-malta-memory-trial2.log": "d6fa0ae3b89d0f7c892db0bf47796472aa8e9c798201f6740a974fc5053ca478",
+    "64x64-simd-full-malta-memory-trial3.log": "72f1d62e2f334e7f97d5be6ff27a21da55dd189bdea795e7721e671c92268141",
+    "1024x1024-bench.log": "f1dd90a8d24af23cd187023e1c21a94e2181539a11043b7d2a98e0a3285b3053",
+    "3355x2516-bench.log": "7344d0b94946f4ceb7c19fe1779050db37dc0b0878b2f5743eaaba53b96edbb4",
+    "3355x2516-simd-full-malta-memory.log": "d84f9d6829f428f19b694024c6ecc9bd43b842dfe8f9071abcbea819388559a0",
+    "256x256-bench.log": "f0af6613c7d247168fea800237bfb00ed5d674a6fab447784448d3d4daa799d1",
+    "3355x2516.json": "2ba955caecd285b0e1bd282e265a81bca0d715afa74a3a2ff872b01e90101ef5",
+    "64x64-simd-full-malta-memory.log": "60fb0a7d6fe2b8c445e1ac8a26415e5dab10b127bdde58ed9f31c30cc7619fa1",
+    "_MANIFEST.json": "dc41acdf5a04d173e8027c147d30a2d9f760f86bb092298c48f5f7ff9a6023f6",
+    "64x64.json": "0e2cb5928cfdcc414d659e3fcddd479f47f21fb8c8c9855b029a86b8d79a84e1",
+    "progress.log": "e044ce17fc2b31f7a7581bea38d4355d93b7a91c4f50f17b7c73c6974fe29c9c",
+    "256x256-teacher-memory.log": "9d71d6b5dc0e1284c4b2da07240e34a8bec50ef9dec37eebf0810f307cb3d66b",
+    "time_fits.json": "556102fd1367b0e86703bbb3915a0e566ece27a3b9b5d583e16dbfdd40ca84a7",
+    "256x256-simd-full-malta-memory.log": "e11f643dc20149cdf97dbaa928bbc66bd56fe85bfabcb90e516eb785741d19ea",
+    "summary.tsv": "598bcb2e06926b222f35c5023b2bdf27a5c76bf4546c21b9ca19668d7c37063e"
+  },
+  "time_fits": [
+    {
+      "arm": "teacher",
+      "timing": "mean_ns",
+      "alpha_ns": -4831275.643306255,
+      "beta_ns_per_pixel": 154.51924693319108,
+      "observed_sizes": 4,
+      "residual_ns": [
+        4779663.828492904,
+        743040.4262926467,
+        -6296816.020578176,
+        774111.7657926083
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "teacher",
+      "timing": "decode_included_mean_ns",
+      "alpha_ns": -3634494.7837159634,
+      "beta_ns_per_pixel": 169.51861471981667,
+      "observed_sizes": 4,
+      "residual_ns": [
+        3599535.2988652615,
+        -220012.20056194253,
+        -3858834.8313972056,
+        479311.733093977
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "simd-full-malta",
+      "timing": "mean_ns",
+      "alpha_ns": -387229.9478882551,
+      "beta_ns_per_pixel": 42.80599092853773,
+      "observed_sizes": 4,
+      "residual_ns": [
+        509967.59453107556,
+        678442.1263956064,
+        -1350678.212660797,
+        162268.49173414707
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "simd-full-malta",
+      "timing": "decode_included_mean_ns",
+      "alpha_ns": 280045.91158114374,
+      "beta_ns_per_pixel": 54.243713126510684,
+      "observed_sizes": 4,
+      "residual_ns": [
+        -120220.9105473315,
+        272400.27995985234,
+        -171416.4385918826,
+        19237.069179356098
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    }
+  ]
+}
