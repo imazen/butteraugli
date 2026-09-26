@@ -701,3 +701,10 @@ encoded file signatures, allowing content-addressed JPEGs without extensions.
 The RGB8 requirement is unchanged. Four held-out pilot pairs (photo, screen,
 line art and mixed) were cropped successfully at q50 without resampling; these
 are additional diagnostic content cases, not a fitted calibration grid.
+
+Combining `simd-malta` with `coarse-gaussian` now reports the distinct identities
+`simd-coarse-full-malta` and `simd-coarse-row-malta`. The analytic fine-band
+reduction was already available; these names keep its scores and resource
+results separate from the native fine-band SIMD candidates. The full-bank
+combination passes unchanged debug/release tests and clippy on ARM; no corpus
+or resource qualification is inherited from another candidate.

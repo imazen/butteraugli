@@ -18,7 +18,13 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "simd-opsin") {
+const CANDIDATE: &str = if cfg!(all(feature = "simd-malta", feature = "coarse-gaussian")) {
+    if cfg!(feature = "row-malta") {
+        "simd-coarse-row-malta"
+    } else {
+        "simd-coarse-full-malta"
+    }
+} else if cfg!(feature = "simd-opsin") {
     if cfg!(feature = "wide-malta") {
         if cfg!(feature = "row-malta") {
             "opsin-wide-row-malta"

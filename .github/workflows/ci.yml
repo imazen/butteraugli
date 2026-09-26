@@ -112,6 +112,7 @@ jobs:
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,row-malta
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-opsin,row-malta
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features full-malta,coarse-gaussian
+          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,coarse-gaussian
 
       - name: Run conformance tests
         run: cargo test -p butteraugli --test conformance
