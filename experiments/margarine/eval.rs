@@ -162,6 +162,31 @@ fn orders(rows: &[&Row], epsilon: f64) -> Orders {
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--bootstrap-all") {
+        if args.len() != 5 {
+            return Err(
+                "usage: margarine-eval --bootstrap-all SCORED_DIR NEW_OUTPUT_DIR DRAWS SEED".into(),
+            );
+        }
+        let draws = args[3].parse()?;
+        let seed = args[4].parse()?;
+        let output = std::path::Path::new(&args[2]);
+        std::fs::create_dir(output)?;
+        for norm in ["max", "p1", "p2", "p3", "p6"] {
+            let input = std::path::Path::new(&args[1]).join(format!("scores-{norm}.tsv"));
+            let rows = parse(&std::fs::read_to_string(input)?)?;
+            eprintln!("Starting clustered panel: {norm}");
+            let target = output.join(format!("{norm}.tsv"));
+            uncertainty::run(
+                &rows,
+                target.to_str().ok_or("non-UTF8 output path")?,
+                draws,
+                seed,
+            )?;
+            eprintln!("Completed clustered panel: {norm}");
+        }
+        return Ok(());
+    }
     if args.first().is_some_and(|a| a == "--bootstrap") {
         if args.len() != 5 {
             return Err("usage: margarine-eval --bootstrap SCORES.tsv OUT.tsv DRAWS SEED".into());
