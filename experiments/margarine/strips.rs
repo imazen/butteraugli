@@ -71,6 +71,11 @@ pub(super) fn compute_encoded(
     if rows == 0 || (w, h) != (distorted.width, distorted.height) {
         return Err("invalid encoded strip pair".into());
     }
+    #[cfg(feature = "tiles")]
+    {
+        tiles::compute(reference, distorted, rows, params)
+    }
+    #[cfg(not(feature = "tiles"))]
     compose(w, h, rows, params, |y0, y1| {
         (
             reference.linear_strip(y0, y1).into(),
@@ -79,7 +84,7 @@ pub(super) fn compute_encoded(
     })
 }
 
-fn single_scale(
+pub(super) fn single_scale(
     a: &[f32],
     b: &[f32],
     w: usize,

@@ -493,3 +493,10 @@ avoiding four materialized phase planes. Bilinear reconstruction fills the
 other response locations. Sampled-node tests require bit identity with the
 complete bank on tiny, odd, and strided inputs. This is an approximation
 between nodes; corpus and resource acceptance are separate.
+
+The `tiles` feature bounds lattice working buffers in both dimensions, using
+256-column interiors and the requested row count independently at each scale.
+Crop origins preserve the blur, Malta, and SIMD phases; finite halos are
+discarded from the output. Bitwise map comparisons cover both tile axes, odd
+RGB16 dimensions and strided rows. The tile geometry is experimental and has
+no resource qualification until measured across the complete size workload.

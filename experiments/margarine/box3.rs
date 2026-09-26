@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "lattice") {
+const CANDIDATE: &str = if cfg!(feature = "tiles") {
+    "tiles"
+} else if cfg!(feature = "lattice") {
     "lattice"
 } else if cfg!(feature = "bounded") {
     "bounded"
@@ -146,6 +148,8 @@ mod refined;
 mod resources;
 mod resources_rgb8;
 mod strips;
+#[cfg(feature = "tiles")]
+mod tiles;
 
 fn candidate_encoded(
     a: &ingress::EncodedRows<'_>,
