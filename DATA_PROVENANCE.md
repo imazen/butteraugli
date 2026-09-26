@@ -780,3 +780,11 @@ evaluated, and no zero-dispersion rows are discarded. Native maps remain on
 r5900xt in `stratified-csiq-2026-09-26/`; full ordinary panels and
 [evaluation provenance](benchmarks/margarine_stratified_csiq_2026-09-26.meta.json)
 are in `stratified-csiq-panels-2026-09-26/` on r5900xt and the Mac.
+
+Anchoring each reduced reference sample to its block average (`f240e625`)
+is rejected by the [AIC4 panel](benchmarks/margarine_anchored_rejected_2026-09-26.tsv).
+Max/p3/p6 SROCC losses are 0.04058001/0.01064723/0.02350737; p2 KROCC
+also loses 0.01030100. Fixing the reference sample while retaining the selected
+native error vector did not preserve the required rankings. Full maps remain
+on r5900xt in `anchored-aic4-2026-09-26/`; compact metadata and panels are
+copied to the Mac. No resource qualification or additional corpus run was made.
