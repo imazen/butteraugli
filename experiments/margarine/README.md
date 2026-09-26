@@ -5,6 +5,16 @@ no more than one quarter of Butteraugli's runtime and peak memory. No candidate
 has met those requirements yet. This directory is an unpublished experiment;
 it does not change Butteraugli's API or arithmetic.
 
+The memory acceptance gate is **total process peak, including decoding and
+caller-owned inputs**, as specified by the user on 2026-09-26. Heap profiles
+diagnose allocation costs; a metric-only heap reduction cannot pass this gate.
+
+`--bench-rgb8 REF DIST NEW.json` and `--memory-rgb8
+teacher|features228|features228-strips REF DIST` compare native RGB8 ingress.
+They reject other sample formats. Timing excludes decoding and includes each
+metric's sRGB conversion; fresh-process memory includes decoding and inputs.
+These remain extractor cost probes with no trained score or quality claim.
+
 The first control scores linear-light 2×2 averages with Butteraugli. This is
 deliberately a control, not the proposed finished metric: averaging can erase
 fine artifacts. Its tests include such a counterexample. A useful candidate
