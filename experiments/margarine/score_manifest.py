@@ -165,6 +165,38 @@ def aligned_teacher(row, frozen, images, dimensions):
     return scores
 
 
+def evaluate_panels(cells, candidate, evaluator, output, report):
+    for norm in NORMS:
+        path = output / f"scores-{norm}.tsv"
+        fields = FIELDS[:6] + ["teacher", "candidate"]
+        with path.open("x", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
+            writer.writeheader()
+            for cell in cells:
+                writer.writerow(dict(**{key: cell[key] for key in FIELDS[:6]},
+                                     teacher=cell["scores"]["teacher"][norm],
+                                     candidate=cell["scores"][candidate][norm]))
+        with (output / f"eval-{norm}.log").open("x") as log:
+            subprocess.run([str(evaluator), str(path),
+                            str(output / f"panel-{norm}.tsv"), "0"],
+                           stdout=log, stderr=subprocess.STDOUT, check=True)
+        if any("sigma" in cell for cell in cells):
+            sigma_path = output / f"scores-published-sigma-{norm}.tsv"
+            with sigma_path.open("x", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fields + ["sigma"], delimiter="\t")
+                writer.writeheader()
+                for cell in cells:
+                    writer.writerow(dict(**{key: cell[key] for key in FIELDS[:6]},
+                                         teacher=cell["scores"]["teacher"][norm],
+                                         candidate=cell["scores"][candidate][norm],
+                                         sigma=cell.get("sigma", "")))
+            with (output / f"eval-published-sigma-{norm}.log").open("x") as log:
+                subprocess.run([str(evaluator), "--published-sigma", str(sigma_path),
+                                str(output / f"panel-published-sigma-{norm}.tsv")],
+                               stdout=log, stderr=subprocess.STDOUT, check=True)
+        report(f"Evaluated {norm}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
@@ -181,7 +213,10 @@ def main():
     parser.add_argument("--model", type=Path, help="frozen fit directory, with model.tsv and provenance")
     parser.add_argument("--teacher", type=Path, help="existing human-evaluation score directory")
     parser.add_argument("--input-audit", type=Path, help="source-audited prepare_human manifest; verify staged hashes before scoring")
+    parser.add_argument("--defer-panels", action="store_true", help="persist scores/maps for separate panel evaluation")
     args = parser.parse_args()
+    if args.defer_panels and (args.teacher_features or args.features_only):
+        parser.error("defer-panels applies only to human-quality scoring")
     if args.teacher_features and args.features_only:
         parser.error("choose teacher-features or features-only")
     training = args.teacher_features or args.features_only
@@ -201,7 +236,7 @@ def main():
         print(message, file=progress, flush=True)
 
     names = ["margarine-box3"] if args.features_only or args.teacher else ["margarine-score", "margarine-box3"]
-    if not training:
+    if not training and not args.defer_panels:
         names.append("margarine-eval")
     binaries = {name: args.binaries.resolve() / name for name in names}
     provenance = dict(build_commit=args.build_commit, pairs_sha256=digest(args.manifest),
@@ -321,35 +356,15 @@ def main():
             report(f"Scored {i + 1}/{len(rows)} {row['dataset']} {row['pair']}")
     with (args.output / "cells.jsonl").open() as f:
         cells = [json.loads(line) for line in f]
-    for norm in (() if training else NORMS):
-        path = args.output / f"scores-{norm}.tsv"
-        fields = FIELDS[:6] + ["teacher", "candidate"]
-        with path.open("x", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
-            writer.writeheader()
-            for cell in cells:
-                writer.writerow(dict(**{key: cell[key] for key in FIELDS[:6]},
-                                     teacher=cell["scores"]["teacher"][norm],
-                                     candidate=cell["scores"][candidate][norm]))
-        with (args.output / f"eval-{norm}.log").open("x") as log:
-            subprocess.run([str(binaries["margarine-eval"]), str(path),
-                            str(args.output / f"panel-{norm}.tsv"), "0"],
-                           stdout=log, stderr=subprocess.STDOUT, check=True)
-        if any("sigma" in cell for cell in cells):
-            sigma_path = args.output / f"scores-published-sigma-{norm}.tsv"
-            with sigma_path.open("x", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=fields + ["sigma"], delimiter="\t")
-                writer.writeheader()
-                for cell in cells:
-                    writer.writerow(dict(**{key: cell[key] for key in FIELDS[:6]},
-                                         teacher=cell["scores"]["teacher"][norm],
-                                         candidate=cell["scores"][candidate][norm],
-                                         sigma=cell.get("sigma", "")))
-            with (args.output / f"eval-published-sigma-{norm}.log").open("x") as log:
-                subprocess.run([str(binaries["margarine-eval"]), "--published-sigma", str(sigma_path),
-                                str(args.output / f"panel-published-sigma-{norm}.tsv")],
-                               stdout=log, stderr=subprocess.STDOUT, check=True)
-        report(f"Evaluated {norm}")
+    provenance["status"] = "scores-complete"
+    provenance["cells_sha256"] = digest(args.output / "cells.jsonl")
+    provenance["candidate"] = candidate
+    manifest_path.write_text(json.dumps(provenance, indent=2) + "\n")
+    if args.defer_panels:
+        report("Scores and maps complete; statistical panels explicitly deferred")
+        return
+    if not training:
+        evaluate_panels(cells, candidate, binaries["margarine-eval"], args.output, report)
     provenance["status"] = "complete"
     provenance["cells_sha256"] = digest(args.output / "cells.jsonl")
     if training:

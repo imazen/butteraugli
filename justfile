@@ -75,3 +75,6 @@ margarine-disagreements ledger output candidate teacher_maps candidate_maps comm
 
 margarine-kadid-opinions raw dmos output commit:
     nice -n 19 python3 experiments/margarine/prepare_kadid_opinions.py "{{raw}}" "{{dmos}}" "{{output}}" --build-commit "{{commit}}"
+
+margarine-panels scored evaluator output candidate commit:
+    nice -n 19 python3 experiments/margarine/evaluate_manifest.py "{{scored}}" "{{evaluator}}" "{{output}}" --candidate "{{candidate}}" --build-commit "{{commit}}"

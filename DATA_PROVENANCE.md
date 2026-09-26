@@ -651,3 +651,17 @@ sigma test on 2026-09-26. Previously prepared KADID sigma metadata must be
 regenerated; no KADID Margarine quality run used it. Raw data have 30–33 eligible
 ratings per image and six repeated worker/image observations. Preserve them for
 reconciliation and participant-cluster analysis; do not silently trim to thirty.
+
+The corrected dev audit (`kadid-opinions-reconciled-2026-09-26/`) reproduces
+all published means and population standard deviations with zero mismatches.
+It retains 304,406 eligible observations from 2,058 workers. The six repeated
+worker/image observations have distinct judgment IDs and equal ratings one
+second apart. Preserve those observations together in participant resamples;
+they are not six independent additional participants. The separate image audit
+verified 10,206 files totaling 3,070,504,062 bytes. Two published dispersions
+are zero; the sigma-normalized panel needs explicit handling before use.
+
+KADID images were staged from dev to r5900xt under
+`human-corpora-2026-09-26/kadid/` because dev's data volume had only 22 GB free.
+The source audit is `kadid-input-r5900-2026-09-26/`; scoring must verify that
+audit's image hashes and pair-manifest hash before computing results.

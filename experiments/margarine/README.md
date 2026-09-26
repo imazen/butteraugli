@@ -143,6 +143,13 @@ target. Artifacts: `/Users/lilith/work/codec-artifacts/margarine/box3-strip-smok
 
 ## Evaluation contract
 
+`score_manifest.py --defer-panels` records all scalar scores and native maps,
+then marks the run `scores-complete`. `just margarine-panels SCORED EVALUATOR
+NEW_OUTPUT CANDIDATE COMMIT` evaluates that ledger without decoding or scoring
+again. It verifies the ledger hash, pair count, identities and scoring arms,
+and records the separate evaluator hash and build commit. Panel replay accepts
+completed older runs too; their original files remain unchanged.
+
 Compare against this repository's FIR, multiresolution Butteraugli with the
 same decoded pixels, intensity target, thread budget, and runtime dispatch.
 Evaluate max and libjxl's mixed p/2p/4p pooling separately (p=1,2,3,6). Plain
