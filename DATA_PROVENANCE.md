@@ -678,3 +678,27 @@ at 1 MP with 1,024-row interiors gives teacher/candidate metric means
 are 192.174/140.659 ms. It is slower than the earlier 128-row path; removing
 strip overlap did not produce the hoped-for speedup. This single-size
 diagnostic has no fresh RSS measurement and does not qualify resource use.
+
+KADID lattice scoring (`f5137a75`) completed all 10,125 pairs after verifying
+the staged input audit. All maps and scalar norms remain on r5900xt in
+`lattice-kadid-2026-09-26/`. The [pooled panel](benchmarks/margarine_lattice_kadid_2026-09-26.tsv)
+has largest SROCC loss 0.00532125 (max); all five pooled SROCC/KROCC losses
+are below 0.01. This does not imply every distortion family passes:
+[published distortion 15](benchmarks/margarine_lattice_kadid_distortion15_2026-09-26.tsv)
+loses 0.01040244 SROCC for max and 0.01107207 for p6. Full family and source
+panels remain with the participant artifacts below and in the Mac metadata copy.
+
+The [participant diagnostic](benchmarks/margarine_lattice_kadid_participants_2026-09-26.tsv)
+uses 2,000 worker-cluster bootstrap draws over 2,058 workers and 304,406
+observations, retaining all 10,125 images. Among 627,750 within-source pairs,
+max pooling reverses 5,813; 2,784 have positive lower pointwise 95% bounds,
+and 1,274 have positive simultaneous-family lower bounds. The corresponding
+p3 counts are 2,251, 1,091 and 514. These are statistically supported ranking
+harms, not matched-rate encoder-choice rates. The simultaneous radius is
+1.42396110 native rating units and covers all within-source pairs. Provenance,
+seed, binary and output hashes are in the [measurement record](benchmarks/margarine_lattice_kadid_2026-09-26.meta.json).
+Bootstrap means and full disagreements remain on r5900xt in
+`lattice-kadid-participants-2026-09-26/`; maps are not yet mirrored to Tower.
+The complete supplied-sigma panels remain unavailable pending correct handling
+of zero dispersion (two KADID and twenty-two CSIQ images); ordinary panels
+retain those images. No joint quality/resource acceptance is established.
