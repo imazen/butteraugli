@@ -53,6 +53,39 @@ pub(super) fn compute(
     if reference.len() < needed || distorted.len() < needed {
         return Err("input too short for strip geometry".into());
     }
+    compose(w, h, rows, params, |y0, y1| {
+        (
+            packed_strip(reference, w, stride, y0, y1),
+            packed_strip(distorted, w, stride, y0, y1),
+        )
+    })
+}
+
+pub(super) fn compute_encoded(
+    reference: &ingress::EncodedRows<'_>,
+    distorted: &ingress::EncodedRows<'_>,
+    rows: usize,
+    params: &ButteraugliParams,
+) -> Result<diff::InternalResult, Box<dyn Error>> {
+    let (w, h) = (reference.width, reference.height);
+    if rows == 0 || (w, h) != (distorted.width, distorted.height) {
+        return Err("invalid encoded strip pair".into());
+    }
+    compose(w, h, rows, params, |y0, y1| {
+        (
+            reference.linear_strip(y0, y1).into(),
+            distorted.linear_strip(y0, y1).into(),
+        )
+    })
+}
+
+fn compose<'a>(
+    w: usize,
+    h: usize,
+    rows: usize,
+    params: &ButteraugliParams,
+    mut load: impl FnMut(usize, usize) -> (std::borrow::Cow<'a, [f32]>, std::borrow::Cow<'a, [f32]>),
+) -> Result<diff::InternalResult, Box<dyn Error>> {
     let mut map = image::ImageF::new(w, h);
     let halo = halo();
     for start in (0..h).step_by(rows) {
@@ -65,8 +98,7 @@ pub(super) fn compute(
             .div_ceil(lattice)
             .saturating_mul(lattice)
             .min(h);
-        let a = packed_strip(reference, w, stride, y0, y1);
-        let b = packed_strip(distorted, w, stride, y0, y1);
+        let (a, b) = load(y0, y1);
         let strip = diff::compute_butteraugli_linear_impl(
             &a,
             &b,
@@ -94,6 +126,49 @@ pub(super) fn compute(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encoded_strides_and_rgb16_match_linear_ingress() {
+        use ingress::{EncodedRows, Samples};
+        let (w, h, stride) = (33, 273, 33 * 4 + 7);
+        let mut a = vec![0u16; stride * h];
+        let mut b = a.clone();
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * stride + 4 * x;
+                for c in 0..3 {
+                    a[i + c] = ((x * 117 + y * 351 + c * 999) % 65536) as u16;
+                    b[i + c] = a[i + c].saturating_add(if y % 64 < 3 { 1 } else { 0 });
+                }
+                a[i + 3] = 65535;
+                b[i + 3] = 65535;
+            }
+        }
+        let a = EncodedRows::new(Samples::U16(&a), w, h, stride, 4).unwrap();
+        let b = EncodedRows::new(Samples::U16(&b), w, h, stride, 4).unwrap();
+        let params = ButteraugliParams::default();
+        let linear = compute(
+            &a.linear_strip(0, h),
+            &b.linear_strip(0, h),
+            w,
+            h,
+            w * 3,
+            64,
+            &params,
+        )
+        .unwrap();
+        let native = compute_encoded(&a, &b, 64, &params).unwrap();
+        assert!(
+            native.score > 0.0,
+            "single-bit distortion must survive RGB16 ingress"
+        );
+        for y in 0..h {
+            assert_eq!(
+                linear.diffmap.as_ref().unwrap().row(y),
+                native.diffmap.as_ref().unwrap().row(y)
+            );
+        }
+    }
 
     #[test]
     fn rejects_overflow_and_short_strided_input() {

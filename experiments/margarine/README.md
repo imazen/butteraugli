@@ -408,3 +408,10 @@ Human-quality and resource acceptance remain unmeasured for this candidate.
 reuses verified teacher scores while persisting every candidate map and norm.
 The same pair, label, source and pixel-hash checks used for the scalar probe
 apply. This avoids recomputing teacher maps for each direct approximation.
+
+`--native-strip ROWS REF DIST MAP` converts encoded RGB/RGBA 8- or 16-bit
+samples only for each strip and its halo. `--memory-native ROWS REF DIST`
+measures the same path without map serialization. Inputs retain their native
+precision; non-opaque alpha is rejected. The borrowed row view supports sample
+strides, and tests compare native strips to linear strips exactly, including
+RGB16 one-bit differences at seams. The output map remains full resolution.

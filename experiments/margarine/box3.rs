@@ -87,6 +87,23 @@ mod student;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--memory-native") {
+        if args.len() != 4 {
+            return Err("usage: --memory-native ROWS REF DIST".into());
+        }
+        let a = ingress::decode(&args[2])?;
+        let b = ingress::decode(&args[3])?;
+        let a = ingress::EncodedRows::from_image(&a)?;
+        let b = ingress::EncodedRows::from_image(&b)?;
+        let result =
+            strips::compute_encoded(&a, &b, args[1].parse()?, &ButteraugliParams::default())?;
+        println!(
+            "{CANDIDATE}-native-strip\t{}\t{}\t{}\t{}",
+            a.width, a.height, result.score, result.pnorm_3
+        );
+        std::hint::black_box(result);
+        return Ok(());
+    }
     if args.first().is_some_and(|arg| arg == "--student") {
         return learned::run(&args);
     }
@@ -114,6 +131,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     ) {
         return resources::run(&args);
     }
+    let native_rows = if args.first().is_some_and(|a| a == "--native-strip") {
+        if args.len() != 5 {
+            return Err("usage: --native-strip ROWS REF DIST MAP".into());
+        }
+        let rows = args[1].parse::<usize>()?;
+        args.drain(..2);
+        Some(rows)
+    } else {
+        None
+    };
     let strip = args.first().is_some_and(|a| a == "--strip");
     if strip {
         args.remove(0);
@@ -121,30 +148,43 @@ fn main() -> Result<(), Box<dyn Error>> {
     if args.len() != 3 {
         return Err("usage: margarine-box3 REF DIST DIFFMAP.f32le".into());
     }
-    let (reference, w, h) = load(&args[0])?;
-    let (distorted, dw, dh) = load(&args[1])?;
-    if (w, h) != (dw, dh) {
-        return Err("image dimensions differ".into());
-    }
-    let result = if strip {
-        strips::compute(
-            &reference,
-            &distorted,
-            w,
-            h,
-            3 * w,
-            32,
-            &ButteraugliParams::default(),
-        )?
+    let (result, w, h) = if let Some(rows) = native_rows {
+        let a = ingress::decode(&args[0])?;
+        let b = ingress::decode(&args[1])?;
+        let a = ingress::EncodedRows::from_image(&a)?;
+        let b = ingress::EncodedRows::from_image(&b)?;
+        (
+            strips::compute_encoded(&a, &b, rows, &ButteraugliParams::default())?,
+            a.width,
+            a.height,
+        )
     } else {
-        diff::compute_butteraugli_linear_impl(
-            &reference,
-            &distorted,
-            w,
-            h,
-            &ButteraugliParams::default(),
-            &enough::Unstoppable,
-        )?
+        let (reference, w, h) = load(&args[0])?;
+        let (distorted, dw, dh) = load(&args[1])?;
+        if (w, h) != (dw, dh) {
+            return Err("image dimensions differ".into());
+        }
+        let result = if strip {
+            strips::compute(
+                &reference,
+                &distorted,
+                w,
+                h,
+                3 * w,
+                32,
+                &ButteraugliParams::default(),
+            )?
+        } else {
+            diff::compute_butteraugli_linear_impl(
+                &reference,
+                &distorted,
+                w,
+                h,
+                &ButteraugliParams::default(),
+                &enough::Unstoppable,
+            )?
+        };
+        (result, w, h)
     };
     let map = result.diffmap.as_ref().ok_or("missing diffmap")?;
     let mut out = BufWriter::new(std::fs::File::create_new(&args[2])?);
@@ -157,7 +197,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("mode\twidth\theight\tmax\tp1\tp2\tp3\tp6\tdiffmap");
     println!(
         "{}\t{w}\t{h}\t{:.17}\t{:.17}\t{:.17}\t{:.17}\t{:.17}\t{}",
-        if strip {
+        if native_rows.is_some() {
+            format!("{CANDIDATE}-native-strip")
+        } else if strip {
             format!("{CANDIDATE}-strip")
         } else {
             CANDIDATE.to_owned()
