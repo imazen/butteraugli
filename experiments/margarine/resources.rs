@@ -69,7 +69,8 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                     args[1] == "features228-strips",
                 )?;
                 println!(
-                    "features{count}\t{w}\t{h}\t{} features; no trained score",
+                    "{}\t{w}\t{h}\t{} features; no trained score",
+                    args[1],
                     features.len()
                 );
                 black_box(features);
