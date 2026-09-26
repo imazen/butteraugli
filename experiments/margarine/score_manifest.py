@@ -106,10 +106,18 @@ def main():
     parser.add_argument("--ingress", choices=("aic-rgb8", "cid22-srgb"), default="aic-rgb8")
     parser.add_argument("--teacher-features", action="store_true",
                         help="extract teacher maps/norms plus a separate 168-feature sidecar; no labels or quality evaluation")
+    parser.add_argument("--features-only", action="store_true",
+                        help="refresh the separate training feature sidecar without recomputing teacher maps")
+    parser.add_argument("--feature-source", help="required extractor dependency commit for training feature runs")
     args = parser.parse_args()
+    if args.teacher_features and args.features_only:
+        parser.error("choose teacher-features or features-only")
+    training = args.teacher_features or args.features_only
+    if training and not args.feature_source:
+        parser.error("training extraction requires --feature-source")
     with args.manifest.open() as f:
         reader = csv.DictReader(f, delimiter="\t")
-        expected = [TRAINING_FIELDS] if args.teacher_features else [FIELDS, FIELDS + ["bpp", "setting"]]
+        expected = [TRAINING_FIELDS] if training else [FIELDS, FIELDS + ["bpp", "setting"]]
         if reader.fieldnames not in expected:
             raise ValueError(f"expected manifest header: {expected}")
         rows = list(reader)
@@ -125,18 +133,20 @@ def main():
         print(message, flush=True)
         print(message, file=progress, flush=True)
 
-    names = ["margarine-score", "margarine-box3"]
-    if not args.teacher_features:
+    names = ["margarine-box3"] if args.features_only else ["margarine-score", "margarine-box3"]
+    if not training:
         names.append("margarine-eval")
     binaries = {name: args.binaries.resolve() / name for name in names}
     provenance = dict(build_commit=args.build_commit, pairs_sha256=digest(args.manifest),
                       binaries={n: digest(p) for n, p in binaries.items()},
                       ingress=args.ingress,
                       n_pairs=len(rows), images={}, status="running")
-    provenance["mode"] = "teacher-features" if args.teacher_features else "quality-evaluation"
-    if args.teacher_features:
+    provenance["mode"] = ("features-only" if args.features_only else
+                          "teacher-features" if training else "quality-evaluation")
+    if training:
         provenance["feature_columns"] = EDGE_COLUMNS
-        provenance["feature_profile"] = "168 edges; 256-row strips, 64-row halo; zensim 9c0635f1ceb9a07fbaa2f1b975f17c617669c8bc"
+        provenance["feature_profile"] = "168 edges; 256-row strips, 64-row halo"
+        provenance["feature_source"] = args.feature_source
     shutil.copyfile(args.manifest, args.output / "input_pairs.tsv")
     manifest_path = args.output / "_MANIFEST.json"
     manifest_path.write_text(json.dumps(provenance, indent=2) + "\n")
@@ -155,7 +165,7 @@ def main():
                     report(f"Audited {len(dimensions)} images")
         if dimensions[row["reference"]] != dimensions[row["distorted"]]:
             raise ValueError(f"mismatched dimensions: {row['pair']}")
-        if args.teacher_features and row["encoded"] not in provenance["images"]:
+        if training and row["encoded"] not in provenance["images"]:
             provenance["images"][row["encoded"]] = digest(Path(row["encoded"]))
     manifest_path.write_text(json.dumps(provenance, indent=2) + "\n")
     report(f"Audited {len(dimensions)} images, scoring {len(rows)} pairs")
@@ -163,14 +173,15 @@ def main():
     with ExitStack() as stack:
         cells = stack.enter_context((args.output / "cells.jsonl").open("x", buffering=1))
         features = (stack.enter_context((args.output / "features.jsonl").open("x", buffering=1))
-                    if args.teacher_features else None)
+                    if training else None)
         for i, row in enumerate(rows):
             cell = dict(row)
             cell["reference_sha256"] = provenance["images"][row["reference"]]
             cell["distorted_sha256"] = provenance["images"][row["distorted"]]
             cell["encoded_sha256"] = provenance["images"][row.get("encoded", row["distorted"])]
             cell["scores"] = {}
-            for mode in (("teacher",) if args.teacher_features else ("teacher", "box3")):
+            modes = () if args.features_only else ("teacher",) if training else ("teacher", "box3")
+            for mode in modes:
                 path = maps / f"pending-{i}-{mode}.f32le"
                 cmd = ([str(binaries["margarine-score"]), "teacher"] if mode == "teacher"
                        else [str(binaries["margarine-box3"])])
@@ -207,7 +218,7 @@ def main():
             report(f"Scored {i + 1}/{len(rows)} {row['dataset']} {row['pair']}")
     with (args.output / "cells.jsonl").open() as f:
         cells = [json.loads(line) for line in f]
-    for norm in (() if args.teacher_features else NORMS):
+    for norm in (() if training else NORMS):
         path = args.output / f"scores-{norm}.tsv"
         fields = FIELDS[:6] + ["teacher", "candidate"]
         with path.open("x", newline="") as f:
@@ -224,7 +235,7 @@ def main():
         report(f"Evaluated {norm}")
     provenance["status"] = "complete"
     provenance["cells_sha256"] = digest(args.output / "cells.jsonl")
-    if args.teacher_features:
+    if training:
         provenance["features_sha256"] = digest(args.output / "features.jsonl")
     manifest_path.write_text(json.dumps(provenance, indent=2) + "\n")
     report("Complete; resource benchmarks and remaining evaluation gates are separate")

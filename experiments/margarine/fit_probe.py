@@ -72,15 +72,24 @@ def main():
     parser.add_argument("splits", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--build-commit", required=True)
+    parser.add_argument("--features", type=Path,
+                        help="complete refreshed feature extraction; teacher scores remain in extraction")
     args = parser.parse_args()
     splits = read_splits(args.splits)
     manifest = json.loads((args.extraction / "_MANIFEST.json").read_text())
     if (manifest.get("status") != "complete" or manifest.get("mode") != "teacher-features"
             or manifest.get("feature_columns") != EDGE_COLUMNS):
         raise ValueError("requires a complete extraction with the pinned feature layout")
-    for filename, key in [("cells.jsonl", "cells_sha256"), ("features.jsonl", "features_sha256")]:
-        if digest(args.extraction / filename) != manifest[key]:
-            raise ValueError(f"extraction hash mismatch: {filename}")
+    if digest(args.extraction / "cells.jsonl") != manifest["cells_sha256"]:
+        raise ValueError("teacher extraction hash mismatch")
+    feature_dir = args.features or args.extraction
+    feature_manifest = json.loads((feature_dir / "_MANIFEST.json").read_text())
+    if (feature_manifest.get("status") != "complete"
+            or feature_manifest.get("mode") not in ("teacher-features", "features-only")
+            or feature_manifest.get("feature_columns") != EDGE_COLUMNS):
+        raise ValueError("requires complete compatible feature extraction")
+    if digest(feature_dir / "features.jsonl") != feature_manifest["features_sha256"]:
+        raise ValueError("feature extraction hash mismatch")
     args.output.mkdir(parents=True, exist_ok=False)
     progress = (args.output / "progress.log").open("x", buffering=1)
 
@@ -90,7 +99,7 @@ def main():
         print(line, file=progress, flush=True)
 
     features = {}
-    for row in json_rows(args.extraction / "features.jsonl"):
+    for row in json_rows(feature_dir / "features.jsonl"):
         key = row["reference_sha256"], row["encoded_sha256"]
         values = row["features"]
         if len(values) != 168 or (key in features and features[key] != values):
@@ -121,6 +130,8 @@ def main():
             report(f"Loaded {len(cells)} unique reference/encode observations")
     if set(sources) != set(splits):
         raise ValueError("partition sources and extraction sources differ")
+    if set(features) != seen:
+        raise ValueError("teacher and feature observation keys differ")
     x = np.asarray(matrix, dtype=np.float64)
     raw_y, sources = np.asarray(targets, dtype=np.float64), np.asarray(sources)
     if not np.isfinite(raw_y).all() or (raw_y < 0).any():
@@ -175,7 +186,11 @@ def main():
             writer.writerow([row["source"], splits[row["source"]], row["reference_sha256"], row["encoded_sha256"]]
                             + truth.tolist() + pred.tolist())
     provenance = dict(build_commit=args.build_commit, input_manifest_sha256=digest(args.extraction / "_MANIFEST.json"),
-                      input_cells_sha256=manifest["cells_sha256"], input_features_sha256=manifest["features_sha256"],
+                      input_cells_sha256=manifest["cells_sha256"],
+                      input_features_sha256=feature_manifest["features_sha256"],
+                      feature_manifest_sha256=digest(feature_dir / "_MANIFEST.json"),
+                      feature_provenance=feature_manifest.get("feature_source", feature_manifest.get("feature_profile")),
+                      feature_binaries=feature_manifest["binaries"],
                       splits_sha256=digest(args.splits), splits=splits,
                       numpy=np.__version__, scipy=scipy.__version__, python=sys.version,
                       model_sha256=digest(model), chosen_penalties=selected, trials=trials, metrics=metrics,

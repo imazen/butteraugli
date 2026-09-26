@@ -42,6 +42,11 @@ and map hashes go into `cells.jsonl`; the separate `features.jsonl` sidecar join
 by reference/encoded SHA-256. Both input artifacts remain in their original
 stores. The scorer and exporter detect file formats by signature, so encoded
 blobs need no extension. Existing quality-evaluation mode remains available.
+`--features-only` refreshes just the feature sidecar after an extractor change;
+both training modes require `--feature-source COMMIT` to identify the dependency.
+`fit_probe.py --features REFRESHED_DIRECTORY` joins the refreshed values to the
+unchanged teacher ledger by exact reference/encoded hashes, requires equal key
+sets, and records both manifests. Frozen teacher maps are retained in place.
 
 `prepare_fit_input.py STAGE NEW_OUTPUT --dataset NAME --build-commit COMMIT`
 validates Zenfleet's `pairs.tsv` against the staged references and encoded blobs,
