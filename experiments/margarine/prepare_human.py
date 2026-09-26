@@ -37,10 +37,11 @@ def records(dataset, root):
     if dataset == 'kadid':
         labels = [root / 'dmos.csv']
         for r in csv.DictReader(io.StringIO(labels[0].read_text())):
-            # Despite its column name, dmos is quality-oriented DCR in [1,5].
+            # Despite its names, dmos is quality-oriented and var contains standard
+            # deviation. Both verified against all 10125 mapped raw-rating groups.
             rows.append((root/'images'/r['ref_img'], root/'images'/r['dist_img'],
                          'distortion_'+r['dist_img'].split('_')[1], float(r['dmos']),
-                         'quality', math.sqrt(float(r['var']))))
+                         'quality', float(r['var'])))
     elif dataset == 'tid':
         labels = [root/'mos_with_names.txt', root/'mos_std.txt']
         refs = case_index(root/'reference_images_png')

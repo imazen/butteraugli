@@ -14,11 +14,21 @@ from pathlib import Path
 import re
 
 
+# Verified across 81 references × 5 levels for every distortion: raw export
+# identifiers predate the published distortion ordering. Every mapped mean and
+# population standard deviation agrees with the rounded published table.
+RAW_TO_PUBLISHED = (1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 16, 17, 8,
+                    19, 21, 24, 22, 15, 23, 20, 7, 18, 25)
+
+
 def image_name(url):
     match = re.fullmatch(r'i(\d+)_(\d+)_(\d+)\.png', url.rsplit('/', 1)[-1], re.I)
     if not match:
         raise ValueError(f'unrecognized KADID image: {url}')
-    return 'I%02d_%02d_%02d.png' % tuple(map(int, match.groups()))
+    image, distortion, level = map(int, match.groups())
+    if not 1 <= distortion <= len(RAW_TO_PUBLISHED):
+        raise ValueError('raw distortion identifier out of range')
+    return 'I%02d_%02d_%02d.png' % (image, RAW_TO_PUBLISHED[distortion - 1], level)
 
 
 def agrees_with_rounding(value, published):
@@ -88,6 +98,8 @@ def main():
             audits.append(dict(image=name, n=n, mean=float(mean),
                                published_dmos=published['dmos'], published_variance=published['var'],
                                population_variance=float(population), sample_variance=float(sample),
+                               population_std=float(population.sqrt()),
+                               population_std_matches=agrees_with_rounding(population.sqrt(), published['var']),
                                mean_matches=agrees_with_rounding(mean, published['dmos']),
                                population_variance_matches=agrees_with_rounding(population, published['var']),
                                sample_variance_matches=agrees_with_rounding(sample, published['var'])))
@@ -98,8 +110,9 @@ def main():
         mean_misses = sum(not r['mean_matches'] for r in audits)
         sample_misses = sum(not r['sample_variance_matches'] for r in audits)
         population_misses = sum(not r['population_variance_matches'] for r in audits)
+        std_misses = sum(not r['population_std_matches'] for r in audits)
         qualified = (not mean_misses and not duplicate_worker_image and
-                     all(r['n'] == 30 for r in audits) and not min(sample_misses, population_misses))
+                     all(r['n'] == 30 for r in audits) and not min(sample_misses, population_misses, std_misses))
         manifest = dict(build_commit=args.build_commit, source=str(args.raw),
                         raw_sha256=hashlib.sha256(args.raw.read_bytes()).hexdigest(),
                         dmos_sha256=hashlib.sha256(args.dmos.read_bytes()).hexdigest(),
@@ -109,6 +122,9 @@ def main():
                         ratings_per_image=dict(Counter(r['n'] for r in audits)),
                         mean_mismatches=mean_misses, sample_variance_mismatches=sample_misses,
                         population_variance_mismatches=population_misses,
+                        population_std_mismatches=std_misses,
+                        all_label_means_and_std_match=not mean_misses and not std_misses,
+                        raw_to_published_distortion_order=RAW_TO_PUBLISHED,
                         duplicate_worker_image=duplicate_worker_image,
                         eligibility='kon10k_png rows; exclude golden or tainted observations',
                         rounding='half the last decimal place printed in each published label',
@@ -116,7 +132,7 @@ def main():
         (args.output / '_MANIFEST.json').write_text(json.dumps(manifest, indent=2) + '\n')
         report(json.dumps({k: manifest[k] for k in ['status', 'n_images', 'ratings_per_image',
                                                    'mean_mismatches', 'sample_variance_mismatches',
-                                                   'population_variance_mismatches', 'duplicate_worker_image']}))
+                                                   'population_variance_mismatches', 'population_std_mismatches', 'duplicate_worker_image']}))
 
 
 if __name__ == '__main__':

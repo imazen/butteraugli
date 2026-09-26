@@ -633,3 +633,21 @@ candidate value at Butteraugli's peak, normalized by its p1 score ratio, has
 median 0.88279 across 79 lattice maps and 0.66758 across 64 stratified maps.
 This measures spatial peak discrepancies after global scale removal, not a
 representative corpus statistic or participant significance.
+
+KADID pixels and raw ratings also exist on `dev.lan` (`ssh dev`) at
+`/mnt/v/dataset/kadid10k/`. The raw-rating SHA-256 matches lilith:
+`ba06cbe6c5783ad3a5aa84b13458a703222e8d98c4851a9393d306351a997bab`;
+the label CSV is `573e2ed98fdaa2a5aed7b50ad716906e125e1001ed0e97c8e93e79d7b997ba99`.
+Use this existing copy instead of transferring the image corpus. The separate
+`/mnt/v/datasets/kadid10k/` directory contains raw-data material, not the same
+image-root layout.
+
+The raw crowd export contains TID controls and KADID stimuli using a different
+distortion-ID order. The mapping in `prepare_kadid_opinions.py` reproduces all
+10,125 published means within their printed rounding intervals. The published
+`var` field matches population **standard deviation** for every mapped image,
+not variance. The user approved correcting `prepare_human.py` and its incorrect
+sigma test on 2026-09-26. Previously prepared KADID sigma metadata must be
+regenerated; no KADID Margarine quality run used it. Raw data have 30–33 eligible
+ratings per image and six repeated worker/image observations. Preserve them for
+reconciliation and participant-cluster analysis; do not silently trim to thirty.

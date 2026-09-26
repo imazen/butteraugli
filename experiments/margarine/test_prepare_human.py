@@ -20,7 +20,7 @@ class HumanInputs(unittest.TestCase):
         (self.root/'dmos.csv').write_text('dist_img,ref_img,dmos,var\nI01_01_01.png,I01.png,4.57,0.49\n')
         rows,_=records('kadid',self.root)
         self.assertEqual(rows[0][3:5],(4.57,'quality'))
-        self.assertAlmostEqual(rows[0][5],0.7)
+        self.assertEqual(rows[0][5],0.49)
 
     def test_tid_preserves_mixed_case_reference_and_label_alignment(self):
         (self.root/'reference_images_png').mkdir()
