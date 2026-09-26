@@ -1229,3 +1229,11 @@ and raw artifact hashes are in `benchmarks/margarine_simd_tiles*_resources*`.
 Both runs use the same source pair across four sizes; neither chooses a new
 production geometry. The expanded geometry parity test also passes on x86
 in debug and release.
+
+The owned-row-cache build `cb622180` preserves the complete LIVE score/map
+[ledger byte for byte](benchmarks/margarine_borrowed_rows_live1_parity_2026-09-26.json)
+against SIMD build `404280ba`. Its [resource curve](benchmarks/margarine_borrowed_rows_resources_2026-09-26.tsv)
+measures 3.631065×/3.686722× at 1 MP/8.44 MP and 18.2964%/8.0060% RSS.
+Tiny and small cases remain below teacher time and RSS in this run. The
+remaining shortfall is the large-image speed target. This does not qualify
+content diversity or the remaining human-rated corpora.
