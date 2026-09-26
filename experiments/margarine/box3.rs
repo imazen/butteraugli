@@ -18,7 +18,19 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "simd-malta") {
+const CANDIDATE: &str = if cfg!(feature = "simd-opsin") {
+    if cfg!(feature = "wide-malta") {
+        if cfg!(feature = "row-malta") {
+            "opsin-wide-row-malta"
+        } else {
+            "opsin-wide-full-malta"
+        }
+    } else if cfg!(feature = "row-malta") {
+        "opsin-row-malta"
+    } else {
+        "opsin-full-malta"
+    }
+} else if cfg!(feature = "simd-malta") {
     if cfg!(feature = "wide-malta") {
         if cfg!(feature = "row-malta") {
             "simd-wide-row-malta"
@@ -206,6 +218,8 @@ fn pnorm(map: &image::ImageF, p: f64) -> f64 {
 #[cfg(feature = "bounded")]
 mod bounded_diff;
 mod learned;
+#[cfg(feature = "simd-opsin")]
+mod opsin_rows;
 #[cfg(any(feature = "pooled", feature = "perceptual"))]
 mod paired_pool;
 #[cfg(feature = "perceptual")]

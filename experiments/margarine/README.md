@@ -687,3 +687,10 @@ with explicit portable SIMD and packs the resulting phases into contiguous
 output arrays. The multiply/add order, edge handling and native output samples
 are unchanged. Exact expansion and complete row/strip tests pass in debug and
 release on ARM and x86; performance still requires the measured resource curve.
+
+`simd-opsin` is an optional explicit eight-lane expression of the shared opsin
+row arithmetic, with exact tail/intensity comparisons in debug and release on
+ARM. Cross-compilation lint checks pass for x86; runtime qualification there
+is separate. The pinned backend supports the integer bitcasts at the AVX2
+tier, so this kernel uses AVX2 on AVX-512 hosts. The frozen `6bb371fb` resource
+and corpus results above do not enable this experiment.

@@ -1,7 +1,9 @@
 //! Pull frequency rows through bounded caches, retaining overlap across scoring
 //! strips. Shared Gaussian coefficients, nonlinearities and Malta scoring remain
 //! the contract; this is an experimental execution schedule.
-use crate::{blur, consts::*, diff, image, ingress, opsin, psycho, stream_blur, strips};
+#[cfg(any(not(feature = "simd-opsin"), test))]
+use crate::opsin;
+use crate::{blur, consts::*, diff, image, ingress, psycho, stream_blur, strips};
 use butteraugli::ButteraugliParams;
 use std::error::Error;
 
@@ -387,6 +389,10 @@ fn mirror_vertical(
         *v = rows[2][i] * a + (rows[1][i] + rows[3][i]) * b + (rows[0][i] + rows[4][i]) * c;
     }
 }
+#[cfg(feature = "simd-opsin")]
+use crate::opsin_rows::convert as opsin_row;
+
+#[cfg(not(feature = "simd-opsin"))]
 #[archmage::autoversion]
 fn opsin_row(
     _token: archmage::SimdToken,
