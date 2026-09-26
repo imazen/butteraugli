@@ -1192,3 +1192,12 @@ there are no undefined draws. These are per-statistic source-cluster intervals,
 not a simultaneous multi-corpus result or evidence from more than five sources.
 Full outputs and evaluator/input hashes live in Mac
 `malta-uniform-aic4-bootstrap-2026-09-26/`.
+
+The fixed full-Malta build `2d9d736a` also has complete CID22 (4,292) and
+KADID (10,125) panels in `malta-uniform-cid22-v2-2026-09-26/` and
+`malta-uniform-kadid-2026-09-26/` on r5900xt, with compact Mac copies.
+[All five ordinary corpus panels](benchmarks/margarine_malta_uniform_cid22_kadid_2026-09-26.tsv)
+include the zenstats statistics and composites. Primary max SROCC changes
+are −0.000113683 on CID22 and +0.000120502 on KADID; KROCC changes are
+−0.000100361 and +0.000174987. These point rankings meet the 0.01 screen.
+This does not qualify encoder-choice uncertainty, missing corpora, or speed.
