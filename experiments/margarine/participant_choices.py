@@ -8,8 +8,10 @@ import struct
 
 def load(directory, rows):
     directory = Path(directory)
-    meta = list(csv.DictReader((directory / 'bootstrap.tsv').open(), delimiter='\t'))
-    images = list(csv.DictReader((directory / 'images.tsv').open(), delimiter='\t'))
+    with (directory / 'bootstrap.tsv').open() as f:
+        meta = list(csv.DictReader(f, delimiter='\t'))
+    with (directory / 'images.tsv').open() as f:
+        images = list(csv.DictReader(f, delimiter='\t'))
     if len(meta) != 1 or len(images) != len(rows) or int(meta[0]['images']) != len(rows):
         raise ValueError('participant panel coverage differs from choice cohort')
     meta = meta[0]
