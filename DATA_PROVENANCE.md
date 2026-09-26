@@ -577,3 +577,15 @@ its confidence intervals bootstrap both opinion collections. Opinion counts
 alone cannot reconstruct those intervals. The local validation CSV has no
 interval columns, so uncertainty-aware materiality needs additional published
 data rather than an inferred standard error.
+
+The two-dimensional tile scheduler at `0fdb5a55` reduces total-process RSS
+to 17.02% at 1 MP and 8.21% at 8.44 MP, but its
+[resource sweep](benchmarks/margarine_tiles_resources_2026-09-26.tsv) still fails
+speed: 1.579× and 1.606× scoring, respectively. Decode-inclusive speedups
+are 1.569× and 1.509×. Tiny RSS slightly exceeds teacher (5,996,544 versus
+5,967,872 bytes); small RSS is 76.43%. All four sizes reached at least twenty
+rounds without an unreliable flag. The run-heavy guard reports peak RSS
+1.55 GiB, minimum available 56,765 MiB and peak load 1.53. Raw measurements
+remain in `tiles-resources-2026-09-26/` on r5900xt and the Mac. Tile/strip
+map equality is covered by odd, strided RGB16 tests; corpus-wide equality
+and joint acceptance are not established.
