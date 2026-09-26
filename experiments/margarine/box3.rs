@@ -20,6 +20,8 @@ mod blur;
 
 const CANDIDATE: &str = if cfg!(feature = "native-gaussian") {
     "native-gaussian"
+} else if cfg!(feature = "native-mask") {
+    "native-mask"
 } else if cfg!(feature = "tiles") {
     if cfg!(feature = "planar") {
         "planar-tiles"

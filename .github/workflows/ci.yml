@@ -46,6 +46,7 @@ jobs:
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features row-tiles,phase-rows --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features peak-stratified --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features native-gaussian --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features native-mask --all-targets -- -D warnings
 
       # The corpus-tests feature gates conformance tests that need the local
       # jpegli corpus (JPEGLI_TESTDATA). CI can't run them (no corpus), but
@@ -95,6 +96,7 @@ jobs:
           cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features row-tiles,phase-rows
           cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features peak-stratified
           cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features native-gaussian
+          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features native-mask
 
       - name: Run conformance tests
         run: cargo test -p butteraugli --test conformance

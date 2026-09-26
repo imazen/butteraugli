@@ -1030,3 +1030,10 @@ pins both binaries and uses the same participant draws for the choice
 comparison. Full maps remain on r5900xt in `{bounded,native-gaussian}-live1-2026-09-26/`;
 compact records also exist on the Mac. These controls do not yet establish
 the combined quality/resource goal.
+
+The `native-mask` control narrows native-grid Gaussian filtering to
+`MASK_RADIUS`; frequency-separation blur reduction and sampled Malta remain.
+It retains the existing shared sigma and coefficients and introduces no
+fitted constant. The unchanged row-plane, seam and stride tests pass. This
+isolates masking from frequency blur reduction; it is not yet a quality or
+resource qualification.
