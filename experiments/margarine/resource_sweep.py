@@ -50,8 +50,12 @@ def main():
     parser.add_argument("--tile-columns", type=int, default=512)
     parser.add_argument("--memory-trials", type=int, default=3, help="fresh processes per arm; report largest measured peak")
     parser.add_argument("--model", type=Path, help="measure fitted student scores instead of feature probes")
+    parser.add_argument("--named-command", type=Path,
+                        help="measure candidate process RSS with the standalone command; timing still uses the shared-kernel harness")
     args = parser.parse_args()
     if args.model and args.direct: parser.error("choose a fitted model or direct candidate")
+    if args.named_command and (args.direct != "simd-row-malta" or args.strip_rows != 128 or args.tile_columns != 512):
+        parser.error("the named command requires simd-row-malta with 128 rows and 512 columns")
     if args.memory_trials < 1: parser.error("memory trials must be positive")
     if args.tile_columns <= 0 or args.tile_columns % 4: parser.error("tile columns must be a positive multiple of four")
     if args.strip_rows <= 0: parser.error("strip rows must be positive")
@@ -60,6 +64,8 @@ def main():
     if int(os.environ.get("RAYON_NUM_THREADS", "0")) <= 0:
         raise ValueError("set a positive RAYON_NUM_THREADS explicitly")
     args.binary = args.binary.resolve()
+    if args.named_command:
+        args.named_command = args.named_command.resolve()
     if args.model:
         args.model = args.model.resolve()
     arms = ("teacher", "student") if args.model else ARMS
@@ -88,6 +94,10 @@ def main():
         provenance.update(candidate=args.direct, strip_rows=args.strip_rows, tile_columns=args.tile_columns,
                           timing="interleaved metric-only and file-open/decode/metric arms; warm OS file cache",
                           limitation="same-image crops; no independent content coverage")
+    if args.named_command:
+        provenance.update(named_command=str(args.named_command),
+                          named_command_sha256=sha(args.named_command),
+                          candidate_memory="standalone named command, default scalar output; native diffmap retained in memory")
     with (args.output / "progress.log").open("x", buffering=1) as progress:
         def report(message):
             print(message, file=progress, flush=True)
@@ -106,6 +116,8 @@ def main():
                     command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-rgb8", arm, *pair]
                     if args.direct and arm == args.direct:
                         command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-native", str(args.strip_rows), *pair]
+                        if args.named_command:
+                            command = ["/usr/bin/time", time_flag, str(args.named_command), *pair]
                     if arm == "student":
                         command = ["/usr/bin/time", time_flag, str(args.binary), "--student", str(args.model), *pair]
                     with log.open("x") as out:
