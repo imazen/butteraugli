@@ -1,0 +1,9 @@
+{
+  "build_commit": "7bc82d8f65ab122b42f7aa1bfcf5b9a2594be43a",
+  "pairs": 300,
+  "changed_scores_or_map_hashes": 0,
+  "ledgers": {
+    "/Users/lilith/work/codec-artifacts/margarine/phase-tiles-aic4-2026-09-26/cells.jsonl": "8e9f1aef8f4575b060d91d97ea43a6e2b52969c5fcbf61dec8c9910d3e76a75f",
+    "/Users/lilith/work/codec-artifacts/margarine/row-reduce-aic4-2026-09-26/cells.jsonl": "5a2dbe51e9e5ffebc16cc2517710c92f753af0177cf6c94c718c220b6a7fc105"
+  }
+}

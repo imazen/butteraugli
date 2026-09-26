@@ -910,3 +910,14 @@ unavailable, with full sigma counts; no epsilon or row removal substitutes
 for the two KADID and twenty-two CSIQ zero dispersions. [Provenance and hashes](benchmarks/margarine_zero_sigma_panels_2026-09-26.meta.json)
 pin the unchanged score ledgers and new evaluator. Full replay outputs are
 in Mac `{lattice,stratified}-{kadid,csiq}-zero-sigma-panels-2026-09-26/`.
+
+Combining column tiling and rolling Malta (`7bc82d8f`) [preserves all AIC4
+maps and norms](benchmarks/margarine_phase_tiles_aic4_parity_2026-09-26.json).
+The [resource sweep](benchmarks/margarine_phase_tiles_resources_2026-09-26.tsv)
+measures 3.062×/3.231× metric speed and 18.89%/8.15% process RSS at
+1 MP/8.44 MP. Decode-inclusive speedups are 2.706×/2.894×. Tiny and small
+time/RAM remain below teacher, but 4× speed remains unmet. Full maps remain
+on r5900xt in `phase-tiles-aic4-2026-09-26/`; compact replay and all resource
+records also exist on the Mac. Each peak is the largest of three fresh
+processes. Guard peak RSS was 1.54 GiB, minimum available RAM 56,610 MiB,
+peak load 1.34.
