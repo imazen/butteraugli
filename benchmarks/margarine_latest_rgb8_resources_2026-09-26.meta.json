@@ -67,5 +67,6 @@
     "256x256-teacher-memory.log": "12bbec5954a802eb2a1864f24971b6280fcbb86263057646125de0cabec14ab4",
     "time_fits.json": "01698cb35702d39476fd550ed846fd192b27783c1a09d7e1a54f55cd13744981",
     "summary.tsv": "3b8c84f8364886845ba506b417a0323f4fc856cbf78f437e766d5e286e0ac0d2"
-  }
+  },
+  "resource_guard": "run-heavy: done rc=0 117s | peak-RSS 1.55GiB | min-avail 56544MiB | peak-load 1.50"
 }

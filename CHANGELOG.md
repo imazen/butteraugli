@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Experimental `margarine` command with streamed scoring, all pooling norms, and optional native diffmaps (`0dceefe0`).
 
+### Changed
+
+- Cache exact 16-bit sRGB conversion for larger experimental Margarine inputs; all CID22 scores and maps retain bit equality (`b6c1e6b1`).
+
 ## [0.9.4] - unreleased
 
 ### Fixed

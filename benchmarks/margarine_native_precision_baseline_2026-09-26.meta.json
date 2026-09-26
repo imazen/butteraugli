@@ -111,5 +111,6 @@
       "note": "OLS description of measured sizes, not extrapolation or a performance gate"
     }
   ],
-  "source": "CID22 original/162520.png (RGB8) and compressed/162520/cld_avif/q30.png (RGB16); exact center crops, no resampling"
+  "source": "CID22 original/162520.png (RGB8) and compressed/162520/cld_avif/q30.png (RGB16); exact center crops, no resampling",
+  "resource_guard": "run-heavy: done rc=0 28s | peak-RSS 0.07GiB | min-avail 58226MiB | peak-load 0.72"
 }

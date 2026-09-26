@@ -1446,8 +1446,8 @@ cover all 23,200 pairs and 200 sources. Primary SROCC is 0.462825908 versus
 Butteraugli's 0.462835702 (delta −0.000009795); KROCC delta is −0.000127853.
 All five pooling variants and the full zenstats corpus panels are retained.
 Native maps and the score ledger live on WSL in
-`vector-expand-row-streamed-pipal-container-2026-09-26`; Tower mirroring is in
-progress. No participant-uncertainty choice result is inferred from these ranks.
+`vector-expand-row-streamed-pipal-container-2026-09-26`; Tower mirroring has
+completed and sampled hashes are verified. No participant-uncertainty choice result is inferred from these ranks.
 
 The separate `simd-coarse-full-malta` control at `1440dd3e` retains its
 [AIC4 corpus panels](benchmarks/margarine_simd_coarse_full_aic4_2026-09-26.tsv)
@@ -1473,3 +1473,22 @@ point-label decreases in 479 subjective budgets, maximum 0.5 JND, mean signed
 loss 0.003131524 JND. The estimated cohort has six decreases in 121 budgets.
 The table supplies no participant uncertainty, so these are not counts of
 statistically distinguishable harm. The immutable scored ledger is unchanged.
+
+The primary CID22 [paired source-cluster bootstrap](benchmarks/margarine_vector_row_cid22_bootstrap_2026-09-26.tsv)
+uses 2,000 draws over 49 sources. SROCC delta is −0.004505481 with 95% interval
+[−0.007777846, −0.001487477]; KROCC delta is −0.003836032 with interval
+[−0.006825613, −0.000919176]. Both rank intervals remain above −0.01.
+All ten statistics have defined draws; intervals are per statistic, not
+simultaneous. This quantifies corpus-source uncertainty, not participant
+uncertainty for encoder choices.
+
+TID2013, AIC3, LIVE2 and PIPAL are mirrored on Tower's array. The transfer
+completed with 33,944,638,408 bytes; [canonical-path verification](benchmarks/margarine_extended_corpora_tower_2026-09-26.json)
+checks four complete ledgers, four manifests and twelve sampled native maps.
+The root corpus index's Tower paths are now backed by these checks.
+
+CI's shared-ingress lint findings are fixed: `linear_rgb` documents its use
+by the resource harness when compiled into the scalar scorer (`ec5f328a`),
+and the precision test uses fixed array chunks (`dd3315ca`). Default and
+selected-candidate all-target clippy pass locally without relaxing precision
+assertions. Remote CI must still establish the complete platform matrix.

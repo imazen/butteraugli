@@ -110,5 +110,6 @@
       ],
       "note": "OLS description of measured sizes, not extrapolation or a performance gate"
     }
-  ]
+  ],
+  "resource_guard": "run-heavy: done rc=0 28s | peak-RSS 0.07GiB | min-avail 58243MiB | peak-load 0.64"
 }

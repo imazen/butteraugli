@@ -1,0 +1,87 @@
+{
+  "build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+  "tower_root": "/mnt/user/coefficient/output/margarine",
+  "write_root": "/mnt/user0/coefficient/output/margarine",
+  "verified": [
+    {
+      "path": "vector-expand-row-streamed-tid-container-2026-09-26/cells.jsonl",
+      "sha256": "f70d517a492badaacb70c5ee6a5a0b115ce9b9bf0b57293045da64da934884e6"
+    },
+    {
+      "path": "vector-expand-row-streamed-tid-container-2026-09-26/_MANIFEST.json",
+      "sha256": "92d0d4d386e8cf8ed62327b933f27e29f8b2a335a6799a561e25ab961e0c4a70"
+    },
+    {
+      "path": "vector-expand-row-streamed-tid-container-2026-09-26/maps/1af1842d2eb2dcbbb474d575302f9d7ae29196945e86bee163410b9fc5714aaf.f32le",
+      "sha256": "1af1842d2eb2dcbbb474d575302f9d7ae29196945e86bee163410b9fc5714aaf"
+    },
+    {
+      "path": "vector-expand-row-streamed-tid-container-2026-09-26/maps/10b5a6ff1d6e9e4654675bfa90313276a78f095eb758940e7e5d224de002c25d.f32le",
+      "sha256": "10b5a6ff1d6e9e4654675bfa90313276a78f095eb758940e7e5d224de002c25d"
+    },
+    {
+      "path": "vector-expand-row-streamed-tid-container-2026-09-26/maps/05dc97b5649e46655f2855fbae285b74c92812c2fdf6279632acabb1a4fdd60e.f32le",
+      "sha256": "05dc97b5649e46655f2855fbae285b74c92812c2fdf6279632acabb1a4fdd60e"
+    },
+    {
+      "path": "vector-expand-row-streamed-aic3-container-2026-09-26/cells.jsonl",
+      "sha256": "d62fb9d0f4e178413341ce61be5ad284eae4ac6c7a0ac7ffd5dff21c1810c027"
+    },
+    {
+      "path": "vector-expand-row-streamed-aic3-container-2026-09-26/_MANIFEST.json",
+      "sha256": "5eab9e02d48005711abb3a6bebce139c72626d4ebd163fa31d9eb59897c779c0"
+    },
+    {
+      "path": "vector-expand-row-streamed-aic3-container-2026-09-26/maps/204461b8b6aacc08c8cb708a477f8c57b37c6f3ddd078de46e4222a4a7ec6ca0.f32le",
+      "sha256": "204461b8b6aacc08c8cb708a477f8c57b37c6f3ddd078de46e4222a4a7ec6ca0"
+    },
+    {
+      "path": "vector-expand-row-streamed-aic3-container-2026-09-26/maps/148088822b72e1d743753a14fdd6aad462fdaa50298f7e2a94c34c15c42e6d52.f32le",
+      "sha256": "148088822b72e1d743753a14fdd6aad462fdaa50298f7e2a94c34c15c42e6d52"
+    },
+    {
+      "path": "vector-expand-row-streamed-aic3-container-2026-09-26/maps/087ad9c86d08bc78132943a26df73c545f596ad54e3832c296b24cae44a36862.f32le",
+      "sha256": "087ad9c86d08bc78132943a26df73c545f596ad54e3832c296b24cae44a36862"
+    },
+    {
+      "path": "vector-expand-row-streamed-live-container-2026-09-26/cells.jsonl",
+      "sha256": "4a0eecd098cf92bdd0f0b0f877806557fd1dd5ca25d983905d5de2d18b585980"
+    },
+    {
+      "path": "vector-expand-row-streamed-live-container-2026-09-26/_MANIFEST.json",
+      "sha256": "1d920b40d1730caef5e373cab8b8f71799c221b3e4e6819358c3d60365a7046a"
+    },
+    {
+      "path": "vector-expand-row-streamed-live-container-2026-09-26/maps/19428697b155136f39c7f286aadb702c40ad1b84e857031d36eff691ae555b76.f32le",
+      "sha256": "19428697b155136f39c7f286aadb702c40ad1b84e857031d36eff691ae555b76"
+    },
+    {
+      "path": "vector-expand-row-streamed-live-container-2026-09-26/maps/13207e19c85ee606bb0d73497b1cb16bcffe2d87e8d779106dfe8eb093603d97.f32le",
+      "sha256": "13207e19c85ee606bb0d73497b1cb16bcffe2d87e8d779106dfe8eb093603d97"
+    },
+    {
+      "path": "vector-expand-row-streamed-live-container-2026-09-26/maps/0626172e472bc50983ae6995f9b222e947d7189101f6cc35234bca28da710b87.f32le",
+      "sha256": "0626172e472bc50983ae6995f9b222e947d7189101f6cc35234bca28da710b87"
+    },
+    {
+      "path": "vector-expand-row-streamed-pipal-container-2026-09-26/cells.jsonl",
+      "sha256": "425dc7d81e3364b4b384d5e2aa9b3190d6e7a5621a9076d7d386d05b13a8346e"
+    },
+    {
+      "path": "vector-expand-row-streamed-pipal-container-2026-09-26/_MANIFEST.json",
+      "sha256": "678c533003cb1a558289bf9f8e995fcc5d7ba0ecaeaee94ff1e56d23c1f7c6dd"
+    },
+    {
+      "path": "vector-expand-row-streamed-pipal-container-2026-09-26/maps/1b5e3278369c13039075e7c18406cb6ba32842aa346f06851a561c00a29d6c14.f32le",
+      "sha256": "1b5e3278369c13039075e7c18406cb6ba32842aa346f06851a561c00a29d6c14"
+    },
+    {
+      "path": "vector-expand-row-streamed-pipal-container-2026-09-26/maps/113ea6bbfdbe7d26d0b047c2c218acccb0b9a9d554ce58ab14393ed36557f68d.f32le",
+      "sha256": "113ea6bbfdbe7d26d0b047c2c218acccb0b9a9d554ce58ab14393ed36557f68d"
+    },
+    {
+      "path": "vector-expand-row-streamed-pipal-container-2026-09-26/maps/063f1b6ad9ea0bd50e847dce4f1b33de84519b0ed7549f2c2e8a0f6030748287.f32le",
+      "sha256": "063f1b6ad9ea0bd50e847dce4f1b33de84519b0ed7549f2c2e8a0f6030748287"
+    }
+  ]
+}
