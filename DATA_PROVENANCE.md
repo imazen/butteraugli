@@ -376,3 +376,17 @@ Its [panel](benchmarks/margarine_sparse_aic4_2026-09-26.tsv) has largest pooled 
 produce 142.668/86.866 ms in another 21-round run; that is no demonstrated
 speed improvement. Neither reaches the resource goal. Native maps remain
 in r5900xt `sparse-aic4-2026-09-26/`; compact metadata is copied to the Mac.
+
+The joint linear-RGB sample candidate `1ae8eb96` reaches the measured
+resource means on the four-size crop workload, but fails human quality.
+The [resource sweep](benchmarks/margarine_pooled_resources_2026-09-26.tsv) records 6.172×/5.231×
+metric speed at 1 MP/8.44 MP, 4.480×/4.099× with decoding, and total-process
+RSS fractions 19.79%/12.12%. Smaller dimensions are below teacher time and
+RAM. These resource observations do not qualify a failed-quality candidate.
+The [AIC4 panel](benchmarks/margarine_pooled_rejected_2026-09-26.tsv)
+exceeds the rank-loss limit for max, p2, p3 and p6; max loses 0.06333048
+and p3 loses 0.01967489. p1 loses 0.00703697. The candidate is rejected.
+Its generated maps remain in r5900xt `pooled-aic4-2026-09-26/`.
+The original invocation used a preparation label as build provenance; the
+manifest was corrected to the verified landed source commit, with the original
+manifest preserved and hashed.
