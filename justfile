@@ -94,3 +94,6 @@ margarine-participant-pairs scored opinions evaluator output candidate commit dr
 # Published Release 1 cohorts retain their separate rating normalizations.
 margarine-live1-inputs root output destination commit:
     nice -n 19 python3 experiments/margarine/prepare_live1.py "{{root}}" "{{output}}" --destination-root "{{destination}}" --build-commit "{{commit}}"
+
+margarine-audited-eval pairs audit binaries output candidate commit teacher="":
+    if [ -n "{{teacher}}" ]; then set -- --teacher "{{teacher}}"; else set --; fi; nice -n 19 python3 experiments/margarine/score_manifest.py "{{pairs}}" "{{binaries}}" "{{output}}" --input-audit "{{audit}}" --candidate "{{candidate}}" --build-commit "{{commit}}" --ingress common-srgb "$@"
