@@ -131,7 +131,7 @@ def parse_features(path, dimensions):
 
 def frozen_teacher(directory):
     manifest = json.loads((directory / "_MANIFEST.json").read_text())
-    if manifest.get("status") != "complete" or manifest.get("mode") not in (None, "quality-evaluation"):
+    if manifest.get("status") not in ("complete", "scores-complete") or manifest.get("mode") not in (None, "quality-evaluation"):
         raise ValueError("requires complete human-evaluation teacher ledger")
     if digest(directory / "cells.jsonl") != manifest["cells_sha256"]:
         raise ValueError("teacher ledger hash mismatch")

@@ -7,10 +7,24 @@ import zlib
 from cid22_manifest import audit
 from pathlib import Path
 
-from score_manifest import EDGE_COLUMNS, FIELDS, NORMS, aligned_teacher, audit_png, digest, parse_features, parse_prediction, parse_score, read_pairs, verify_input_audit
+from score_manifest import EDGE_COLUMNS, FIELDS, NORMS, aligned_teacher, audit_png, digest, frozen_teacher, parse_features, parse_prediction, parse_score, read_pairs, verify_input_audit
 
 
 class ScoringContract(unittest.TestCase):
+    def test_scored_teacher_is_reusable_before_panels_but_not_while_running(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ledger = root / 'cells.jsonl'
+            ledger.write_text(json.dumps(dict(dataset='d', pair='p', reference_sha256='a', distorted_sha256='b')) + '\n')
+            manifest = dict(status='scores-complete', mode='quality-evaluation', cells_sha256=digest(ledger))
+            path = root / '_MANIFEST.json'
+            path.write_text(json.dumps(manifest))
+            self.assertIn(('d', 'p'), frozen_teacher(root))
+            manifest['status'] = 'running'
+            path.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, 'complete'):
+                frozen_teacher(root)
+
     def test_raw_label_metadata_and_staged_audit_are_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
