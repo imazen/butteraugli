@@ -472,3 +472,31 @@ of canonical quality `(dmos-1)/4`; raw `dmos.csv` has mean values declining
 from 4.078528 at level 1 to 2.006726 at level 5. New Margarine adapters must
 read raw labels and preserve declared orientation rather than reuse that
 legacy target column. Existing dataset files were left unchanged.
+
+## Stratified region correction: rank screen passes, choices diverge
+
+Candidate `76728638` selects a peak-error tile and a representative tile for
+the remainder, weighting their original-FIR corrections by represented area.
+The [AIC4 panel](benchmarks/margarine_stratified_aic4_2026-09-26.tsv) and
+[CID22 panel](benchmarks/margarine_stratified_cid22_2026-09-26.tsv) put all five
+pooled SROCC/KROCC losses below 0.01. CID22 p1 loses 0.00818298 SROCC and
+its Z-RMSE worsens by 0.016718; the aggregate panels are not universal wins.
+Repeated AIC/CID screening is development evidence, not independent validation.
+
+The [resource means](benchmarks/margarine_stratified_resources_2026-09-26.tsv)
+meet the metric-time and RSS targets on the four-size crop workload: 4.082×
+and 4.453× scoring speed at 1 MP and 8.44 MP, RSS fractions 19.86% and
+12.31%. Decode-inclusive speedups are 3.402× and 4.016×. Both smaller sizes
+stay below teacher time and RSS. The guard reports peak RSS 1.57 GiB, minimum
+available 55,168 MiB, peak load 8.73. This remains one photo/encode crop family.
+
+The [encoder-choice diagnostic](benchmarks/margarine_stratified_choices_cid22_2026-09-26.tsv)
+exposes a large fidelity problem: at 1% relative teacher regret, 1,826 of
+4,285 max-norm choices and 1,006 p3 choices exceed the diagnostic threshold.
+That threshold is not the user-approved materiality definition, but the
+result prevents treating the pooled-rank/resource screens as goal completion.
+Per-pair region correction can vary across nearby encodes; investigate raw
+choices and human-label harm before accepting this architecture. All maps
+remain on r5900xt in `stratified-{aic4,cid22}-2026-09-26/`; the Mac holds
+compact metadata, panels, and choice diagnostics. These maps are not yet
+mirrored to Tower and must not be deleted.
