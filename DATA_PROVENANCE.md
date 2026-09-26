@@ -1350,3 +1350,11 @@ by 0.000840982 and KROCC by 0.000376725. The [default-teacher comparison](benchm
 now reports every candidate norm against Butteraugli max on each completed
 corpus. Alternative norms improve AIC4/CID22 but exceed the allowed rank loss
 on CSIQ/KADID, so these measurements do not justify replacing primary max.
+
+The screenshot [geometry controls](benchmarks/margarine_screen_geometry_controls_2026-09-26.tsv)
+retain complete size curves and process peaks. At 1440×900, row-Malta with
+128×768 measures 3.834951×, 128×1024 measures 3.262351×, 192×768 measures
+3.565244×, and 256×512 measures 3.319279×. The explicit opsin variant at
+128×768 measures 3.688001×. None meets 4× on this case; larger tiles or strips
+do not establish a general speed improvement. Defaults remain unchanged.
+The x86 debug/release tests for the opsin-plus-row combination also pass.
