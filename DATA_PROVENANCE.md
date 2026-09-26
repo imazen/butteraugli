@@ -1290,3 +1290,13 @@ and `/mnt/v/datasets/LIVE/databaserelease2`. The committed `prepare_human.py`
 adapter audits source images and labels before staging. Audit artifacts are
 `extended-human-audits-2026-09-26/` under the Linux artifact root. These paths
 identify evaluation inputs; they do not imply completed candidate scoring.
+
+The same streamed build retains all 10,125 KADID pairs in its
+[quality panel](benchmarks/margarine_vector_expand_row_kadid_2026-09-26.tsv).
+Primary SROCC loss is 0.002757075 and KROCC loss is 0.002280405. All five
+norms are retained; the two zero-dispersion images remain in ordinary panels.
+The [AIC4 primary source bootstrap](benchmarks/margarine_vector_expand_row_aic4_bootstrap_2026-09-26.tsv)
+uses 2,000 draws over five sources: the SROCC delta interval is
+[-0.005227962, 0.003264655], while KROCC spans [-0.010790240, 0.003945304].
+Thus point estimates pass, but the KROCC interval crosses the -0.01 boundary.
+These are per-statistic intervals, with no simultaneous coverage claim.

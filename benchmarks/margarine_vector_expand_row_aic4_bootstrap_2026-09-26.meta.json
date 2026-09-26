@@ -1,0 +1,6 @@
+{
+  "build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+  "score_sha256": "d32efbc0b760bacf3e6590b8730cd85d12d1c1b5ba315bffa275fecdb4b824f0",
+  "command": "margarine-eval --bootstrap scores-max.tsv OUTPUT.tsv 2000 20260926",
+  "resampling": "source clusters; five sources; per-statistic intervals, not simultaneous"
+}
