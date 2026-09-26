@@ -78,13 +78,17 @@ impl<'a> EncodedRows<'a> {
     }
 
     pub(crate) fn linear_strip(&self, start: usize, end: usize) -> Vec<f32> {
-        assert!(start <= end && end <= self.height);
+        self.linear_region(0, self.width, start, end)
+    }
+
+    pub(crate) fn linear_region(&self, x0: usize, x1: usize, start: usize, end: usize) -> Vec<f32> {
+        assert!(start <= end && end <= self.height && x0 < x1 && x1 <= self.width);
         static LUT: std::sync::LazyLock<[f32; 256]> = std::sync::LazyLock::new(|| {
             std::array::from_fn(|v| butteraugli::opsin::srgb_to_linear(v as u8))
         });
-        let mut result = vec![0.0; (end - start) * self.width * 3];
-        for (y, out) in (start..end).zip(result.chunks_exact_mut(self.width * 3)) {
-            let range = y * self.stride..y * self.stride + self.width * self.channels;
+        let mut result = vec![0.0; (end - start) * (x1 - x0) * 3];
+        for (y, out) in (start..end).zip(result.chunks_exact_mut((x1 - x0) * 3)) {
+            let range = y * self.stride + x0 * self.channels..y * self.stride + x1 * self.channels;
             match self.samples {
                 Samples::U8(v) => {
                     let lut = &*LUT;

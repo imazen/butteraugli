@@ -3,7 +3,7 @@
 use super::*;
 
 const TILE: usize = 128;
-const PATCHES: usize = 3;
+const PATCHES: usize = if cfg!(feature = "refined1") { 1 } else { 3 };
 // Conservative finite support: opsin 2 + Gaussian radii 16+7+3 + mask 6+3,
 // doubled for the half-resolution contribution, plus its sampling footprint.
 const HALO: usize = 76;
@@ -52,13 +52,13 @@ fn exact_region(
     let x1 = (region.x + region.w + HALO).min(a.width);
     let y1 = (region.y + region.h + HALO).min(a.height);
     let load = |input: &ingress::EncodedRows<'_>| {
-        let strip = input.linear_strip(y0, y1);
-        let mut pixels = Vec::with_capacity((x1 - x0) * (y1 - y0));
-        for row in strip.chunks_exact(input.width * 3) {
-            for p in row[x0 * 3..x1 * 3].as_chunks::<3>().0 {
-                pixels.push(butteraugli::RGB::new(p[0], p[1], p[2]));
-            }
-        }
+        let strip = input.linear_region(x0, x1, y0, y1);
+        let pixels = strip
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|p| butteraugli::RGB::new(p[0], p[1], p[2]))
+            .collect::<Vec<_>>();
         butteraugli::Img::new(pixels, x1 - x0, y1 - y0)
     };
     let (a, b) = (load(a), load(b));

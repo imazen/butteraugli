@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "refined") {
+const CANDIDATE: &str = if cfg!(feature = "refined1") {
+    "refined1"
+} else if cfg!(feature = "refined") {
     "refined"
 } else if cfg!(feature = "physical") {
     "physical"
