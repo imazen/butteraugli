@@ -13,5 +13,7 @@
   "qualification": "incomplete; corpus point screens are not universal or uncertainty-based choice guarantees",
   "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/qualification-report-final-2026-09-26",
   "served_url": "http://192.168.50.159:3300/margarine/qualification-2026-09-26/index.html",
-  "served_bytes_verified": true
+  "served_bytes_verified": true,
+  "tower_directory": "/mnt/user/coefficient/output/margarine/qualification-report-final-2026-09-26",
+  "tower_index_bytes_verified": true
 }
