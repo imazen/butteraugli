@@ -1,0 +1,27 @@
+{
+  "host": "r5900xt",
+  "root": "/home/lilith/work/codec-artifacts/margarine",
+  "sha256": {
+    "bounded-profile-2026-09-26": {
+      "callgrind.out": "e3b14b835e9bc45233a3acc05a151b64c7ec2e11c0b93c8123f81310ab7aad38",
+      "flat.txt": "9d03af2e3ee97ce0d0f3bd88b2f25b80f9cc2face711bc7fe8476b1bca6ace26"
+    },
+    "lattice-profile-2026-09-26": {
+      "one-size.tsv": "0390df9f774a590ded22889a936c8df9b2f43ab6ddafd803f850fee9181276b0",
+      "callgrind.out": "03474a8e1f1a24f1d4cd80751dd8c47e548a6397f1c63ccd78ea0d693a308fcd",
+      "flat.txt": "31ef280a2362dff72c5d59b600146f8ca33c3ca35f2f09e6086b218ca8ff8ed6"
+    },
+    "lattice-opt-profile-2026-09-26": {
+      "build_commit.txt": "e13e71d428afbcd3ec8300fe55e42f435ce81755a2b6d20522213a1cf9226f2e",
+      "inputs.sha256": "da2713bbd5d5b6c11ebe6e65d8a1a5328a05c769c3b4f642f90ba15d991ff4b5",
+      "run.log": "9486aeef743f753427c6d61be4a019ef72fa14f0c451ef66700348c3a65c40ff",
+      "callgrind.out": "9535767ffcd412d2c600da2822ad7a76d12e6eee84804d20a02e42b448d9ccb0",
+      "flat.txt": "38bd0cebf41bb4235fc66810933e5baf792920b7d52c81fb9d8a2fec0cb3ae3d"
+    }
+  },
+  "build_commits": {
+    "bounded-profile-2026-09-26": "4a78e85f5a0be28bc5d7ccb017bf1f75d4df0347",
+    "lattice-profile-2026-09-26": "bbf61a80ec7171852186189887f8c215f4ca1f4e",
+    "lattice-opt-profile-2026-09-26": "e7bc7678955ea28212630faaba52352e743f4ed8"
+  }
+}

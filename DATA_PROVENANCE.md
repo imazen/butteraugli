@@ -541,3 +541,12 @@ or RSS claims. The initial lattice 1 MP resource invocation persisted its
 measurements but then failed because a single size cannot fit overhead and
 slope. It is not a completed resource sweep. Use `margarine-direct-timing`
 for one-size diagnostics and the four-size sweep for resource qualification.
+
+Reconstruction vectorization (`e7bc7678`) preserves the scalar formula in
+bitwise tests over all interpolation phases and tails. Its instruction count
+falls from 386,951,904 to 112,752,336; whole-process instructions fall from
+2,046,835,258 to 1,772,823,032. [Profile hashes and source commits](benchmarks/margarine_direct_profiles_2026-09-26.pointer.json)
+pin the raw captures. The [native 1 MP timing](benchmarks/margarine_lattice_opt_1mp_2026-09-26.json)
+still misses 4×: teacher/candidate means 149.515/78.386 ms for scoring and
+168.354/92.429 ms including decoding, across twenty-one rounds. Instruction
+reduction is not a measured proportional wall-time improvement.

@@ -1,0 +1,58 @@
+--------------------------------------------------------------------------------
+Profile data file '/home/lilith/work/codec-artifacts/margarine/bounded-profile-2026-09-26/callgrind.out' (creator: callgrind-3.26.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 359006039
+Trigger: Program termination
+Profiled target:  /home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3 --memory-native 128 /home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-ref.png /home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-dist.png (PID 2514095, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                     
+--------------------------------------------------------------------------------
+2,165,689,200 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                    file:function
+--------------------------------------------------------------------------------
+795,154,096 (36.72%)  ???:margarine_box3::shared_malta::__arcane_malta_diff_map_dispatch_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+278,045,024 (12.84%)  ???:margarine_box3::exact_blur::__arcane_gaussian_blur_dispatch_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+131,431,896 ( 6.07%)  ???:margarine_box3::blur::__arcane_expand_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+122,204,458 ( 5.64%)  ???:<fdeflate::decompress::Decompressor>::read [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+112,665,408 ( 5.20%)  ???:margarine_box3::exact_blur::__arcane_blur_mirrored_5x5_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+104,264,424 ( 4.81%)  ???:margarine_box3::opsin::__arcane_opsin_dynamics_image_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 94,723,199 ( 4.37%)  ???:<margarine_box3::ingress::EncodedRows>::linear_strip [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 83,282,816 ( 3.85%)  ./string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S:__memset_avx2_unaligned_erms [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 62,282,488 ( 2.88%)  ???:margarine_box3::diff::subsample_linear_rgb_2x [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 57,840,928 ( 2.67%)  ???:png::filter::paeth::unfilter [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 52,784,496 ( 2.44%)  ???:margarine_box3::blur::__arcane_reduce_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 50,778,456 ( 2.34%)  ???:margarine_box3::shared_malta::__arcane_malta_compute_scaled_diffs_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 36,263,240 ( 1.67%)  ???:margarine_box3::mask::__arcane_fuzzy_erosion_interior_row_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 31,613,281 ( 1.46%)  ???:margarine_box3::opsin::linear_rgb_to_xyb_butteraugli [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 19,753,726 ( 0.91%)  ???:png::filter::unfilter [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 16,866,104 ( 0.78%)  ???:margarine_box3::shared_psycho::__arcane_process_uhf_hf_y_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 14,610,440 ( 0.67%)  ???:margarine_box3::diff::__arcane_l2_diff_asymmetric_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 13,183,320 ( 0.61%)  ???:margarine_box3::shared_psycho::__arcane_subtract_images_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 11,531,452 ( 0.53%)  ???:margarine_box3::diff::__arcane_combine_channels_to_diffmap_fused_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+ 10,918,720 ( 0.50%)  ???:margarine_box3::shared_psycho::__arcane_process_uhf_hf_x_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+  9,480,306 ( 0.44%)  ???:margarine_box3::diff::__arcane_compute_score_from_diffmap_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+  9,291,048 ( 0.43%)  ???:margarine_box3::mask::__arcane_combine_and_precompute_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+  7,265,472 ( 0.34%)  ???:margarine_box3::shared_psycho::__arcane_xyb_low_freq_to_vals_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+  4,975,632 ( 0.23%)  ???:margarine_box3::shared_psycho::__arcane_suppress_x_by_y_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+  4,871,608 ( 0.22%)  ???:margarine_box3::shared_psycho::__arcane_apply_remove_range_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+  4,871,536 ( 0.22%)  ???:margarine_box3::shared_psycho::__arcane_apply_amplify_range_v3 [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+  4,604,698 ( 0.21%)  ???:margarine_box3::mask::fuzzy_erosion_border_row [/home/lilith/work/codec-artifacts/margarine/bounded-binaries-4a78e85f/margarine-box3]
+
+--------------------------------------------------------------------------------
+The following files chosen for auto-annotation could not be found:
+--------------------------------------------------------------------------------
+  ./string/../sysdeps/x86_64/multiarch/memset-vec-unaligned-erms.S
+
