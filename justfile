@@ -17,6 +17,7 @@ api-doc-check:
 
 # The unpublished Margarine research instruments; does not format sibling crates.
 margarine-check:
+    python3 -m unittest discover -s experiments/margarine -p 'test_*.py'
     cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
     nice -n 19 cargo test --manifest-path experiments/margarine/Cargo.toml -j 2
     nice -n 19 cargo clippy --manifest-path experiments/margarine/Cargo.toml --all-targets -j 2 -- -D warnings
