@@ -43,6 +43,21 @@ by reference/encoded SHA-256. Both input artifacts remain in their original
 stores. The scorer and exporter detect file formats by signature, so encoded
 blobs need no extension. Existing quality-evaluation mode remains available.
 
+`fit_probe.py EXTRACTION SPLITS NEW_OUTPUT --build-commit COMMIT` is a private
+feasibility fitter using the separate teacher/feature sidecars. It consumes no
+human labels, requires explicit `fit`/`tune`/`test` source partitions and rejects
+identical reference bytes across those partitions. It fits nonnegative weights
+for each teacher norm in log space, preserves zero for identical features, and
+chooses regularization using tuning sources only. Final test sources do not
+change the model. Its reports describe teacher agreement, not human-quality
+acceptance or full corpus coverage. Weights remain experiment artifacts.
+
+Install `requirements-training.txt` in a virtual environment, then run
+`just margarine-fit-check /absolute/path/to/venv/bin/python`. The fitter uses
+[SciPy NNLS](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.nnls.html)
+with source-balanced rows and an explicit ridge penalty. These additional
+checks require that environment; the existing manifest checks use only stdlib.
+
 `prepare_dense.py` prepares references from every full-image representative in
 the existing train-only K500 selection, resolving URLs through the canonical
 training catalog and verifying each rendered source against its pinned LFS

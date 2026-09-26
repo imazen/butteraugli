@@ -26,6 +26,10 @@ margarine-check:
 margarine-bootstrap scores output draws="2000" seed="20260926":
     nice -n 19 experiments/margarine/target/release/margarine-eval --bootstrap-all "{{scores}}" "{{output}}" "{{draws}}" "{{seed}}"
 
+# Requires an interpreter with experiments/margarine/requirements-training.txt.
+margarine-fit-check python:
+    cd experiments/margarine && OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 nice -n 19 "{{python}}" -m unittest fit_probe_checks
+
 # Fresh-process memory plus interleaved timing; caller sets RAYON_NUM_THREADS.
 margarine-resources crops output commit:
     nice -n 19 python3 experiments/margarine/resource_sweep.py "{{crops}}" experiments/margarine/target/release/margarine-box3 "{{output}}" --build-commit "{{commit}}"
