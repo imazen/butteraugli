@@ -41,6 +41,7 @@ jobs:
           python3 -m unittest discover -s experiments/margarine -p 'test_*.py'
           cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features planar --all-targets -- -D warnings
 
       # The corpus-tests feature gates conformance tests that need the local
       # jpegli corpus (JPEGLI_TESTDATA). CI can't run them (no corpus), but
@@ -83,7 +84,9 @@ jobs:
         run: cargo test -p butteraugli --lib
 
       - name: Run Margarine research tests
-        run: cargo test --locked --manifest-path experiments/margarine/Cargo.toml
+        run: |
+          cargo test --locked --manifest-path experiments/margarine/Cargo.toml
+          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features planar
 
       - name: Run conformance tests
         run: cargo test -p butteraugli --test conformance
@@ -197,7 +200,9 @@ jobs:
         run: cross test -p butteraugli --features linear-planes --test linear_planes_parity --target ${{ matrix.target }}
 
       - name: Margarine research tests (cross/QEMU)
-        run: cross test --locked --manifest-path experiments/margarine/Cargo.toml --target ${{ matrix.target }}
+        run: |
+          cross test --locked --manifest-path experiments/margarine/Cargo.toml --target ${{ matrix.target }}
+          cross test --locked --manifest-path experiments/margarine/Cargo.toml --features planar --target ${{ matrix.target }}
 
   # ==========================================================================
   # WASM compilation check (archmage supports wasm32-simd128)
