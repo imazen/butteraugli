@@ -79,6 +79,33 @@ pub(super) fn compute_encoded(
     })
 }
 
+fn single_scale(
+    a: &[f32],
+    b: &[f32],
+    w: usize,
+    h: usize,
+    params: &ButteraugliParams,
+    pool: &image::BufferPool,
+) -> image::ImageF {
+    if !cfg!(feature = "reuse") {
+        return diff::compute_diffmap_single_resolution_linear(a, b, w, h, params);
+    }
+    let prepare = |rgb: &[f32]| {
+        let xyb = opsin::linear_rgb_to_xyb_butteraugli(rgb, w, h, params.intensity_target(), pool);
+        psycho::separate_frequencies_owned(xyb, pool)
+    };
+    let (a, b) = diff::maybe_join(|| prepare(a), || prepare(b));
+    let mut ac =
+        diff::compute_psycho_diff_malta(&a, &b, params.hf_asymmetry(), params.xmul(), pool);
+    let mask = diff::mask_psycho_image(&a, &b, Some(ac.plane_mut(1)), pool);
+    let map = diff::combine_channels_to_diffmap_fused(&mask, &a.lf, &b.lf, &ac, params.xmul());
+    a.recycle(pool);
+    b.recycle(pool);
+    ac.recycle(pool);
+    mask.recycle(pool);
+    map
+}
+
 fn compose<'a>(
     w: usize,
     h: usize,
@@ -90,6 +117,8 @@ fn compose<'a>(
         let sw = w.div_ceil(factor);
         let sh = h.div_ceil(factor);
         let mut map = image::ImageF::new(sw, sh);
+        let pool = image::BufferPool::with_capacity(if cfg!(feature = "reuse") { 32 } else { 0 });
+        let mut previous_height = 0;
         let halo = halo();
         let lattice = if cfg!(feature = "multirate") { 4 } else { 1 };
         for start in (0..sh).step_by(rows) {
@@ -100,20 +129,25 @@ fn compose<'a>(
                 .div_ceil(lattice)
                 .saturating_mul(lattice)
                 .min(sh);
+            if y1 - y0 != previous_height {
+                pool.clear();
+                previous_height = y1 - y0;
+            }
             let (a, b) = load(y0 * factor, (y1 * factor).min(h));
             let map_strip = if factor == 1 {
-                diff::compute_diffmap_single_resolution_linear(&a, &b, sw, y1 - y0, params)
+                single_scale(&a, &b, sw, y1 - y0, params, &pool)
             } else {
                 let height = (y1 * factor).min(h) - y0 * factor;
                 let (a, aw, ah) = diff::subsample_linear_rgb_2x(&a, w, height);
                 let (b, bw, bh) = diff::subsample_linear_rgb_2x(&b, w, height);
                 debug_assert_eq!((aw, ah), (sw, y1 - y0));
                 debug_assert_eq!((bw, bh), (sw, y1 - y0));
-                diff::compute_diffmap_single_resolution_linear(&a, &b, sw, y1 - y0, params)
+                single_scale(&a, &b, sw, y1 - y0, params, &pool)
             };
             for y in start..end {
                 map.row_mut(y).copy_from_slice(map_strip.row(y - y0));
             }
+            map_strip.recycle(&pool);
         }
         map
     };

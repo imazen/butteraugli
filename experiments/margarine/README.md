@@ -434,3 +434,9 @@ with its axial and diagonal lines. The constant-response multiplier follows
 the original tap counts (1104/260 for UHF, 4 for HF/MF). It shares the
 asymmetric difference normalization and zero-border behavior. This is an
 approximation experiment; angular-detail fidelity requires human evaluation.
+
+`--features reuse` keeps a bounded 32-buffer scratch pool across same-height
+strips of the compact candidate. It clears the pool when strip geometry
+changes and between scales. Production Butteraugli retains its eight-buffer
+default. This changes allocation scheduling only; total-process memory must
+be measured before selecting a strip height or claiming a resource pass.

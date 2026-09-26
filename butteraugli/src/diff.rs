@@ -240,7 +240,7 @@ fn l2_diff_asymmetric(
 /// 1. Malta edge-aware filter for UHF, HF, MF differences
 /// 2. L2DiffAsymmetric for HF channels
 /// 3. L2Diff for MF and LF channels
-fn compute_psycho_diff_malta(
+pub(crate) fn compute_psycho_diff_malta(
     ps0: &PsychoImage,
     ps1: &PsychoImage,
     hf_asymmetry: f32,
@@ -392,7 +392,7 @@ fn compute_psycho_diff_malta(
 ///
 /// Matches C++ MaskPsychoImage (butteraugli.cc lines 1250-1264).
 /// Returns the computed mask and optionally accumulates AC differences.
-fn mask_psycho_image(
+pub(crate) fn mask_psycho_image(
     ps0: &PsychoImage,
     ps1: &PsychoImage,
     diff_ac: Option<&mut ImageF>,
@@ -407,7 +407,7 @@ fn mask_psycho_image(
 /// Fuses compute_lf_diff + combine_channels_to_diffmap into a single pass,
 /// eliminating 3 intermediate DC diff plane allocations and memory traffic.
 #[archmage::autoversion]
-fn combine_channels_to_diffmap_fused(
+pub(crate) fn combine_channels_to_diffmap_fused(
     _token: archmage::SimdToken,
     mask: &ImageF,
     lf1: &Image3F,

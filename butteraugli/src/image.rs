@@ -15,6 +15,7 @@ use std::sync::Mutex;
 /// When the pool is dropped, all cached buffers are freed.
 pub struct BufferPool {
     buffers: Mutex<Vec<Vec<f32>>>,
+    max_buffers: usize,
 }
 
 impl core::fmt::Debug for BufferPool {
@@ -22,15 +23,14 @@ impl core::fmt::Debug for BufferPool {
         let count = self.buffers.lock().unwrap().len();
         f.debug_struct("BufferPool")
             .field("cached_buffers", &count)
+            .field("max_buffers", &self.max_buffers)
             .finish()
     }
 }
 
 impl Default for BufferPool {
     fn default() -> Self {
-        Self {
-            buffers: Mutex::new(Vec::new()),
-        }
+        Self::with_capacity(MAX_POOL_BUFFERS)
     }
 }
 
@@ -39,6 +39,14 @@ impl BufferPool {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Creates an internally bounded pool; the public default remains eight.
+    pub(crate) fn with_capacity(max_buffers: usize) -> Self {
+        Self {
+            buffers: Mutex::new(Vec::new()),
+            max_buffers,
+        }
     }
 
     /// Takes a buffer with exactly `needed` capacity, allocating if absent.
@@ -101,7 +109,7 @@ impl BufferPool {
     /// cap.
     pub(crate) fn put(&self, buf: Vec<f32>) {
         let mut pool = self.buffers.lock().unwrap();
-        if pool.len() < MAX_POOL_BUFFERS {
+        if pool.len() < self.max_buffers {
             pool.push(buf);
         }
     }
