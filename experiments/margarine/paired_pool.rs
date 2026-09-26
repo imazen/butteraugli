@@ -9,6 +9,21 @@ pub(super) fn compute(
     rows: usize,
     params: &ButteraugliParams,
 ) -> Result<diff::InternalResult, Box<dyn Error>> {
+    let map = compute_map(a, b, rows, params)?;
+    let (score, pnorm_3) = diff::compute_score_from_diffmap(&map);
+    Ok(diff::InternalResult {
+        score,
+        pnorm_3,
+        diffmap: Some(map),
+    })
+}
+
+pub(super) fn compute_map(
+    a: &ingress::EncodedRows<'_>,
+    b: &ingress::EncodedRows<'_>,
+    rows: usize,
+    params: &ButteraugliParams,
+) -> Result<image::ImageF, Box<dyn Error>> {
     let (w, h) = (a.width, a.height);
     if rows == 0 || (w, h) != (b.width, b.height) {
         return Err("invalid pooled pair".into());
@@ -31,22 +46,27 @@ pub(super) fn compute(
     }
     let result = strips::compute(&reference, &distorted, pw, ph, pw * 3, rows, params)?;
     let coarse = result.diffmap.ok_or("missing pooled map")?;
-    Ok(finish(&coarse, w, h))
+    Ok(expand_map(&coarse, w, h))
 }
 
 pub(super) fn finish(coarse: &image::ImageF, w: usize, h: usize) -> diff::InternalResult {
-    let mut map = image::ImageF::new(w, h);
-    for y in 0..h {
-        for (x, value) in map.row_mut(y).iter_mut().enumerate() {
-            *value = coarse.row(y / 2)[x / 2];
-        }
-    }
+    let map = expand_map(coarse, w, h);
     let (score, pnorm_3) = diff::compute_score_from_diffmap(&map);
     diff::InternalResult {
         score,
         pnorm_3,
         diffmap: Some(map),
     }
+}
+
+fn expand_map(coarse: &image::ImageF, w: usize, h: usize) -> image::ImageF {
+    let mut map = image::ImageF::new(w, h);
+    for y in 0..h {
+        for (x, value) in map.row_mut(y).iter_mut().enumerate() {
+            *value = coarse.row(y / 2)[x / 2];
+        }
+    }
+    map
 }
 
 #[archmage::autoversion]

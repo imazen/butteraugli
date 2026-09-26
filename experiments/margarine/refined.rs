@@ -88,11 +88,13 @@ pub(super) fn compute(
     rows: usize,
     params: &ButteraugliParams,
 ) -> Result<diff::InternalResult, Box<dyn Error>> {
+    if a.width.max(a.height) <= 64 {
+        return paired_pool::compute(a, b, rows, params);
+    }
     if a.width.max(a.height) <= 256 {
         return strips::compute_encoded(a, b, rows, params);
     }
-    let proxy = paired_pool::compute(a, b, rows, params)?;
-    let mut map = proxy.diffmap.ok_or("missing proxy map")?;
+    let mut map = paired_pool::compute_map(a, b, rows, params)?;
     let regions = select(&map);
     let mut patches = Vec::new();
     let (mut original, mut approximate) = (0.0f64, 0.0f64);

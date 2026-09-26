@@ -44,3 +44,16 @@ margarine-compact-check:
     cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
     nice -n 19 cargo test --manifest-path experiments/margarine/Cargo.toml --features compact -j 2
     nice -n 19 cargo clippy --manifest-path experiments/margarine/Cargo.toml --features compact --all-targets -j 2 -- -D warnings
+
+# Wrap these recipes with run-heavy on Linux; one heavy command at a time.
+margarine-candidate-check features:
+    cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
+    nice -n 19 cargo test --manifest-path experiments/margarine/Cargo.toml --features "{{features}}" -j 2
+    nice -n 19 cargo clippy --manifest-path experiments/margarine/Cargo.toml --features "{{features}}" --all-targets -j 2 -- -D warnings
+    nice -n 19 cargo build --release --manifest-path experiments/margarine/Cargo.toml --features "{{features}}" --bin margarine-box3 -j 2
+
+margarine-direct-eval pairs binaries output candidate teacher commit ingress="aic-rgb8":
+    nice -n 19 python3 experiments/margarine/score_manifest.py "{{pairs}}" "{{binaries}}" "{{output}}" --candidate "{{candidate}}" --teacher "{{teacher}}" --build-commit "{{commit}}" --ingress "{{ingress}}"
+
+margarine-direct-resources crops binary output candidate commit rows="128":
+    nice -n 19 python3 experiments/margarine/resource_sweep.py "{{crops}}" "{{binary}}" "{{output}}" --direct "{{candidate}}" --strip-rows "{{rows}}" --build-commit "{{commit}}"
