@@ -589,3 +589,10 @@ rounds without an unreliable flag. The run-heavy guard reports peak RSS
 remain in `tiles-resources-2026-09-26/` on r5900xt and the Mac. Tile/strip
 map equality is covered by odd, strided RGB16 tests; corpus-wide equality
 and joint acceptance are not established.
+
+The native-band lattice candidate `e7bc7678` also completed all 300 AIC4
+pairs. Its [panel](benchmarks/margarine_lattice_aic4_2026-09-26.tsv) has
+maximum SROCC loss 0.00334404 (p6); all five SROCC/KROCC losses stay below
+0.01. Z-RMSE worsens for all five norms. These are development point
+screens, not encoder-choice or resource qualification. Full maps remain
+on r5900xt in `lattice-aic4-2026-09-26/`.
