@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "tiles") {
+const CANDIDATE: &str = if cfg!(feature = "native-gaussian") {
+    "native-gaussian"
+} else if cfg!(feature = "tiles") {
     if cfg!(feature = "planar") {
         "planar-tiles"
     } else {

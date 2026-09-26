@@ -1010,3 +1010,9 @@ remain in r5900xt `peak-stratified-live1-2026-09-26/`; compact panels and
 participant outputs also exist on the Mac. [Measurement metadata](benchmarks/margarine_peak_stratified_live1_rejected_2026-09-26.meta.json)
 pins the score ledger and binary. No resource qualification was run for this
 rejected variant. Isolating peak selection did not repair the quality loss.
+
+The `native-gaussian` diagnostic keeps the row/column schedule and sampled
+Malta bank but disables Gaussian grid reduction. It returns factor one with
+the original sigma for every blur. Existing exact-plane, seam, stride and
+row-reuse tests pass without relaxed expectations; this control isolates
+blur reduction from directional-filter sampling and has no speed claim.
