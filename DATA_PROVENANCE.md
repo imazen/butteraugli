@@ -874,3 +874,16 @@ has no broader content or matched-rate human-choice qualification. Full maps
 remain in r5900xt `row-reduce-aic4-2026-09-26/`; compact results and resources
 also exist on the Mac. Guard peak RSS was 1.65 GiB, minimum available RAM
 56,350 MiB, peak load 4.96.
+
+Streaming frequency rows within 512-column tiles (`1072eeb6`, measured from
+`1e2554fe`) [preserves every AIC4 map and scalar](benchmarks/margarine_row_tiles_aic4_parity_2026-09-26.json).
+Its [three-trial process-resource sweep](benchmarks/margarine_row_tiles_resources_2026-09-26.tsv)
+measures 3.031×/3.064× metric speed at 1 MP/8.44 MP and RSS fractions
+18.67%/8.08%. Decode-inclusive speedups are 2.664×/2.732×. Tiny and small
+remain below teacher for time and RAM. The 4× target is still unmet.
+Full maps remain in r5900xt `row-tiles-aic4-2026-09-26/`; resources and compact
+replay metadata also exist on the Mac. The updated [untiled instruction
+profile](benchmarks/margarine_row_reduce_profile_2026-09-26.txt) records
+1,152,280,842 instructions, with row reduction reduced to 2.18% and Malta
+now the largest metric stage at 17.92%. These instruction counts do not
+substitute for the separately measured timing results.

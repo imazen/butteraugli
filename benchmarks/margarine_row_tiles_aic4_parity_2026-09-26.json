@@ -1,0 +1,9 @@
+{
+  "build_commit": "1e2554fe28bca4d735d3491a26698a4ed1aadc96",
+  "pairs": 300,
+  "changed_scores_or_map_hashes": 0,
+  "ledgers": {
+    "/Users/lilith/work/codec-artifacts/margarine/row-tiles-aic4-2026-09-26/cells.jsonl": "9a11fb8c5117a70f9b5b53ef5f07ef9a7c71271cdb1069eb71570c94f6b453a9",
+    "/Users/lilith/work/codec-artifacts/margarine/row-reduce-aic4-2026-09-26/cells.jsonl": "5a2dbe51e9e5ffebc16cc2517710c92f753af0177cf6c94c718c220b6a7fc105"
+  }
+}
