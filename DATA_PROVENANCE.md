@@ -1386,3 +1386,14 @@ verified through the canonical `/mnt/user/coefficient/output/margarine` path.
 covers five complete ledgers and fifteen sampled map hashes.
 [Diagnostic verification](benchmarks/margarine_vector_row_diagnostics_tower_2026-09-26.json)
 also covers the KADID participant draws, AIC4 intervals, LIVE choices and crops.
+
+The [named-command process memory sweep](benchmarks/margarine_named_cli_resources_2026-09-26.tsv)
+uses executable `0dceefe0` for candidate RSS, frozen shared-kernel `6bb371fb`
+for interleaved timing, and the exact Butteraugli RGB8 API for the teacher.
+At 64²/256²/1024²/3355×2516, process RSS fractions are
+0.800821/0.675716/0.180676/0.080100. Scoring speedups are
+2.227166×/2.397375×/4.222116×/4.418958×; decoding-inclusive speedups are
+1.872527×/2.056129×/3.433144×/3.592080×. These are measured pairs, not
+unmeasured image-size guarantees. Both input buffers and decoding are included
+in fresh-process peak RSS. [Raw hashes and OLS descriptions](benchmarks/margarine_named_cli_resources_2026-09-26.meta.json)
+retain each trial and the separate time intercepts; no extrapolation is used.
