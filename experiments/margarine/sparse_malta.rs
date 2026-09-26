@@ -14,29 +14,89 @@ pub(crate) fn malta_diff_map(
     lf: bool,
     pool: &BufferPool,
 ) -> ImageF {
-    let padded =
-        crate::shared_malta::malta_scaled_differences(a, b, greater, smaller, norm, lf, pool);
-    let (w, h) = (a.width(), a.height());
-    if cfg!(feature = "lattice") {
-        let mut coarse = ImageF::from_pool_dirty(w.div_ceil(2), h.div_ceil(2), pool);
-        native_evaluate(&padded, lf, &mut coarse);
-        padded.recycle(pool);
-        let mut result = ImageF::from_pool_dirty(w, h, pool);
-        reconstruct(&coarse, &mut result);
-        coarse.recycle(pool);
-        return result;
-    }
-    let phases = phase_planes(&padded, pool);
-    padded.recycle(pool);
-    let mut coarse = ImageF::from_pool_dirty(w.div_ceil(2), h.div_ceil(2), pool);
-    evaluate(&phases, lf, &mut coarse);
-    for plane in phases {
-        plane.recycle(pool);
-    }
-    let mut result = ImageF::from_pool_dirty(w, h, pool);
+    let coarse = coarse_diff_map(a, b, greater, smaller, norm, lf, pool);
+    let mut result = ImageF::from_pool_dirty(a.width(), a.height(), pool);
     reconstruct(&coarse, &mut result);
     coarse.recycle(pool);
     result
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn coarse_diff_map(
+    a: &ImageF,
+    b: &ImageF,
+    greater: f64,
+    smaller: f64,
+    norm: f64,
+    lf: bool,
+    pool: &BufferPool,
+) -> ImageF {
+    let padded =
+        crate::shared_malta::malta_scaled_differences(a, b, greater, smaller, norm, lf, pool);
+    let mut coarse = ImageF::from_pool_dirty(a.width().div_ceil(2), a.height().div_ceil(2), pool);
+    if cfg!(feature = "lattice") {
+        native_evaluate(&padded, lf, &mut coarse);
+        padded.recycle(pool);
+    } else {
+        let phases = phase_planes(&padded, pool);
+        padded.recycle(pool);
+        evaluate(&phases, lf, &mut coarse);
+        for plane in phases {
+            plane.recycle(pool);
+        }
+    }
+    coarse
+}
+
+/// Reconstruct each bank before adding, preserving u + (h + m). Keeping the
+/// three interpolants in registers avoids materializing the HF and MF maps.
+#[archmage::autoversion]
+pub(crate) fn reconstruct_sum(_token: archmage::SimdToken, inputs: [&ImageF; 3], out: &mut ImageF) {
+    for y in 0..out.height() {
+        let rows: [[&[f32]; 2]; 3] = inputs.map(|input| {
+            [
+                input.row(y / 2),
+                input.row((y / 2 + 1).min(input.height() - 1)),
+            ]
+        });
+        let fy = (y % 2) as f32 * 0.5;
+        let pairs = (inputs[0].width() - 1).min(out.width() / 2);
+        let blocks = pairs / 8;
+        let row = out.row_mut(y);
+        for (block, dst) in row[..blocks * 16]
+            .as_chunks_mut::<16>()
+            .0
+            .iter_mut()
+            .enumerate()
+        {
+            let values: [[f32; 16]; 3] = rows.map(|[a, b]| {
+                let a: &[f32; 9] = a[block * 8..block * 8 + 9].try_into().unwrap();
+                let b: &[f32; 9] = b[block * 8..block * 8 + 9].try_into().unwrap();
+                let mut values = [0.0; 16];
+                for i in 0..8 {
+                    let top = a[i] + 0.5 * (a[i + 1] - a[i]);
+                    let bottom = b[i] + 0.5 * (b[i + 1] - b[i]);
+                    values[2 * i] = a[i] + fy * (b[i] - a[i]);
+                    values[2 * i + 1] = top + fy * (bottom - top);
+                }
+                values
+            });
+            for i in 0..16 {
+                dst[i] = values[0][i] + (values[1][i] + values[2][i]);
+            }
+        }
+        for (x, dst) in row.iter_mut().enumerate().skip(blocks * 16) {
+            let x0 = x / 2;
+            let x1 = (x0 + 1).min(inputs[0].width() - 1);
+            let fx = (x % 2) as f32 * 0.5;
+            let values = rows.map(|[a, b]| {
+                let top = a[x0] + fx * (a[x1] - a[x0]);
+                let bottom = b[x0] + fx * (b[x1] - b[x0]);
+                top + fy * (bottom - top)
+            });
+            *dst = values[0] + (values[1] + values[2]);
+        }
+    }
 }
 
 struct NativeWindow<'a> {
