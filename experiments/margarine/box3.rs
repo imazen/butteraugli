@@ -43,19 +43,8 @@ use butteraugli::{ButteraugliError, ButteraugliParams};
 use std::error::Error;
 use std::io::{BufWriter, Write};
 
-fn load(path: &str) -> Result<(Vec<f32>, usize, usize), Box<dyn Error>> {
-    let input = image_io::ImageReader::open(path)?.decode()?;
-    if input.color() != image_io::ColorType::Rgb8 {
-        return Err("experiment requires common-ingress RGB8".into());
-    }
-    let rgb = input.into_rgb8();
-    let linear = rgb
-        .as_raw()
-        .iter()
-        .map(|&v| opsin::srgb_to_linear(v))
-        .collect();
-    Ok((linear, rgb.width() as usize, rgb.height() as usize))
-}
+mod ingress;
+use ingress::load;
 
 // Same p/2p/4p aggregation as butteraugli/src/lib.rs::pnorm_slice. Iterate
 // logical rows because this experiment's ImageF can contain padded storage.

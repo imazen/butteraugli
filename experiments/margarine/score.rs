@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+extern crate image as image_io;
+mod ingress;
+
 use butteraugli::{ButteraugliParams, Img, ImgRef, RGB, butteraugli_linear};
 use std::error::Error;
 use std::fs::File;
@@ -34,27 +37,14 @@ fn half_linear(input: ImgRef<'_, RGB<f32>>) -> Img<Vec<RGB<f32>>> {
 }
 
 fn load(path: &Path) -> Result<Img<Vec<RGB<f32>>>> {
-    let image = image::ImageReader::open(path)?.decode()?;
-    // Refuse to silently truncate HDR/16-bit data or discard alpha.
-    if image.color() != image::ColorType::Rgb8 {
-        return Err(format!("{}: lab ingress requires opaque RGB8", path.display()).into());
-    }
-    let rgb = image.into_rgb8();
-    let pixels = rgb
-        .pixels()
-        .map(|p| {
-            RGB::new(
-                butteraugli::opsin::srgb_to_linear(p[0]),
-                butteraugli::opsin::srgb_to_linear(p[1]),
-                butteraugli::opsin::srgb_to_linear(p[2]),
-            )
-        })
+    let (linear, w, h) = ingress::load(path)?;
+    let pixels = linear
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|p| RGB::new(p[0], p[1], p[2]))
         .collect();
-    Ok(Img::new(
-        pixels,
-        rgb.width() as usize,
-        rgb.height() as usize,
-    ))
+    Ok(Img::new(pixels, w, h))
 }
 
 fn main() -> Result<()> {
