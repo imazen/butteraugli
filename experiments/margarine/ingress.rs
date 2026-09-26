@@ -387,8 +387,8 @@ mod tests {
                     let packed = view.linear_strip(0, h);
                     let rgb = view.linear_rgb();
                     assert_eq!(rgb.len(), w * h);
-                    for (p, v) in rgb.iter().zip(packed.chunks_exact(3)) {
-                        assert_eq!([p.r, p.g, p.b], v);
+                    for (p, v) in rgb.iter().zip(packed.as_chunks::<3>().0) {
+                        assert_eq!([p.r, p.g, p.b], *v);
                     }
                     for factor in [1, 2] {
                         for y in (0..h).step_by(factor) {
