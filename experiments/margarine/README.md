@@ -8,6 +8,9 @@ it does not change Butteraugli's API or arithmetic.
 The memory acceptance gate is **total process peak, including decoding and
 caller-owned inputs**, as specified by the user on 2026-09-26. Heap profiles
 diagnose allocation costs; a metric-only heap reduction cannot pass this gate.
+The user subsequently allowed the resource ratios to taper at smaller sizes,
+provided both time and total-process RAM stay below Butteraugli. Report the
+measured size curve; retain the 4×/quarter-RAM targets for larger images.
 
 `--bench-rgb8 REF DIST NEW.json` and `--memory-rgb8
 teacher|features228|features228-strips REF DIST` compare native RGB8 ingress.

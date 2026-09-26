@@ -4,6 +4,8 @@ No trained Margarine model exists. The current candidate is an analytic box-filt
 control; feature-extraction measurements are cost probes, not quality predictions.
 Human-quality coverage measured so far is AIC4_sample and CID22 validation, not
 every required dataset. The total-process memory gate includes decoding and inputs.
+The user permits smaller-image resource ratios to taper, provided they remain
+below Butteraugli; larger-image targets remain 4× speed and quarter process RAM.
 
 ## Evaluation inputs
 
@@ -87,7 +89,8 @@ artifact hashes use the `margarine_resource_edges_mac_2026-09-26` prefix.
 `resource-edge-strips64-2026-09-26/` measures parallel 256-row edge-feature
 strips with the corrected 64-row halo. Native-size mean speedup is 4.40× and
 RSS is 10.1% of the matched teacher; at 1024² these are 4.67× and 18.4%.
-Small-image process-memory limits remain unmet. The extractor still has no
+At 64² and 256², runtime and process RAM both remain below Butteraugli,
+meeting the user’s relaxed small-image comparison on this pair. The extractor has no
 trained score, so these are resource findings, not Margarine acceptance.
 
 Heaptrack captures and reports live at `heap-2026-09-26/` on Mac and r5900xt;
@@ -133,3 +136,18 @@ GPU max/p3 labels still need CPU-teacher verification. See
 Do not train or select weights using AIC4_sample or CID22 validation. Before
 training, verify source-family splits, duplicate/crop lineage, teacher arithmetic,
 feature ordering, encoded-artifact availability, and the missing coverage axes.
+
+## Dense reference pilot
+
+Mac `dense-references-pilot-2026-09-26/` contains 1,000 PNG references: twenty
+log-spaced dimensions for each of fifty existing train-only, full-image K500
+representatives. All output hashes and dimensions were rechecked after rendering.
+The [manifest pointer](benchmarks/margarine_dense_references_pilot_2026-09-26.pointer.json)
+pins source/render commits and records class counts. Original URLs, source hashes,
+cluster IDs/sizes and per-render hashes remain in `_MANIFEST.json`. Resampling is
+Lanczos3 in encoded sRGB, with no upscaling and a 4096-pixel maximum dimension.
+
+This is preparation only. No encodes, teacher targets or trained score exist for
+this pilot yet. Canonical variant registration, per-class coverage, cross-corpus
+near-duplicate checks and held-out representatives remain outstanding. The pilot
+is not a complete training corpus and has not yet been mirrored to Tower.
