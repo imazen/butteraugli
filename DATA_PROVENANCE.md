@@ -1069,3 +1069,9 @@ and ledger provenance](benchmarks/margarine_native_mask_quality_2026-09-26.meta.
 are retained; full maps remain in r5900xt `native-mask-{aic4,live1}-2026-09-26/`
 with compact records also on the Mac. No resource qualification was run for
 this rejected control.
+
+The row opsin transform now exposes eight pixels through fixed-size channel
+slices while retaining each pixel's arithmetic. Existing exact frequency-plane
+and map-seam tests pass. This targets the previously measured opsin stage
+(6.02% of the FIR-lanes instruction profile); a speed improvement requires
+new measurement and is not inferred from the source rewrite.
