@@ -55,6 +55,13 @@ defines the full zenstats panel, separate composite aggregates, source-held-out
 evaluation, and encoder-choice checks. Matched-byte material-choice gates and
 the complete corruption/quality-band instruments remain unmeasured.
 
+CID22 observed-budget diagnostics are stored in Mac
+`choices-cid22-2026-09-26/`, with compact summaries under `benchmarks/`.
+There are 4,285 distinct observed budgets across 49 sources. At a diagnostic
+relative teacher-regret threshold of 1%, max exceeds it at 252 budgets, p3 at
+12, and p1/p2 at zero. This is not the material-reversal acceptance gate;
+its materiality threshold and workload weighting have not been agreed.
+
 Tracked results are under `benchmarks/margarine_*`: composite corpus and worst
 subgroup tables, AIC source bootstrap, raw zenbench JSON, and resource metadata.
 Every benchmark's adjacent `.meta.json` identifies its measured build and input.
