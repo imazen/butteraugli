@@ -24,7 +24,11 @@ mod exact_blur;
 #[path = "../../butteraugli/src/image.rs"]
 mod image;
 #[path = "../../butteraugli/src/malta.rs"]
-#[allow(clippy::implicit_saturating_sub, clippy::needless_range_loop)]
+#[allow(
+    clippy::implicit_saturating_sub,
+    clippy::needless_range_loop,
+    clippy::too_many_arguments
+)]
 mod malta;
 #[path = "../../butteraugli/src/mask.rs"]
 mod mask;
