@@ -354,3 +354,17 @@ the other statistics. Its 1 MP means are teacher 137.480 ms and candidate
 91.666 ms over 21 rounds, so the approximation also fails the speed target.
 The full directional bank remains the retained approach. Native maps and
 logs are preserved on r5900xt under `compact4-aic4-2026-09-26/`.
+
+The [compact instruction profile](benchmarks/margarine_compact_profile_2026-09-26.txt)
+records 2,567,261,040 instructions for the native 1 MP/128-row path,
+including decoding. Malta accounts for 29.71%, buffer clearing 19.37%,
+and exact Gaussian filtering 10.83%. Callgrind timing/RSS are instrumented
+and do not qualify native resource use. The capture remains on r5900xt
+under `compact-profile-2026-09-26/`.
+
+The [bounded-reuse timing](benchmarks/margarine_reuse_1mp_2026-09-26.json)
+records teacher/candidate means 143.855/87.633 ms over 21 rounds. The
+[AIC4 map comparison](benchmarks/margarine_reuse_parity_2026-09-26.pointer.json)
+found no changed map bytes or scalar values on 300 pairs. This candidate
+has not had a fresh total-process RSS sweep. The capture and full map
+comparison remain in r5900xt `reuse-2026-09-26/`.
