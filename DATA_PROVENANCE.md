@@ -1182,3 +1182,13 @@ The [256-row full-Malta control](benchmarks/margarine_malta_rows256_resources_20
 measures 2.590×/2.790× and 23.417%/8.822% RSS. Increasing strip height does
 not establish the speed target. These resource sweeps use the same crop
 family and do not establish content-wide performance.
+
+The full-Malta AIC4 [source-cluster bootstrap](benchmarks/margarine_malta_uniform_aic4_bootstrap_2026-09-26.tsv)
+uses 2,000 paired draws of the five source groups, refitting the panel in every
+draw. For the primary max scalar, candidate-minus-teacher SROCC has a central
+95% interval [-0.001984, 0.002126], and KROCC [-0.002552, 0.004740]. Both lower
+bounds exceed -0.01. Every norm and all ten statistics retain their intervals;
+there are no undefined draws. These are per-statistic source-cluster intervals,
+not a simultaneous multi-corpus result or evidence from more than five sources.
+Full outputs and evaluator/input hashes live in Mac
+`malta-uniform-aic4-bootstrap-2026-09-26/`.
