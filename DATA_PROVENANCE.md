@@ -256,3 +256,22 @@ clustered intervals and fitted-model resource qualification were not run for
 this rejected candidate. The failure does not prove every learned model or
 every use of zensim features impossible. The next direct-approximation experiment
 profiles and reduces box3 blur costs while retaining Butteraugli's stages.
+
+## Direct box3 profiling and completed teacher backup
+
+The full 51,000-pair teacher extraction and original-extractor control fit are
+now mirrored to Tower. The [verification record](benchmarks/margarine_teacher_tower_2026-09-26.pointer.json)
+checks both complete sidecars, the manifest and three deterministic maps against
+the Mac. There are 50,948 distinct content-addressed maps for 51,000 pairs.
+Local copies remain intact.
+
+The optimized direct box3 blur preserved every scalar and map byte on all 300
+AIC4 pairs. Its [instruction profile](benchmarks/margarine_box3_optimization_2026-09-26.pointer.json)
+records the reduction, but its [native timing](benchmarks/margarine_box3_timing_r5900_2026-09-26.meta.json)
+is not sufficient for resource qualification: only four rounds completed, with
+120 seconds spent waiting at the benchmark gate. Those samples put box3 at
+76.79 ms versus 68.64 ms for Butteraugli on one 620×800 pair. A TTY diagnostic
+reports a competing benchmark while the process inventory shows zenbench's own
+heartbeat thread matching its benchmark-name filter. Resolve this measurement
+issue before drawing conclusions from a larger timing sweep; thresholds remain
+unchanged.
