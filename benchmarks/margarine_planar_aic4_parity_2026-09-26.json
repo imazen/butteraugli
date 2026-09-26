@@ -1,0 +1,10 @@
+{
+  "build_commit": "0cef92061c64997ad0a620a00971d2c14be4ddd7",
+  "pairs": 300,
+  "changed_scores_or_map_hashes": 0,
+  "changes": [],
+  "ledgers": {
+    "/home/lilith/work/codec-artifacts/margarine/lattice-aic4-2026-09-26/cells.jsonl": "f93d1954b6f4a937975a381f215834ecbaa41349a870b8aa5e32d82c227baa77",
+    "/home/lilith/work/codec-artifacts/margarine/planar-aic4-2026-09-26/cells.jsonl": "e76d422abed37364537ae68c6a786cfddc51b138f35802a820399e9feea1f2cf"
+  }
+}

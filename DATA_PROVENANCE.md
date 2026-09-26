@@ -702,3 +702,16 @@ Bootstrap means and full disagreements remain on r5900xt in
 The complete supplied-sigma panels remain unavailable pending correct handling
 of zero dispersion (two KADID and twenty-two CSIQ images); ordinary panels
 retain those images. No joint quality/resource acceptance is established.
+
+Direct planar ingress (`0cef9206`) preserves all 300 AIC4 maps and all five
+scalar norms [exactly](benchmarks/margarine_planar_aic4_parity_2026-09-26.json)
+against frozen lattice results. Its [four-size resource sweep](benchmarks/margarine_planar_resources_2026-09-26.tsv)
+still fails the goal: 2.228×/1.669× metric speed at 1 MP/8.44 MP, with
+process RSS fractions 25.102%/14.134%. Decode-inclusive speedups are
+2.092×/1.640×. At 64² the candidate uses 6,180,864 bytes versus teacher
+5,632,000 bytes, failing the small-image memory condition. All sizes reached
+at least twenty timing rounds without an unreliable flag. The guard recorded
+peak RSS 1.57 GiB, minimum available 56,807 MiB and peak load 2.53;
+[metadata](benchmarks/margarine_planar_resources_2026-09-26.meta.json)
+retains timing fits, inputs, binary identity and configuration. Full records
+remain on r5900xt and the Mac in `planar-resources-2026-09-26/`.
