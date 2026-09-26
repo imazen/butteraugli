@@ -1272,3 +1272,21 @@ Its streamed [AIC4 panel](benchmarks/margarine_vector_expand_row_aic4_2026-09-26
 retains all 300 pairs: primary SROCC loss 0.000442227 and KROCC loss
 0.001694537 versus teacher max. The other human corpora and choice diagnostics
 are still required for this frozen build and execution geometry.
+
+The frozen `6bb371fb` streamed row-Malta replay now also covers all 344 LIVE
+release-1, 866 CSIQ and 4,292 CID22 pairs. The [corpus panels](benchmarks/margarine_vector_expand_row_quality_2026-09-26.tsv)
+report all five norms and the full statistic set. Primary SROCC losses are
+0.003398255 (CSIQ), 0.004505481 (CID22), and at most 0.002481471 across the four
+LIVE sessions; all meet the 0.01 point-estimate screen. [LIVE choice bounds](benchmarks/margarine_vector_expand_row_live1_choices_2026-09-26.tsv)
+retain one statistically distinguishable harmful choice among 328 observed
+budgets (0.3049%), concentrated in one of 87 JPEG2000 session-1 budgets
+(1.1494%). Dataset-level and cohort-level rates are both reported; pooling
+sessions does not erase that cohort result. CID22 lacks participant uncertainty.
+
+Additional original inputs were verified on `lilith`: `/mnt/v/dataset/tid2013`
+(3,000 pairs), `/mnt/v/dataset/aic3_ctc_epfl` (600 pairs, subjective/estimated
+labels kept separate), `/mnt/v/dataset/pipal` (four distortion directories),
+and `/mnt/v/datasets/LIVE/databaserelease2`. The committed `prepare_human.py`
+adapter audits source images and labels before staging. Audit artifacts are
+`extended-human-audits-2026-09-26/` under the Linux artifact root. These paths
+identify evaluation inputs; they do not imply completed candidate scoring.
