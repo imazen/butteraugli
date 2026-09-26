@@ -1,0 +1,19 @@
+{
+  "build_commit": "e7bc7678955ea28212630faaba52352e743f4ed8",
+  "pairs_sha256": "7f62e6cbab9cd853191b1ba22d308d0ec4027fcaf747c1e0667b94e548052461",
+  "binaries": {
+    "margarine-box3": "8cdb82c6fc999b0ef30dee06cada190f9d5faa4650cc47ab1c537bd4e7c436fe",
+    "margarine-eval": "fa6fcf54d0bcd798a3b40124c4260141db7a614d46bf133ba93c6a9c5332ae39"
+  },
+  "ingress": "cid22-srgb",
+  "n_pairs": 4292,
+  "status": "complete",
+  "mode": "quality-evaluation",
+  "candidate": "lattice",
+  "teacher_directory": "/home/lilith/work/codec-artifacts/margarine/box3-cid22-2026-09-26",
+  "teacher_manifest_sha256": "e368f36b046f4f7b4637f003e7399a7ba1a619aee55968e607e0e0b257e7dfb8",
+  "teacher_cells_sha256": "9d3a64cf8024ea67b87a4993d4ded4edd1f68e703e14e78009aec1c705023590",
+  "spatial_output": "teacher maps retained in original store; candidate maps persisted",
+  "cells_sha256": "335f4027f7968b3c710a507552a7c401f72044b4e9a0c05f11ba41a4530b1716",
+  "full_manifest_sha256": "fc86cf2b8e5cf7bb58847f5fc907c75601ddf5d149f5b75576a51e6eeb0fbe88"
+}

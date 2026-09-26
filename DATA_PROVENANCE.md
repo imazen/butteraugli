@@ -612,3 +612,24 @@ the original corpus-standardized panels. A missing dispersion value makes
 the complete corpus's supplied-sigma panel unavailable; it does not silently
 select a different subset. Published dispersion is not automatically a
 standard error, a paired-loss interval, or the encoder-choice significance gate.
+
+The [lattice CID22 panel](benchmarks/margarine_lattice_cid22_2026-09-26.tsv)
+completed all 4,292 pairs. Every pooled SROCC/KROCC loss stays below 0.01;
+largest SROCC loss is 0.00845873 (max). The
+[human-choice point diagnostics](benchmarks/margarine_lattice_human_choices_cid22_2026-09-26.tsv)
+show any observed label decrease at 483/4,285 max budgets, 13 p1, 21 p2,
+69 p3 and 191 p6 budgets. These counts are not statistically distinguished
+losses and do not resolve the agreed significance gate.
+
+Reference-only two-region correction (`71063c59`) is rejected by the
+[AIC4 panel](benchmarks/margarine_reference_regions_aic4_2026-09-26.tsv):
+max SROCC loses 0.01788109 and p6 loses 0.01858510. p1 improves; p2 and p3
+remain within the rank-loss screen. Maps remain in r5900xt
+`reference-regions-aic4-2026-09-26/`.
+
+Disagreement probes are in `{lattice,stratified}-disagreements-cid22-2026-09-26/`
+on r5900xt and Mac. On the selected beneficial/harmful point-label tails, the
+candidate value at Butteraugli's peak, normalized by its p1 score ratio, has
+median 0.88279 across 79 lattice maps and 0.66758 across 64 stratified maps.
+This measures spatial peak discrepancies after global scale removal, not a
+representative corpus statistic or participant significance.
