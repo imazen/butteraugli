@@ -1126,3 +1126,12 @@ share. Both complete ZIP hashes and both source-manifest hashes match the
 Mac. The failed partial cache copy was preserved on the array with the suffix
 `.failed-enospc`; no source data or share configuration was changed. Generated
 score-map backups remain separate and outstanding.
+
+## Primary scalar acceptance clarification (2026-09-26)
+
+The user selected primary-scalar comparison against Butteraugli’s default
+maximum score for the 0.01 rank-loss gate. Every pooling variant remains in
+the reports; earlier matching-norm screens remain diagnostics. The user has
+no additional AIC4 original bitstreams or bitrate table, so its matched-byte
+choice result remains unavailable. Human-ranking and published-interval
+diagnostics retain all audited pairs.

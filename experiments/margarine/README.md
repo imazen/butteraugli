@@ -195,8 +195,10 @@ a composite improvement does not excuse a regression in either. Retain signed
 rank correlations beside the polarity-tolerant panel.
 Report each dataset, codec, source, and quality band, including sample counts
 and unavailable/degenerate cells. Compare candidate and teacher on identical
-rows. The user accepts up to 0.01 loss in rank correlation and 1% material
-encoder-choice reversals. Do not mistake a confidence interval containing zero
+rows. The user accepts up to 0.01 loss in rank correlation for Margarine’s
+primary scalar against Butteraugli’s default maximum score, and 1% material
+encoder-choice reversals. Report every max/p1/p2/p3/p6 variant; matching-norm
+comparisons remain diagnostics, not five separate acceptance gates. Do not mistake a confidence interval containing zero
 for evidence of non-inferiority against those margins. The material-choice
 definition must be explicit in each decision panel; zero-epsilon pair counts
 are diagnostic counts, not that acceptance gate.

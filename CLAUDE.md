@@ -4,7 +4,15 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 
 ## Known Bugs
 
-None currently known. Parity with libjxl `butteraugli_main` verified at <0.0003% on
+The experimental full-Malta row-window implementation in `a85ba912` produced
+incorrect LF responses in its separate final-block path on optimized x86.
+The expanded exact comparison reproduces it at 3×5; the LIVE replay found
+69 of 344 maps changed near the right edge. The uniform overlapping-block
+loop passes the expanded release test. Corpus replay is required before
+claiming the experiment is repaired. Production Butteraugli is the unchanged
+reference for this comparison.
+
+For the production library, parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 
 Margarine lab dependency observation (2026-09-26): pinned zensim `9c0635f1`

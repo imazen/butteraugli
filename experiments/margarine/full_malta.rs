@@ -27,6 +27,9 @@ pub(crate) fn malta_diff_map(
     lf: bool,
     pool: &BufferPool,
 ) -> ImageF {
+    if a.width() < 8 {
+        return crate::shared_malta::malta_diff_map(a, b, greater, smaller, norm, lf, pool);
+    }
     let padded =
         crate::shared_malta::malta_scaled_differences(a, b, greater, smaller, norm, lf, pool);
     let mut out = ImageF::from_pool_dirty(a.width(), a.height(), pool);
@@ -37,39 +40,23 @@ pub(crate) fn malta_diff_map(
 
 #[archmage::autoversion]
 fn evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, out: &mut ImageF) {
+    let width = out.width();
     for y in 0..out.height() {
-        let full = out.width() / 8 * 8;
         let row = out.row_mut(y);
-        for (block, dst) in row[..full].as_chunks_mut::<8>().0.iter_mut().enumerate() {
-            let start = block * 8;
+        for block in 0..width.div_ceil(8) {
+            // The last block overlaps when width is not divisible by eight.
+            let start = (block * 8).min(width - 8);
             let window = NativeWindow {
                 rows: std::array::from_fn(|r| {
                     padded.row(y + r)[start..start + 16].try_into().unwrap()
                 }),
-            };
-            *dst = if lf {
-                lf_bank(&window).0
-            } else {
-                hf_bank(&window).0
-            };
-        }
-        if full != row.len() {
-            let mut tail = [[0.0; 16]; 9];
-            for (r, values) in tail.iter_mut().enumerate() {
-                let src = &padded.row(y + r)[full..];
-                let count = src.len().min(16);
-                values[..count].copy_from_slice(&src[..count]);
-            }
-            let window = NativeWindow {
-                rows: tail.each_ref(),
             };
             let values = if lf {
                 lf_bank(&window)
             } else {
                 hf_bank(&window)
             };
-            let dst = &mut row[full..];
-            dst.copy_from_slice(&values.0[..dst.len()]);
+            row[start..start + 8].copy_from_slice(&values.0);
         }
     }
 }
@@ -80,7 +67,10 @@ mod tests {
     #[test]
     fn every_native_response_matches_shared_bank_at_borders_and_vector_tails() {
         let pool = BufferPool::new();
-        for (w, h) in [(1, 1), (7, 9), (8, 10), (9, 11), (31, 33), (128, 129)] {
+        for (w, h) in (1..34)
+            .map(|w| (w, w + 2))
+            .chain([(128, 129), (154, 151), (317, 129)])
+        {
             let mut a = ImageF::new(w, h);
             let mut b = ImageF::new(w, h);
             for y in 0..h {
@@ -97,6 +87,25 @@ mod tests {
                     );
                     let actual = malta_diff_map(&a, &b, greater, smaller, norm, lf, &pool);
                     for y in 0..h {
+                        if actual.row(y) != expected.row(y) {
+                            let padded = crate::shared_malta::malta_scaled_differences(
+                                &a, &b, greater, smaller, norm, lf, &pool,
+                            );
+                            for x in 0..w {
+                                if actual.row(y)[x] != expected.row(y)[x] {
+                                    let direct = if lf {
+                                        crate::shared_malta::malta_unit_lf(&padded, x + 4, y + 4)
+                                    } else {
+                                        crate::shared_malta::malta_unit(&padded, x + 4, y + 4)
+                                    };
+                                    eprintln!(
+                                        "x={x} weights={greater},{smaller},{norm} direct={direct} actual={} expected={}",
+                                        actual.row(y)[x],
+                                        expected.row(y)[x]
+                                    );
+                                }
+                            }
+                        }
                         assert_eq!(actual.row(y), expected.row(y), "{w}x{h}, lf={lf}, row {y}");
                     }
                 }

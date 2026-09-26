@@ -49,6 +49,7 @@ margarine-compact-check:
 margarine-candidate-check features:
     cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
     nice -n 19 cargo test --manifest-path experiments/margarine/Cargo.toml --features "{{features}}" -j 2
+    nice -n 19 cargo test --release --manifest-path experiments/margarine/Cargo.toml --features "{{features}}" -j 2
     nice -n 19 cargo clippy --manifest-path experiments/margarine/Cargo.toml --features "{{features}}" --all-targets -j 2 -- -D warnings
     nice -n 19 cargo build --release --manifest-path experiments/margarine/Cargo.toml --features "{{features}}" --bin margarine-box3 -j 2
 
