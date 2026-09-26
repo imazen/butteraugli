@@ -522,3 +522,12 @@ The manifest scorer writes these additional files when raw labels supply sigma.
 These statistics use the published dispersion as declared by `label_method`;
 they do not reinterpret observer dispersion as a standard error or establish
 statistically distinguishable encoder-choice harm.
+
+### Encoder-choice disagreement diagnosis
+
+`disagreements.py` collapses repeated observed budgets selecting the same two
+encodes, while preserving their count and budget range. It reports both harmful
+and beneficial point-label tails. Optional hash-verified native-map probes
+compare the candidate at Butteraugli's peak pixel, before and after normalizing
+by the p1 score ratio. This distinguishes a global scale shift from a spatial
+peak discrepancy. It does not infer participant significance from point labels.
