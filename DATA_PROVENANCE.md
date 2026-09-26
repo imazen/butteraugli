@@ -1248,3 +1248,11 @@ tests cover streaming equivalence, but the corpus-level streamed checks remain
 required. `score_manifest.py` now passes and records explicit strip rows
 (default 128), alongside tile columns (default 512), and rejects the wrong
 reported execution mode. Resource and quality runs must use identical geometry.
+
+The power-of-two row-cache builds retain explicit CPU/RSS measurements in
+[the full and alternate-row resource curves](benchmarks/margarine_masked_rows_resources_2026-09-26.tsv),
+with raw artifacts under `masked-row-resources-2026-09-26/` and
+`masked-sampled-resources-2026-09-26/`. Build `2b04e9e4` has 1 MP mean
+speedups of 3.445001× and 3.825383× respectively; neither reaches 4× there.
+The full-bank 64² run has RSS fraction 1.002841, so it also misses the small
+image memory condition in that measurement. No new resource pass is claimed.
