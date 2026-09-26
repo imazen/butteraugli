@@ -115,6 +115,21 @@ differ. Never relabel the coarse map as a full-resolution localization map.
 Files are created exclusively, so reruns cannot overwrite earlier results.
 These invocations are scoring tools, not a timing benchmark.
 
+`score_manifest.py PAIRS.tsv BIN_DIRECTORY NEW_OUTPUT --build-commit COMMIT`
+runs teacher and box3 serially on a manifest from `aic4_sample_manifest.py`.
+It requires untagged RGB8 PNGs and interprets both arms as sRGB, hashes inputs
+and binaries, persists all five score variants and content-addressed native
+diffmaps, then runs the six-stat panel for each pooling variant. Its
+`progress.log` and cell logs preserve progress and failures. It does not
+dispatch distributed jobs or benchmark execution time.
+
+The local AIC4 sample audit found all 305 PNGs untagged (no gAMA, cHRM, sRGB,
+iCCP or cICP). The 300-pair manifest uses the original JPEG label CSV pinned
+by SHA-256 in [aic4_sample_manifest.py](aic4_sample_manifest.py), with source
+URLs and original dataset README retained. The first real-pair smoke check
+persisted both 620×800 maps and all norms successfully; it is not a dataset
+accuracy result.
+
 `margarine-eval` reads aligned, tab-separated rows with this exact header:
 
 ```text
