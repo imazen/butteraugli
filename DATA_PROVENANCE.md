@@ -431,3 +431,18 @@ so it also fails the small-image memory condition. All sizes reached at least
 1.57 GiB, minimum available 55,676 MiB and peak load 3.25. This is a rejected
 candidate, not resource or quality acceptance. The full records remain in
 r5900xt `refined1-aic4-2026-09-26/` and `refined1-resources-2026-09-26/`.
+
+Two-region correction (`19c719f5`) has largest AIC4 pooled SROCC loss
+0.00070090 (max); p1/p2/p3/p6 improve in the
+[panel](benchmarks/margarine_refined2_aic4_2026-09-26.tsv). These are screening
+point estimates after repeated architecture comparisons, not independent
+validation. The [resource table](benchmarks/margarine_refined2_resources_2026-09-26.tsv)
+records 4.040×/4.670× metric speed at 1 MP/8.44 MP, total-process RSS
+fractions 19.87%/12.61%, and decode-inclusive speedups 3.410×/3.727×.
+At 64², RSS still exceeds teacher (6,262,784 versus 6,098,944 bytes).
+All four sizes reached at least twenty rounds without an unreliable flag.
+The guard measured peak RSS 1.58 GiB, minimum available 56,547 MiB and
+peak load 2.66. Raw logs/maps remain in r5900xt `refined2-aic4-2026-09-26/`
+and `refined2-resources-2026-09-26/`. The subsequent optimization removes
+an unused proxy reduction and uses the paired-RGB path at dimensions up to
+64; it requires its own quality/size verification before any resource claim.
