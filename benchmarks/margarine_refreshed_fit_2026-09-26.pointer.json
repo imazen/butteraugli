@@ -1,0 +1,286 @@
+{
+  "build_commit": "4179b70a6f8e92e4f68e85bed0b335df9691bd4f",
+  "input_manifest_sha256": "90554858e99eeff5ec26323274a33978b62aef3131e30c7ed53cb54fa33eb8a0",
+  "input_cells_sha256": "8e9dac6e33476b5205c11c985f6bc9f52e6770e5f8305fbf1472f9255da13382",
+  "input_features_sha256": "51e4857f23ec373ea98410753314482f4fdaff3034be72cbf461e436de5c5156",
+  "feature_manifest_sha256": "8f9c67b5132a31e773b988ba234476cdf4b384a63ac02a3593de889f2f54f078",
+  "feature_provenance": "ad18b444c27b1eb91731a18a09c272c85fc594da",
+  "feature_binaries": {
+    "margarine-box3": "9ccc9e5797f4899d50985983d0743feec6da4e37dbbdeb1267459502ef9ba952"
+  },
+  "splits_sha256": "34ef2258b54f7814338280092e4f55c00c6caa0eb8e0f82187760557700f010e",
+  "splits": {
+    "1068": "fit",
+    "1492": "fit",
+    "1508": "test",
+    "1510": "fit",
+    "1638": "fit",
+    "2206": "tune",
+    "2404": "fit",
+    "5038": "tune",
+    "6000": "tune",
+    "6016": "fit",
+    "6606": "fit",
+    "7024": "fit",
+    "7032": "tune",
+    "7050": "test",
+    "7074": "fit",
+    "7078": "test",
+    "8010": "fit",
+    "8118": "test",
+    "8132": "tune",
+    "8182": "fit",
+    "8300": "fit",
+    "8392": "fit",
+    "8394": "fit",
+    "8402": "fit",
+    "8414": "test",
+    "8432": "tune",
+    "9070": "test",
+    "9074": "fit",
+    "9106": "fit",
+    "9108": "test",
+    "9132": "fit",
+    "9154": "tune",
+    "9292": "fit",
+    "9306": "fit",
+    "9364": "fit",
+    "9398": "tune",
+    "9460": "test",
+    "9502": "fit",
+    "9526": "test",
+    "9532": "tune",
+    "9546": "fit",
+    "9564": "tune",
+    "9594": "fit",
+    "9724": "test",
+    "9756": "test",
+    "9778": "fit",
+    "9786": "fit",
+    "9802": "tune",
+    "9836": "fit",
+    "9888": "fit"
+  },
+  "numpy": "2.5.3",
+  "scipy": "1.18.1",
+  "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+  "model_sha256": "46c92926405ffc7fd343ddfb081403edf077fd9d77f07c3450947fee84a92a72",
+  "chosen_penalties": {
+    "max": 0.01,
+    "p1": 0.01,
+    "p2": 0.01,
+    "p3": 0.01,
+    "p6": 0.01
+  },
+  "trials": [
+    {
+      "norm": "max",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.04984194007784519
+    },
+    {
+      "norm": "max",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.04969044991919407
+    },
+    {
+      "norm": "max",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.04820855927980486
+    },
+    {
+      "norm": "max",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.06800100388803669
+    },
+    {
+      "norm": "p1",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.007397573334364882
+    },
+    {
+      "norm": "p1",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.007400542271322437
+    },
+    {
+      "norm": "p1",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.007040064681200253
+    },
+    {
+      "norm": "p1",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.009788596014899424
+    },
+    {
+      "norm": "p2",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.009250949524622626
+    },
+    {
+      "norm": "p2",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.009215082415821372
+    },
+    {
+      "norm": "p2",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.008807819677410067
+    },
+    {
+      "norm": "p2",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.011857123714741302
+    },
+    {
+      "norm": "p3",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.011703981204886601
+    },
+    {
+      "norm": "p3",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.011683648514305303
+    },
+    {
+      "norm": "p3",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.011327602281194497
+    },
+    {
+      "norm": "p3",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.015089976915386036
+    },
+    {
+      "norm": "p6",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.018741718115504524
+    },
+    {
+      "norm": "p6",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.018713496746826406
+    },
+    {
+      "norm": "p6",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.018258703082089038
+    },
+    {
+      "norm": "p6",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.0240011847743443
+    }
+  ],
+  "metrics": {
+    "fit": {
+      "n_pairs": 28560,
+      "n_sources": 28,
+      "norms": {
+        "max": {
+          "signed_teacher_srocc": 0.9359545790820458,
+          "source_weighted_log_rmse": 0.2006978072468856,
+          "source_weighted_raw_rmse": 1.2418442898388466
+        },
+        "p1": {
+          "signed_teacher_srocc": 0.9772169725742582,
+          "source_weighted_log_rmse": 0.07739607426385924,
+          "source_weighted_raw_rmse": 0.22749348866219615
+        },
+        "p2": {
+          "signed_teacher_srocc": 0.9750428678137316,
+          "source_weighted_log_rmse": 0.08381824011254606,
+          "source_weighted_raw_rmse": 0.26087740867634696
+        },
+        "p3": {
+          "signed_teacher_srocc": 0.9712698699926207,
+          "source_weighted_log_rmse": 0.09381360275905627,
+          "source_weighted_raw_rmse": 0.31039448808227715
+        },
+        "p6": {
+          "signed_teacher_srocc": 0.9621853541888423,
+          "source_weighted_log_rmse": 0.11903003345434149,
+          "source_weighted_raw_rmse": 0.45815042643311243
+        }
+      }
+    },
+    "tune": {
+      "n_pairs": 11220,
+      "n_sources": 11,
+      "norms": {
+        "max": {
+          "signed_teacher_srocc": 0.9173325193505423,
+          "source_weighted_log_rmse": 0.21956447636128404,
+          "source_weighted_raw_rmse": 1.3170889962346142
+        },
+        "p1": {
+          "signed_teacher_srocc": 0.964017341523426,
+          "source_weighted_log_rmse": 0.08390509329713097,
+          "source_weighted_raw_rmse": 0.21996615012937065
+        },
+        "p2": {
+          "signed_teacher_srocc": 0.9589298539609611,
+          "source_weighted_log_rmse": 0.09384998496222612,
+          "source_weighted_raw_rmse": 0.27092805575546874
+        },
+        "p3": {
+          "signed_teacher_srocc": 0.9521758434669961,
+          "source_weighted_log_rmse": 0.1064312091502981,
+          "source_weighted_raw_rmse": 0.3304318638039878
+        },
+        "p6": {
+          "signed_teacher_srocc": 0.9389474026023917,
+          "source_weighted_log_rmse": 0.1351247685736743,
+          "source_weighted_raw_rmse": 0.4876225569564886
+        }
+      }
+    },
+    "test": {
+      "n_pairs": 11220,
+      "n_sources": 11,
+      "norms": {
+        "max": {
+          "signed_teacher_srocc": 0.9397803337881383,
+          "source_weighted_log_rmse": 0.18945139086910956,
+          "source_weighted_raw_rmse": 1.2619331410989807
+        },
+        "p1": {
+          "signed_teacher_srocc": 0.9534534445119409,
+          "source_weighted_log_rmse": 0.09423446072123835,
+          "source_weighted_raw_rmse": 0.26808019631158664
+        },
+        "p2": {
+          "signed_teacher_srocc": 0.9541123388219053,
+          "source_weighted_log_rmse": 0.09766238437691792,
+          "source_weighted_raw_rmse": 0.30434389346078683
+        },
+        "p3": {
+          "signed_teacher_srocc": 0.9567284094243006,
+          "source_weighted_log_rmse": 0.10234607283174513,
+          "source_weighted_raw_rmse": 0.3419938803090205
+        },
+        "p6": {
+          "signed_teacher_srocc": 0.9567297589176851,
+          "source_weighted_log_rmse": 0.11886463182625191,
+          "source_weighted_raw_rmse": 0.45973500114733484
+        }
+      }
+    }
+  },
+  "formula": "expm1(sum_i weight_i * log1p(feature_i / scale_i))); no intercept",
+  "status": "feasibility-only; not a validated or released Margarine score",
+  "limitations": [
+    "coverage is inherited from the input experiment, not certified by this fit",
+    "source-ID partitions do not establish a cross-corpus near-duplicate audit",
+    "no human-quality or encoder-choice acceptance result"
+  ],
+  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/fit-ad18b444-2026-09-26",
+  "artifacts_sha256": {
+    "model.tsv": "46c92926405ffc7fd343ddfb081403edf077fd9d77f07c3450947fee84a92a72",
+    "predictions.tsv": "28807a25944a2366aa579a887a36627ac4688c09da7e69808e39f5d059bafa7c",
+    "_MANIFEST.json": "fba850f915b23e9a048c7d0b55845f92768bb7016ac5fa2d7bc34463080a0be7"
+  },
+  "human_evaluation": "rejected; benchmarks/margarine_student_human_2026-09-26.tsv"
+}

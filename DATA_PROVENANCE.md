@@ -1,7 +1,7 @@
 # Margarine data index
 
-A teacher-agreement feasibility model has been fitted on the original extractor.
-It has no human-quality or resource qualification. The analytic box-filter
+The 168-feature fitted candidate fails the human-quality rank-loss limit on
+AIC4_sample and CID22. It has no resource qualification as a fitted score. The analytic box-filter
 control and feature-extraction cost probes remain separate experiments.
 Human-quality coverage measured so far is AIC4_sample and CID22 validation, not
 every required dataset. The total-process memory gate includes decoding and inputs.
@@ -219,15 +219,15 @@ The broader sync changes features on 94/158 real comparison pairs across the
 pins both binaries and the measured changes. Do not fit the old feature sidecar
 and silently run the resulting model with the newer extractor.
 
-`dense-jpeg-features-ad18b444-2026-09-26/` on dev is the in-progress feature-only
+`dense-jpeg-features-ad18b444-2026-09-26/` on dev is the completed 51,000-pair feature-only
 refresh, using frozen `feature-binaries-caccee81/` and runner `710d9f19`.
 The original Mac teacher run is complete; its maps and five scalar
-targets are retained. After the refresh completes, `fit_probe.py --features` joins by
-reference/encoded SHA-256 and requires equal key sets. The original 28/11/11
+targets are retained. `fit_probe.py --features` joined by
+reference/encoded SHA-256 with equal key sets. The original 28/11/11
 source partitions remain fixed. This refresh generates no new encodes or maps.
 
-The private scalar runtime and cached-teacher evaluator are implemented, but no
-trained model has been evaluated against human labels. The four-pair CID22 adapter smoke on r5900xt
+The private scalar runtime and cached-teacher evaluator are implemented. The
+updated model has now been evaluated against human labels, as recorded below. The four-pair CID22 adapter smoke on r5900xt
 uses synthetic coefficients solely to test alignment and panel generation;
 its artifacts are `student-eval-smoke-2026-09-26/`, not quality evidence.
 
@@ -239,3 +239,20 @@ tuning sources only. These are teacher-agreement results, not human SROCC loss
 or an encoder-choice gate. The [fit pointer](benchmarks/margarine_old_extractor_fit_2026-09-26.pointer.json)
 records all splits, metrics and artifact hashes. This model uses the original
 Mac extractor and must not be loaded with the updated extractor.
+
+`fit-ad18b444-2026-09-26/` is fitted on the refreshed features with the same
+28/11/11 source split. The [fit pointer](benchmarks/margarine_refreshed_fit_2026-09-26.pointer.json)
+records its metrics and model hash. Its frozen scalar runtime was evaluated on
+r5900xt in `student-aic4-2026-09-26/` and `student-cid22-2026-09-26/`; compact
+ledgers and panels are copied to the Mac. Teacher scores were reused only after
+label, pair and input-hash verification.
+
+The candidate is rejected: all five AIC4 SROCC losses exceed 0.01 (p1 loses
+0.014194; p3 loses 0.056157). CID22 p1/p2/p3 also exceed the loss limit (p3
+loses 0.023411). The [full corpus panel](benchmarks/margarine_student_human_2026-09-26.tsv)
+and [provenance](benchmarks/margarine_student_human_2026-09-26.meta.json) retain
+all ten reported statistics for all five norms. These are point estimates;
+clustered intervals and fitted-model resource qualification were not run for
+this rejected candidate. The failure does not prove every learned model or
+every use of zensim features impossible. The next direct-approximation experiment
+profiles and reduces box3 blur costs while retaining Butteraugli's stages.
