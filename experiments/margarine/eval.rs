@@ -284,7 +284,12 @@ fn main() -> Result<()> {
         }
         return Ok(());
     }
-    if args.first().is_some_and(|a| a == "--participant-pairs") {
+    if args.first().is_some_and(|a| {
+        matches!(
+            a.as_str(),
+            "--participant-pairs" | "--live1-participant-pairs"
+        )
+    }) {
         if args.len() != 6 {
             return Err("usage: margarine-eval --participant-pairs SCORED_DIR OPINIONS.tsv NEW_OUTPUT_DIR DRAWS SEED".into());
         }
@@ -294,6 +299,7 @@ fn main() -> Result<()> {
             &args[3],
             args[4].parse()?,
             args[5].parse()?,
+            args[0] == "--live1-participant-pairs",
         );
     }
     if args.first().is_some_and(|a| a == "--published-sigma") {

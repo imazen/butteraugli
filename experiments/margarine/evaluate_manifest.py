@@ -30,13 +30,19 @@ def main():
     parser.add_argument('output', type=Path)
     parser.add_argument('--candidate', required=True)
     parser.add_argument('--build-commit', required=True)
+    parser.add_argument('--dataset', help='explicitly select one dataset/cohort after checking the full ledger')
     parser.add_argument('--ordinary-only', action='store_true',
                         help='evaluate ordinary panels for every row; leave supplied-sigma panels explicitly unevaluated')
     args = parser.parse_args()
     cells, source = load_scores(args.scored, args.candidate)
+    if args.dataset:
+        cells = [row for row in cells if row['dataset'] == args.dataset]
+        if not cells:
+            raise ValueError('requested dataset is absent from scored ledger')
     args.output.mkdir(parents=True, exist_ok=False)
     manifest = dict(build_commit=args.build_commit, candidate=args.candidate,
                     source=str(args.scored.resolve()), source_build_commit=source['build_commit'],
+                    selected_dataset=args.dataset, source_n_pairs=source['n_pairs'],
                     cells_sha256=source['cells_sha256'],
                     evaluator_sha256=digest(args.evaluator), n_pairs=len(cells), status='running',
                     published_sigma='not requested' if args.ordinary_only else 'requested when supplied')

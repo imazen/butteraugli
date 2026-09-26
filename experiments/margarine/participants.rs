@@ -24,6 +24,14 @@ fn basename(pair: &str) -> Result<&str> {
 }
 
 fn read_opinions(input: impl BufRead, rows: &[Row]) -> Result<Opinions> {
+    read_declared_opinions(input, rows, false)
+}
+
+fn read_declared_opinions(
+    input: impl BufRead,
+    rows: &[Row],
+    processed_live1: bool,
+) -> Result<Opinions> {
     let mut images = BTreeMap::new();
     for (i, row) in rows.iter().enumerate() {
         if images.insert(basename(&row.pair)?, i).is_some() {
@@ -46,13 +54,22 @@ fn read_opinions(input: impl BufRead, rows: &[Row]) -> Result<Opinions> {
         if fields[1].len() != 64 || !fields[1].bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("worker identity must be the sanitized hash".into());
         }
-        let rating: u8 = fields[2].parse()?;
-        if !(1..=5).contains(&rating) {
-            return Err("KADID rating outside [1,5]".into());
-        }
+        let rating = if processed_live1 {
+            let value: f64 = fields[2].parse()?;
+            if !value.is_finite() || !(1.0..=100.0).contains(&value) {
+                return Err("LIVE Release 1 processed opinion outside [1,100]".into());
+            }
+            value
+        } else {
+            let value: u8 = fields[2].parse()?;
+            if !(1..=5).contains(&value) {
+                return Err("KADID rating outside [1,5]".into());
+            }
+            f64::from(value)
+        };
         let next = workers.len();
         let worker = *workers.entry(fields[1].to_owned()).or_insert(next);
-        values[image].push((worker, f64::from(rating)));
+        values[image].push((worker, rating));
     }
     if workers.len() < 2 || values.iter().any(|v| v.len() < 2) {
         return Err("missing participant coverage".into());
@@ -115,6 +132,7 @@ pub(super) fn run(
     output: &str,
     draws: usize,
     seed: u64,
+    processed_live1: bool,
 ) -> Result<()> {
     if draws < 100 {
         return Err("participant bootstrap needs at least 100 draws".into());
@@ -128,7 +146,12 @@ pub(super) fn run(
         })
         .collect::<Result<_>>()?;
     let rows = &panels[0];
-    if rows.iter().any(|r| r.dataset != "kadid") {
+    if processed_live1 {
+        let dataset = &rows[0].dataset;
+        if !dataset.starts_with("live_r1_") || rows.iter().any(|r| &r.dataset != dataset) {
+            return Err("LIVE Release 1 opinions require one declared codec/session cohort".into());
+        }
+    } else if rows.iter().any(|r| r.dataset != "kadid") {
         return Err("this raw-rating adapter is specific to KADID".into());
     }
     for panel in &panels[1..] {
@@ -141,8 +164,21 @@ pub(super) fn run(
             return Err("pooling variants have different label identities or ordering".into());
         }
     }
-    let opinions = read_opinions(BufReader::new(File::open(opinions)?), rows)?;
+    let input = BufReader::new(File::open(opinions)?);
+    let opinions = if processed_live1 {
+        read_declared_opinions(input, rows, true)?
+    } else {
+        read_opinions(input, rows)?
+    };
     let original = means(&opinions, &vec![1; opinions.workers])?;
+    if processed_live1
+        && original
+            .iter()
+            .zip(rows)
+            .any(|(a, b)| (a - b.target).abs() > 1e-9)
+    {
+        return Err("processed LIVE opinions do not reproduce scored labels".into());
+    }
     let mut groups = BTreeMap::<&str, Vec<usize>>::new();
     for (i, row) in rows.iter().enumerate() {
         groups.entry(&row.source).or_default().push(i);
@@ -150,6 +186,14 @@ pub(super) fn run(
     let groups: Vec<_> = groups.into_values().collect();
     std::fs::create_dir(output)?;
     let output = Path::new(output);
+    std::fs::write(
+        output.join("method.txt"),
+        if processed_live1 {
+            "LIVE Release 1: resample processed observer columns within one codec/session. Conditional on published normalization and outlier selection; no cross-cohort alignment.\n"
+        } else {
+            "KADID: resample workers with all their retained raw observations.\n"
+        },
+    )?;
     let mut progress = BufWriter::new(File::create_new(output.join("progress.log"))?);
     let mut samples = vec![vec![0.0; draws]; rows.len()];
     let mut state = seed;
@@ -297,6 +341,29 @@ mod tests {
         assert_eq!(opinions.values[0].len(), 3);
         assert_eq!(means(&opinions, &[1, 1]).unwrap(), [7.0 / 3.0]);
         assert!(read_opinions(input.replace("i.png", "other.png").as_bytes(), &rows).is_err());
+    }
+
+    #[test]
+    fn processed_live_opinions_preserve_fractional_values_without_weakening_kadid() {
+        let rows = parse(&format!(
+            "{}\nlive_r1_jpeg_s1\ts\tjpeg\timg1.bmp\t50\tquality\t1\t2",
+            super::super::HEADER
+        ))
+        .unwrap();
+        let input = format!(
+            "image\tworker\trating\tdist_url\tref_url\nimg1.bmp\t{}\t12.5\td\tr\nimg1.bmp\t{}\t87.5\td\tr\n",
+            "a".repeat(64),
+            "b".repeat(64)
+        );
+        assert!(read_opinions(input.as_bytes(), &rows).is_err());
+        let opinions = read_declared_opinions(input.as_bytes(), &rows, true).unwrap();
+        assert_eq!(means(&opinions, &[1, 1]).unwrap(), [50.0]);
+        for invalid in ["0", "101", "NaN", "inf"] {
+            assert!(
+                read_declared_opinions(input.replace("12.5", invalid).as_bytes(), &rows, true)
+                    .is_err()
+            );
+        }
     }
 
     #[test]
