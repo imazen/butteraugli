@@ -921,3 +921,16 @@ on r5900xt in `phase-tiles-aic4-2026-09-26/`; compact replay and all resource
 records also exist on the Mac. Each peak is the largest of three fresh
 processes. Guard peak RSS was 1.54 GiB, minimum available RAM 56,610 MiB,
 peak load 1.34.
+
+Fixed-width expansion (`a121ab5c`, measured from `4363b038`) [retains all
+AIC4 maps and scalar norms](benchmarks/margarine_expand_lanes_aic4_parity_2026-09-26.json).
+The [128-row resource run](benchmarks/margarine_expand_lanes_resources_2026-09-26.tsv)
+measures 3.281×/3.047× metric speed at 1 MP/8.44 MP, with RSS fractions
+18.17%/8.10%. The [256-row run](benchmarks/margarine_expand_lanes_rows256_resources_2026-09-26.tsv)
+is slower at 2.878×/2.974×, with RSS fractions 24.64%/8.98%. Both retain
+small-image resource use below teacher. Neither qualifies 4× speed; the
+change does not establish a uniform speed improvement over the preceding
+phase-tiles measurement. Full maps remain on r5900xt in
+`expand-lanes-aic4-2026-09-26/`; compact replay and all resource records also
+exist on the Mac. Raw resource directories are `expand-lanes-resources-2026-09-26/`
+and `expand-lanes-rows256-resources-2026-09-26/`.
