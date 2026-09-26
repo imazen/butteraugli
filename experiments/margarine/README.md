@@ -681,3 +681,9 @@ Earlier scorer invocations used full-height execution, even when the matching
 resource run used 128 rows. Those ledgers remain valid full-height quality
 results, but do not independently validate the streamed row cache. New runs
 record rows and columns in the manifest and must match the resource geometry.
+
+Coarse-row reconstruction now evaluates eight independent interpolation cells
+with explicit portable SIMD and packs the resulting phases into contiguous
+output arrays. The multiply/add order, edge handling and native output samples
+are unchanged. Exact expansion and complete row/strip tests pass in debug and
+release on ARM and x86; performance still requires the measured resource curve.

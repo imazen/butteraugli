@@ -150,6 +150,14 @@ pub(crate) fn reduce(
 
 #[inline(always)]
 pub(crate) fn expand_row<const F: usize>(a: &[f32], b: &[f32], fy: f32, out: &mut [f32]) {
+    archmage::incant!(
+        expand_row_vector::<F>(a, b, fy, out),
+        [v4, v3, neon, wasm128, scalar]
+    )
+}
+
+#[archmage::magetypes(define(f32x8), v4, v3, neon, wasm128, scalar)]
+fn expand_row_vector<const F: usize>(token: Token, a: &[f32], b: &[f32], fy: f32, out: &mut [f32]) {
     let left = (F / 2).min(out.len());
     out[..left].fill(a[0] + fy * (b[0] - a[0]));
     let interior = ((a.len() - 1) * F).min(out.len() - left) / F * F;
@@ -161,17 +169,27 @@ pub(crate) fn expand_row<const F: usize>(a: &[f32], b: &[f32], fy: f32, out: &mu
         let a: &[f32; 9] = a[start..start + 9].try_into().unwrap();
         let b: &[f32; 9] = b[start..start + 9].try_into().unwrap();
         let dst = &mut out[left + block * 8 * F..left + (block + 1) * 8 * F];
-        for phase in 0..F {
-            let fx = (phase as f32 + 0.5) / F as f32;
-            let mut values = [0.0; 8];
-            for i in 0..8 {
-                let top = a[i] + fx * (a[i + 1] - a[i]);
-                let bottom = b[i] + fx * (b[i + 1] - b[i]);
-                values[i] = top + fy * (bottom - top);
+        let a0 = f32x8::load(token, (&a[..8]).try_into().unwrap());
+        let a1 = f32x8::load(token, (&a[1..]).try_into().unwrap());
+        let b0 = f32x8::load(token, (&b[..8]).try_into().unwrap());
+        let b1 = f32x8::load(token, (&b[1..]).try_into().unwrap());
+        let dy = f32x8::splat(token, fy);
+        let phases: [[f32; 8]; F] = std::array::from_fn(|phase| {
+            let fx = f32x8::splat(token, (phase as f32 + 0.5) / F as f32);
+            let top = a0 + fx * (a1 - a0);
+            let bottom = b0 + fx * (b1 - b0);
+            (top + dy * (bottom - top)).to_array()
+        });
+        match F {
+            2 => {
+                let packed: [f32; 16] = std::array::from_fn(|i| phases[i % F][i / F]);
+                dst.copy_from_slice(&packed);
             }
-            for i in 0..8 {
-                dst[i * F + phase] = values[i];
+            4 => {
+                let packed: [f32; 32] = std::array::from_fn(|i| phases[i % F][i / F]);
+                dst.copy_from_slice(&packed);
             }
+            _ => unreachable!(),
         }
     }
     for ((dst, a), b) in out[left + full..left + interior]
