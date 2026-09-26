@@ -233,6 +233,7 @@ jobs:
           cross test --locked --manifest-path experiments/margarine/Cargo.toml --features planar --target ${{ matrix.target }}
           cross test --locked --manifest-path experiments/margarine/Cargo.toml --features row-psycho --target ${{ matrix.target }}
           cross test --locked --manifest-path experiments/margarine/Cargo.toml --features row-tiles,phase-rows --target ${{ matrix.target }}
+          cross test --locked --release --manifest-path experiments/margarine/Cargo.toml --no-default-features --features rayon,avx512,simd-malta,row-malta --bin margarine --target ${{ matrix.target }}
 
   # ==========================================================================
   # WASM compilation check (archmage supports wasm32-simd128)
