@@ -39,23 +39,29 @@ pub(super) fn compute(
                     pool.clear();
                     previous_shape = shape;
                 }
-                let load = |input: &ingress::EncodedRows<'_>| {
-                    let (nx1, ny1) = ((x1 * factor).min(w), (y1 * factor).min(h));
-                    let rgb = input.linear_region(x0 * factor, nx1, y0 * factor, ny1);
-                    if factor == 1 {
-                        rgb
-                    } else {
-                        let (small, rw, rh) = diff::subsample_linear_rgb_2x(
-                            &rgb,
-                            nx1 - x0 * factor,
-                            ny1 - y0 * factor,
-                        );
-                        debug_assert_eq!((rw, rh), shape);
-                        small
-                    }
+                #[cfg(feature = "planar")]
+                let tile =
+                    strips::single_scale_encoded(a, b, factor, [x0, y0, x1, y1], params, &pool);
+                #[cfg(not(feature = "planar"))]
+                let tile = {
+                    let load = |input: &ingress::EncodedRows<'_>| {
+                        let (nx1, ny1) = ((x1 * factor).min(w), (y1 * factor).min(h));
+                        let rgb = input.linear_region(x0 * factor, nx1, y0 * factor, ny1);
+                        if factor == 1 {
+                            rgb
+                        } else {
+                            let (small, rw, rh) = diff::subsample_linear_rgb_2x(
+                                &rgb,
+                                nx1 - x0 * factor,
+                                ny1 - y0 * factor,
+                            );
+                            debug_assert_eq!((rw, rh), shape);
+                            small
+                        }
+                    };
+                    let (ar, br) = (load(a), load(b));
+                    strips::single_scale(&ar, &br, shape.0, shape.1, params, &pool)
                 };
-                let (ar, br) = (load(a), load(b));
-                let tile = strips::single_scale(&ar, &br, shape.0, shape.1, params, &pool);
                 for oy in y..end_y {
                     output.row_mut(oy)[x..end_x]
                         .copy_from_slice(&tile.row(oy - y0)[x - x0..end_x - x0]);

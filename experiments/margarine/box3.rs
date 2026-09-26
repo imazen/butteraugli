@@ -19,7 +19,11 @@ mod blur;
 mod blur;
 
 const CANDIDATE: &str = if cfg!(feature = "tiles") {
-    "tiles"
+    if cfg!(feature = "planar") {
+        "planar-tiles"
+    } else {
+        "tiles"
+    }
 } else if cfg!(feature = "lattice") {
     if cfg!(feature = "planar") {
         "planar"

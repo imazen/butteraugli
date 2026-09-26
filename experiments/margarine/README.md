@@ -548,6 +548,12 @@ tests cover RGB/RGBA 8/16-bit samples, input strides, output padding, odd dimens
 and complete strip maps. Default, lattice and planar tests pass on the ARM Mac;
 corpus-wide equivalence and resource improvements require separate measurements.
 
+`planar-tiles` combines that direct conversion with the existing 256-column
+tile walker. Each tile forms native or half-scale planar rows directly from
+its strided input region; global sampling phases and halos are unchanged.
+The existing bitwise tile/strip comparison passes across both axes and odd
+RGB16 edges. This is a storage experiment without a resource acceptance claim.
+
 ### Reference-only region selection
 
 The `reference-regions` experiment uses the same paired-RGB proxy and original

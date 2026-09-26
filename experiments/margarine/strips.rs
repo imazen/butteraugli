@@ -78,22 +78,14 @@ pub(super) fn compute_encoded(
     #[cfg(all(not(feature = "tiles"), feature = "planar"))]
     {
         compose_scaled(w, h, rows, params, |factor, y0, y1, pool| {
-            let prepare = |input: &ingress::EncodedRows<'_>| {
-                let mut linear = image::Image3F::from_pool_dirty(w.div_ceil(factor), y1 - y0, pool);
-                let (r, g, b) = linear.planes_mut();
-                for y in 0..y1 - y0 {
-                    input.linear_planar_row(
-                        (y0 + y) * factor,
-                        factor,
-                        [r.row_mut(y), g.row_mut(y), b.row_mut(y)],
-                    );
-                }
-                let xyb = opsin::opsin_dynamics_image(&linear, params.intensity_target(), pool);
-                linear.recycle(pool);
-                psycho::separate_frequencies_owned(xyb, pool)
-            };
-            let (a, b) = diff::maybe_join(|| prepare(reference), || prepare(distorted));
-            finish_scale(a, b, params, pool)
+            single_scale_encoded(
+                reference,
+                distorted,
+                factor,
+                [0, y0, w.div_ceil(factor), y1],
+                params,
+                pool,
+            )
         })
     }
     #[cfg(not(any(feature = "tiles", feature = "planar")))]
@@ -103,6 +95,36 @@ pub(super) fn compute_encoded(
             distorted.linear_strip(y0, y1).into(),
         )
     })
+}
+
+#[cfg(feature = "planar")]
+pub(super) fn single_scale_encoded(
+    a: &ingress::EncodedRows<'_>,
+    b: &ingress::EncodedRows<'_>,
+    factor: usize,
+    region: [usize; 4],
+    params: &ButteraugliParams,
+    pool: &image::BufferPool,
+) -> image::ImageF {
+    let [x0, y0, x1, y1] = region;
+    let prepare = |input: &ingress::EncodedRows<'_>| {
+        let mut linear = image::Image3F::from_pool_dirty(x1 - x0, y1 - y0, pool);
+        let (r, g, b) = linear.planes_mut();
+        for y in 0..y1 - y0 {
+            input.linear_planar_region_row(
+                x0 * factor,
+                (x1 * factor).min(input.width),
+                (y0 + y) * factor,
+                factor,
+                [r.row_mut(y), g.row_mut(y), b.row_mut(y)],
+            );
+        }
+        let xyb = opsin::opsin_dynamics_image(&linear, params.intensity_target(), pool);
+        linear.recycle(pool);
+        psycho::separate_frequencies_owned(xyb, pool)
+    };
+    let (a, b) = diff::maybe_join(|| prepare(a), || prepare(b));
+    finish_scale(a, b, params, pool)
 }
 
 pub(super) fn single_scale(

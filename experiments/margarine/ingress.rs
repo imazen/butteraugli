@@ -132,16 +132,27 @@ impl<'a> EncodedRows<'a> {
     #[cfg(feature = "planar")]
     #[allow(dead_code, reason = "shared with the teacher binary")]
     pub(crate) fn linear_planar_row(&self, y: usize, factor: usize, out: [&mut [f32]; 3]) {
+        self.linear_planar_region_row(0, self.width, y, factor, out);
+    }
+
+    #[cfg(feature = "planar")]
+    pub(crate) fn linear_planar_region_row(
+        &self,
+        x0: usize,
+        x1: usize,
+        y: usize,
+        factor: usize,
+        out: [&mut [f32]; 3],
+    ) {
         assert!(matches!(factor, 1 | 2) && y < self.height);
-        assert!(
-            out.iter()
-                .all(|row| row.len() == self.width.div_ceil(factor))
-        );
+        assert!(x0 < x1 && x1 <= self.width);
+        let width = x1 - x0;
+        assert!(out.iter().all(|row| row.len() == width.div_ceil(factor)));
         let lut = linear8_table();
         match (&self.samples, self.channels) {
             (Samples::U8(v), 3) => planar_row::<_, 3>(
-                v,
-                self.width,
+                &v[x0 * self.channels..],
+                width,
                 self.height,
                 self.stride,
                 y,
@@ -150,8 +161,8 @@ impl<'a> EncodedRows<'a> {
                 |v| lut[v as usize],
             ),
             (Samples::U8(v), 4) => planar_row::<_, 4>(
-                v,
-                self.width,
+                &v[x0 * self.channels..],
+                width,
                 self.height,
                 self.stride,
                 y,
@@ -160,8 +171,8 @@ impl<'a> EncodedRows<'a> {
                 |v| lut[v as usize],
             ),
             (Samples::U16(v), 3) => planar_row::<_, 3>(
-                v,
-                self.width,
+                &v[x0 * self.channels..],
+                width,
                 self.height,
                 self.stride,
                 y,
@@ -170,8 +181,8 @@ impl<'a> EncodedRows<'a> {
                 linear16,
             ),
             (Samples::U16(v), 4) => planar_row::<_, 4>(
-                v,
-                self.width,
+                &v[x0 * self.channels..],
+                width,
                 self.height,
                 self.stride,
                 y,
