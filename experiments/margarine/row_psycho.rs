@@ -59,11 +59,32 @@ impl<'a, 'b> Graph<'a, 'b> {
         let hf = g.same(Op::High(mf, mf_blur), mf_blur, 2);
         let hf_blur = g.gaussian(hf, SIGMA_UHF as f32);
         g.output = g.same(Op::Finish([lf, mf_blur, hf, hf_blur]), hf_blur, 10);
-        let latency = g.nodes[g.output].latency;
-        for node in &mut g.nodes {
-            // The scoring walker revisits both sides of its local halo. A
-            // producer additionally leads its consumer by the graph latency.
-            let support = 2 * (latency - node.latency + local_halo()) + 9;
+        let mut lookahead = vec![0; g.nodes.len()];
+        for node in &g.nodes {
+            let sources: Vec<usize> = match &node.op {
+                Op::Input => vec![],
+                Op::MirrorH(s, _)
+                | Op::MirrorV(s, _)
+                | Op::Reduce(s, _)
+                | Op::GaussianH(s, _, _)
+                | Op::GaussianV(s, _, _)
+                | Op::Expand(s, _) => vec![*s],
+                Op::Opsin(a, b) | Op::Subtract(a, b) | Op::High(a, b) => vec![*a, *b],
+                Op::Finish(s) => s.to_vec(),
+            };
+            for source in sources {
+                lookahead[source] = lookahead[source].max(node.latency - g.nodes[source].latency);
+            }
+        }
+        for (id, node) in g.nodes.iter_mut().enumerate() {
+            // A stage retains its direct consumers' lag. Deeper consumers
+            // revisit their own cached intermediates, not every ancestor.
+            // Only the final rows are revisited by overlapping scoring strips.
+            let support = if id == g.output {
+                2 * local_halo() + 9
+            } else {
+                2 * lookahead[id] + 9
+            };
             node.cache = vec![None; support.div_ceil(node.step).min(node.height)];
         }
         g
