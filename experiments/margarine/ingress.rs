@@ -128,6 +128,10 @@ impl<'a> EncodedRows<'a> {
     }
 
     /// Native-precision teacher input without an intermediate full-image copy.
+    #[allow(
+        dead_code,
+        reason = "used by the resource harness; the scalar scorer shares this ingress module"
+    )]
     pub(crate) fn linear_rgb(&self) -> Vec<butteraugli::RGB<f32>> {
         let mut out = Vec::with_capacity(self.width * self.height);
         let linear16 = self.linear16_function();
