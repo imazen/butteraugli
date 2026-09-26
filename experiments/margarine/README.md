@@ -233,3 +233,23 @@ Still unimplemented: a Margarine candidate meeting both resource targets,
 source-cluster uncertainty, quality bands, matched-budget encoder regret,
 corruption/local-edit panels, and measured runtime/peak-memory gates. The
 contract above records the intended evaluation, not completed coverage.
+
+## Student feature cost probe
+
+`margarine-box3 --bench-features REF DIST NEW.json` adds a pinned Zensim
+372-feature extraction arm to the paired cold benchmark. `--memory features372
+REF DIST` measures that extractor in a fresh process. This arm has no trained
+Margarine score: its uniform weights force feature computation only. It must
+not be reported as a completed approximation or evaluated as a human-quality
+metric. Both arms receive the same decoded linear samples; conversion to the
+extractor's linear RGBA byte view is outside timing and included in process
+memory. A strided-input test checks feature identity with the packed view.
+
+CID22 manifests can now be audited with `cid22_manifest.py ROOT NEW_OUTPUT
+--build-commit SHA`, then scored with `score_manifest.py ... --ingress
+cid22-srgb`. The policy preserves 16-bit samples, verifies PNG chunk CRCs,
+allows only the three audited sRGB ICC identities (two PNG, one JPEG), and
+rejects other color tags. It records bpp and encoder settings, and explicitly
+excludes the 49 identity rows with zero opinions from the 4,292 rated pairs.
+Opaque alpha is checked during decoding. This convention does not apply the
+small transfer-table differences between the embedded sRGB profiles.

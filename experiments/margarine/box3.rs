@@ -71,12 +71,13 @@ fn pnorm(map: &image::ImageF, p: f64) -> f64 {
 #[path = "resources.rs"]
 mod resources;
 mod strips;
+mod student;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<_> = std::env::args().skip(1).collect();
     if matches!(
         args.first().map(String::as_str),
-        Some("--bench" | "--memory")
+        Some("--bench" | "--bench-features" | "--memory")
     ) {
         return resources::run(&args);
     }

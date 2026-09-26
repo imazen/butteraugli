@@ -53,6 +53,19 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 black_box(&result);
                 (result.score, result.pnorm_3)
             }
+            "features372" => {
+                let a = student::rgba(&reference);
+                drop(reference);
+                let b = student::rgba(&distorted);
+                drop(distorted);
+                let features = student::extract(&student::extractor(), &a, &b, w, h, w * 16)?;
+                println!(
+                    "features372\t{w}\t{h}\t{} features; no trained score",
+                    features.len()
+                );
+                black_box(features);
+                return Ok(());
+            }
             "box3-strip" => {
                 let result = strips::compute(&reference, &distorted, w, h, 3 * w, 32, &params)?;
                 black_box(&result);
@@ -69,6 +82,15 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     let a = Img::new(rgb(&reference), w, h);
     let b = Img::new(rgb(&distorted), w, h);
     let teacher_params = params.clone();
+    let features = if args[0] == "--bench-features" {
+        Some((
+            student::extractor(),
+            student::rgba(&reference),
+            student::rgba(&distorted),
+        ))
+    } else {
+        None
+    };
     let result = zenbench::run(|suite| {
         suite.compare(format!("cold_pair_{w}x{h}"), |group| {
             group
@@ -86,6 +108,14 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                     .unwrap()
                 });
             });
+            if let Some((scorer, a, b)) = features {
+                group.bench("features372_only", move |bench| {
+                    bench.iter(|| {
+                        student::extract(&scorer, black_box(&a), black_box(&b), w, h, w * 16)
+                            .unwrap()
+                    });
+                });
+            }
             group.bench("box3", move |bench| {
                 bench.iter(|| {
                     diff::compute_butteraugli_linear_impl(
