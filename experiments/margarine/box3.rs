@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "sparse") {
+const CANDIDATE: &str = if cfg!(feature = "pooled") {
+    "pooled"
+} else if cfg!(feature = "sparse") {
     "sparse"
 } else if cfg!(feature = "compact4") {
     "compact4"
@@ -98,10 +100,28 @@ fn pnorm(map: &image::ImageF, p: f64) -> f64 {
 }
 
 mod learned;
+#[cfg(feature = "pooled")]
+mod paired_pool;
 #[path = "resources.rs"]
 mod resources;
 mod resources_rgb8;
 mod strips;
+
+fn candidate_encoded(
+    a: &ingress::EncodedRows<'_>,
+    b: &ingress::EncodedRows<'_>,
+    rows: usize,
+    params: &ButteraugliParams,
+) -> Result<diff::InternalResult, Box<dyn Error>> {
+    #[cfg(feature = "pooled")]
+    {
+        paired_pool::compute(a, b, rows, params)
+    }
+    #[cfg(not(feature = "pooled"))]
+    {
+        strips::compute_encoded(a, b, rows, params)
+    }
+}
 mod student;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -117,8 +137,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let b = ingress::decode(&args[3])?;
         let a = ingress::EncodedRows::from_image(&a)?;
         let b = ingress::EncodedRows::from_image(&b)?;
-        let result =
-            strips::compute_encoded(&a, &b, args[1].parse()?, &ButteraugliParams::default())?;
+        let result = candidate_encoded(&a, &b, args[1].parse()?, &ButteraugliParams::default())?;
         println!(
             "{CANDIDATE}-native-strip\t{}\t{}\t{}\t{}",
             a.width, a.height, result.score, result.pnorm_3
@@ -170,13 +189,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     if args.len() != 3 {
         return Err("usage: margarine-box3 REF DIST DIFFMAP.f32le".into());
     }
-    let (result, w, h) = if let Some(rows) = native_rows {
+    let (result, w, h) = if native_rows.is_some() || cfg!(feature = "pooled") {
         let a = ingress::decode(&args[0])?;
         let b = ingress::decode(&args[1])?;
         let a = ingress::EncodedRows::from_image(&a)?;
         let b = ingress::EncodedRows::from_image(&b)?;
         (
-            strips::compute_encoded(&a, &b, rows, &ButteraugliParams::default())?,
+            candidate_encoded(
+                &a,
+                &b,
+                native_rows.unwrap_or(a.height),
+                &ButteraugliParams::default(),
+            )?,
             a.width,
             a.height,
         )

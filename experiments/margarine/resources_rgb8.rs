@@ -46,7 +46,7 @@ pub(super) fn bench_direct(args: &[String]) -> Result<(), Box<dyn Error>> {
             });
             group.bench(format!("{candidate}_metric"), move |bench| {
                 bench.iter(|| {
-                    super::strips::compute_encoded(
+                    super::candidate_encoded(
                         &super::ingress::EncodedRows::from_image(black_box(&a)).unwrap(),
                         &super::ingress::EncodedRows::from_image(black_box(&b)).unwrap(),
                         rows,
@@ -74,7 +74,7 @@ pub(super) fn bench_direct(args: &[String]) -> Result<(), Box<dyn Error>> {
                         super::ingress::decode(&rp).unwrap(),
                         super::ingress::decode(&dp).unwrap(),
                     );
-                    super::strips::compute_encoded(
+                    super::candidate_encoded(
                         &super::ingress::EncodedRows::from_image(&a).unwrap(),
                         &super::ingress::EncodedRows::from_image(&b).unwrap(),
                         rows,

@@ -447,3 +447,11 @@ reconstructing the intervening map values. Four phase planes make the sampled
 stencil loads contiguous. Tests require exact agreement with the full bank
 at sampled nodes, including odd dimensions and poisoned input padding.
 This is a spatial approximation and requires its own human-quality panel.
+
+`--features pooled` selects one native reference/distorted coordinate jointly
+per 2×2 block, using the largest squared linear RGB difference. It scores
+the selected pairs with the compact Butteraugli pipeline and repeats the
+coarse map over the original geometry. Odd edge samples are included once
+during selection. Tests cover every position of a one-bit RGB16 change,
+checkerboard distortion, strided inputs and odd strip boundaries. This is
+an uncalibrated pair-dependent approximation, not an image resampler.

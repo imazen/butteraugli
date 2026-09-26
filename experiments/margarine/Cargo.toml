@@ -15,6 +15,7 @@ compact = ["multirate"]
 compact4 = ["compact"]
 reuse = ["compact"]
 sparse = ["reuse"]
+pooled = ["reuse"]
 
 [dependencies]
 butteraugli = { path = "../../butteraugli", features = ["internals"] }
