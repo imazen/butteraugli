@@ -770,3 +770,13 @@ The [metadata](benchmarks/margarine_planar_tiles_resources_2026-09-26.meta.json)
 records the full size curve and timing fits. Guard peak RSS is 1.55 GiB,
 minimum available RAM 56,682 MiB and peak load 1.46. Raw measurements remain
 in `planar-tiles-resources-2026-09-26/` on r5900xt and the Mac.
+
+The stratified candidate also completed all 866 CSIQ pairs with the audited
+BMP-capable frozen binary (`4c09ec0e`). Its [ordinary panel](benchmarks/margarine_stratified_csiq_2026-09-26.tsv)
+has largest SROCC loss 0.00689496 (max); all five pooled SROCC/KROCC losses
+stay below 0.01. Max Z-RMSE rises from 0.55586309 to 0.56558895. This replay
+explicitly requests ordinary panels only; supplied-sigma panels are not
+evaluated, and no zero-dispersion rows are discarded. Native maps remain on
+r5900xt in `stratified-csiq-2026-09-26/`; full ordinary panels and
+[evaluation provenance](benchmarks/margarine_stratified_csiq_2026-09-26.meta.json)
+are in `stratified-csiq-panels-2026-09-26/` on r5900xt and the Mac.

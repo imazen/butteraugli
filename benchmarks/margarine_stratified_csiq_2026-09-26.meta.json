@@ -1,0 +1,18 @@
+{
+  "build_commit": "314280a21a8d3b0c629cf49fdb95ef3d0021b319",
+  "candidate": "stratified",
+  "source": "/home/lilith/work/codec-artifacts/margarine/stratified-csiq-2026-09-26",
+  "source_build_commit": "4c09ec0e",
+  "cells_sha256": "e331ed316b663738d3fe0b1b55de15d86d85e4f0c58dd5b5b328d849f0af9ce1",
+  "evaluator_sha256": "cdda2d54c0004f85b6ab3e44929bde4103ef88bbe1e5669a0b79c0a9161c5681",
+  "n_pairs": 866,
+  "status": "complete",
+  "published_sigma": "not requested",
+  "panels": {
+    "panel-p6.tsv": "c81ddb2cae69a7b7dea144a6c7c7b17f1b08ebccc1f9dafc31eeaafe745fed62",
+    "panel-p3.tsv": "af25e0e17f0f5b970d943da38aa99db8048aa0195ddfe523dfb88abfbd5434c4",
+    "panel-p2.tsv": "c4485d45a239f648b29062110c3bc2f5e8225ed2feeb6f82cf837b3baa3e1f77",
+    "panel-p1.tsv": "d0a0a4f5bf0db8b5fddad2baa732a54a57412f76dd43813a7480707c9ac59f65",
+    "panel-max.tsv": "af42c88c321acb3f38499fd932559ebd2461c7dfe95dea58144cafd2222088ca"
+  }
+}
