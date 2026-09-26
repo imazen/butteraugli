@@ -961,3 +961,23 @@ checks published means/sample deviations against nonzero processed opinions,
 and explicitly excludes documented zero-bitrate lossless controls. Bootstrap
 results from these matrices are conditional on published normalization and
 outlier selection; they cannot establish cross-cohort or Release 2 uncertainty.
+
+The [LIVE Release 1 panels](benchmarks/margarine_live1_quality_2026-09-26.tsv)
+cover 344 compressed stimuli in four separately normalized codec/session
+cohorts. Matching candidate and teacher norms exposes failures: faithful max
+KROCC loses 0.01176313 in JPEG2000 session 1; stratified max SROCC/KROCC
+lose 0.02145588/0.04314940 there. These results supersede any inference of
+all-dataset rank qualification from the earlier four pooled corpus screens.
+The [matched-rate choices](benchmarks/margarine_live1_choices_2026-09-26.tsv)
+use every observed source-local bitrate budget and 2,000 observer-column
+bootstrap draws per cohort. Faithful max has one simultaneously supported
+harmful choice among 87 JPEG2000 session-1 budgets (1.1494%). Stratified max
+has one pointwise-supported harmful choice among 78 JPEG session-2 budgets
+(1.2821%), but none under that cohort's simultaneous bound. These are
+within-codec decisions, conditional on published processing; they do not
+establish cross-codec choice safety. [Provenance](benchmarks/margarine_live1_2026-09-26.meta.json)
+pins score ledgers, audited opinions and evaluator identities. Full maps
+remain on r5900xt in `{faithful,stratified}-live1-2026-09-26/`; compact panels,
+bootstrap arrays and choice records also exist on the Mac in
+`{faithful,stratified}-live1-participants-2026-09-26/`. Tower backup remains
+outstanding. Neither candidate currently meets the combined goal.
