@@ -117,3 +117,7 @@ margarine-build:
 
 margarine-cli-replay scored binary output commit:
     nice -n 19 python3 experiments/margarine/cli_replay.py "{{scored}}" "{{binary}}" "{{output}}" --candidate simd-row-malta --build-commit "{{commit}}"
+
+# Offline view of the committed point panels and measured resource curves.
+margarine-report output commit:
+    python3 experiments/margarine/report.py "{{output}}" --build-commit "{{commit}}"
