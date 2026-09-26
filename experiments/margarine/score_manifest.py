@@ -150,7 +150,7 @@ def main():
     parser.add_argument("--features-only", action="store_true",
                         help="refresh the separate training feature sidecar without recomputing teacher maps")
     parser.add_argument("--feature-source", help="required extractor dependency commit for training feature runs")
-    parser.add_argument("--candidate", default="box3", choices=["box3", "multirate", "compact", "compact4", "sparse", "pooled", "perceptual"], help="direct approximation identity")
+    parser.add_argument("--candidate", default="box3", choices=["box3", "multirate", "compact", "compact4", "sparse", "pooled", "perceptual", "physical"], help="direct approximation identity")
     parser.add_argument("--model", type=Path, help="frozen fit directory, with model.tsv and provenance")
     parser.add_argument("--teacher", type=Path, help="existing human-evaluation score directory")
     args = parser.parse_args()

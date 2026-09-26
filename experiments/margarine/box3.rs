@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "perceptual") {
+const CANDIDATE: &str = if cfg!(feature = "physical") {
+    "physical"
+} else if cfg!(feature = "perceptual") {
     "perceptual"
 } else if cfg!(feature = "pooled") {
     "pooled"
@@ -50,14 +52,24 @@ mod image;
     clippy::too_many_arguments
 )]
 mod shared_malta;
-#[cfg(not(any(feature = "compact4", feature = "sparse")))]
+#[cfg(not(any(feature = "compact4", feature = "sparse", feature = "physical")))]
 use shared_malta as malta;
-#[cfg(all(feature = "compact4", not(feature = "sparse")))]
+#[cfg(feature = "physical")]
+mod half_malta_bank;
+#[cfg(all(
+    feature = "compact4",
+    not(any(feature = "sparse", feature = "physical"))
+))]
 #[path = "directional_malta.rs"]
 mod malta;
-#[cfg(feature = "sparse")]
+#[cfg(all(feature = "sparse", not(feature = "physical")))]
 #[path = "sparse_malta.rs"]
 mod malta;
+#[cfg(feature = "physical")]
+#[path = "physical_malta.rs"]
+mod malta;
+#[cfg(any(feature = "sparse", feature = "physical"))]
+mod malta_bank;
 #[path = "../../butteraugli/src/mask.rs"]
 mod mask;
 #[path = "../../butteraugli/src/opsin.rs"]
@@ -66,9 +78,9 @@ mod opsin;
 #[path = "../../butteraugli/src/psycho.rs"]
 #[allow(clippy::excessive_precision, clippy::needless_range_loop)]
 mod shared_psycho;
-#[cfg(not(feature = "compact"))]
+#[cfg(any(not(feature = "compact"), feature = "physical"))]
 use shared_psycho as psycho;
-#[cfg(feature = "compact")]
+#[cfg(all(feature = "compact", not(feature = "physical")))]
 #[path = "compact_psycho.rs"]
 mod psycho;
 

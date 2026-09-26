@@ -19,6 +19,11 @@ fn geometry(sigma: f32) -> (usize, f32) {
 }
 
 pub(crate) fn support(sigma: f32) -> usize {
+    let sigma = if cfg!(feature = "physical") {
+        sigma * 0.5
+    } else {
+        sigma
+    };
     let (factor, reduced_sigma) = geometry(sigma);
     factor * ((2.25 * reduced_sigma).floor() as usize + 2)
 }
@@ -187,6 +192,11 @@ pub(crate) fn expand(
 }
 
 pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
+    let sigma = if cfg!(feature = "physical") {
+        sigma * 0.5
+    } else {
+        sigma
+    };
     let (factor, reduced_sigma) = geometry(sigma);
     if factor == 1 {
         return crate::exact_blur::gaussian_blur(input, sigma, pool);
