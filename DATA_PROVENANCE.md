@@ -528,3 +528,16 @@ teacher; tiny RSS is close (5,632,000 versus 5,693,440 bytes). The 8.44 MP
 run completed twenty rounds; zenbench reports nineteen noisy rounds while
 the JSON unreliable flag is false. Guard peak RSS 1.57 GiB, minimum available
 56,635 MiB, peak load 1.96. These observations do not qualify this candidate.
+
+The corrected scheduler route at `4a78e85f` is now verified against all
+300 multirate AIC4 results: [zero differing map hashes or scalar norms](benchmarks/margarine_bounded_aic4_parity_2026-09-26.json).
+Its 1 MP callgrind run counts 2,165,689,200 instructions, with the original
+Malta bank at 36.72% and buffer clearing at 3.85%. The subsequent sparse
+Malta experiment counts 2,046,835,258: sampled filtering falls to 14.25%,
+but reconstruction becomes the largest cost at 18.90%. Profiles and logs
+are retained on r5900xt in `bounded-profile-2026-09-26/` and
+`lattice-profile-2026-09-26/`; these are instruction diagnostics, not timing
+or RSS claims. The initial lattice 1 MP resource invocation persisted its
+measurements but then failed because a single size cannot fit overhead and
+slope. It is not a completed resource sweep. Use `margarine-direct-timing`
+for one-size diagnostics and the four-size sweep for resource qualification.

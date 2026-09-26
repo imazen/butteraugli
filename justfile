@@ -57,3 +57,14 @@ margarine-direct-eval pairs binaries output candidate teacher commit ingress="ai
 
 margarine-direct-resources crops binary output candidate commit rows="128":
     nice -n 19 python3 experiments/margarine/resource_sweep.py "{{crops}}" "{{binary}}" "{{output}}" --direct "{{candidate}}" --strip-rows "{{rows}}" --build-commit "{{commit}}"
+
+# A single-size diagnostic cannot fit fixed overhead or qualify the size curve.
+margarine-direct-timing binary reference distorted output rows="128":
+    nice -n 19 "{{binary}}" --bench-direct "{{rows}}" "{{reference}}" "{{distorted}}" "{{output}}"
+
+margarine-direct-profile binary reference distorted output commit rows="128":
+    mkdir "{{output}}"
+    printf '%s\n' "{{commit}}" > "{{output}}/build_commit.txt"
+    shasum -a 256 "{{binary}}" "{{reference}}" "{{distorted}}" > "{{output}}/inputs.sha256"
+    nice -n 19 valgrind --tool=callgrind --callgrind-out-file="{{output}}/callgrind.out" "{{binary}}" --memory-native "{{rows}}" "{{reference}}" "{{distorted}}" > "{{output}}/run.log" 2>&1
+    callgrind_annotate --inclusive=no --threshold=99 "{{output}}/callgrind.out" > "{{output}}/flat.txt"

@@ -169,7 +169,37 @@ fn reconstruct(_token: archmage::SimdToken, input: &ImageF, out: &mut ImageF) {
         let a = input.row(y / 2);
         let b = input.row((y / 2 + 1).min(input.height() - 1));
         let fy = (y % 2) as f32 * 0.5;
-        for (x, dst) in out.row_mut(y).iter_mut().enumerate() {
+        let pairs = (input.width() - 1).min(out.width() / 2);
+        let blocks = pairs / 8;
+        let row = out.row_mut(y);
+        for (block, dst) in row[..blocks * 16]
+            .as_chunks_mut::<16>()
+            .0
+            .iter_mut()
+            .enumerate()
+        {
+            let a: &[f32; 9] = a[block * 8..block * 8 + 9].try_into().unwrap();
+            let b: &[f32; 9] = b[block * 8..block * 8 + 9].try_into().unwrap();
+            for i in 0..8 {
+                let top = a[i] + 0.5 * (a[i + 1] - a[i]);
+                let bottom = b[i] + 0.5 * (b[i + 1] - b[i]);
+                dst[2 * i] = a[i] + fy * (b[i] - a[i]);
+                dst[2 * i + 1] = top + fy * (bottom - top);
+            }
+        }
+        for (pair, dst) in row[blocks * 16..pairs * 2]
+            .as_chunks_mut::<2>()
+            .0
+            .iter_mut()
+            .enumerate()
+        {
+            let i = blocks * 8 + pair;
+            let top = a[i] + 0.5 * (a[i + 1] - a[i]);
+            let bottom = b[i] + 0.5 * (b[i + 1] - b[i]);
+            dst[0] = a[i] + fy * (b[i] - a[i]);
+            dst[1] = top + fy * (bottom - top);
+        }
+        for (x, dst) in row.iter_mut().enumerate().skip(pairs * 2) {
             let x0 = x / 2;
             let x1 = (x0 + 1).min(input.width() - 1);
             let fx = (x % 2) as f32 * 0.5;
@@ -186,6 +216,36 @@ fn reconstruct(_token: archmage::SimdToken, input: &ImageF, out: &mut ImageF) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reconstruction_preserves_scalar_formula_at_every_phase_and_tail() {
+        for w in [1usize, 2, 3, 15, 16, 17, 31, 32, 33, 65, 128, 129] {
+            for h in [1usize, 2, 3, 17] {
+                let mut input = ImageF::new(w.div_ceil(2), h.div_ceil(2));
+                for y in 0..input.height() {
+                    for x in 0..input.width() {
+                        input.row_mut(y)[x] = ((x * 313 + y * 997) % 4093) as f32 * 0.017;
+                    }
+                }
+                let mut output = ImageF::new(w, h);
+                reconstruct(&input, &mut output);
+                for y in 0..h {
+                    for x in 0..w {
+                        let a = input.row(y / 2);
+                        let b = input.row((y / 2 + 1).min(input.height() - 1));
+                        let (x0, x1) = (x / 2, (x / 2 + 1).min(input.width() - 1));
+                        let (fx, fy) = ((x % 2) as f32 * 0.5, (y % 2) as f32 * 0.5);
+                        let top = a[x0] + fx * (a[x1] - a[x0]);
+                        let bottom = b[x0] + fx * (b[x1] - b[x0]);
+                        assert_eq!(
+                            output.row(y)[x].to_bits(),
+                            (top + fy * (bottom - top)).to_bits()
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn sampled_nodes_match_complete_bank_with_odd_sizes_and_padding() {

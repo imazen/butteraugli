@@ -1,0 +1,11 @@
+{
+  "baseline": "e7781180",
+  "candidate": "4a78e85f5a0be28bc5d7ccb017bf1f75d4df0347",
+  "pairs": 300,
+  "different_maps_and_or_norms": 0,
+  "differences": [],
+  "ledger_sha256": {
+    "multirate-aic4-2026-09-26": "4bdc2a1ed0f469354999b9700a69d89afd9c2a0e3034bab105dcc2d5c78d3984",
+    "bounded-route-aic4-2026-09-26": "38aa3de03e2cc3b544c550b0f2d1a701123974ffea620c3fb9cad7ae54b2e48e"
+  }
+}
