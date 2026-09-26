@@ -287,3 +287,21 @@ all five norms: the largest pooled SROCC loss is 0.00217025 (p1), with
 p3 loss 0.00190935. These are point estimates, not clustered non-inferiority
 or complete acceptance. CID22 and the direct native-strip resource sweep are
 separate runs; resource measurements use the fixed zenbench Linux gate.
+
+The first native-strip resource sweep (`34f01bdd`, 256-row interiors) fails
+the target. The [size table](benchmarks/margarine_multirate_resources_2026-09-26.tsv)
+records fresh-process decode-inclusive RSS and interleaved timings. At 1 MP,
+RSS is 55.79% of teacher and metric speedup is 0.982×. At native 8.44 MP,
+RSS reaches 24.86%, but speedup is only 0.811×; that timing hit the 120-second
+wall limit after 19 rounds and is flagged unreliable. Tiny/small RSS was
+slightly above teacher, so neither size passes its resource condition.
+The full logs are retained in `multirate-resources-2026-09-26/` on r5900xt
+and the Mac. No resource acceptance is claimed.
+
+The broader zenmetrics evaluation guide (`docs/rev2_lan_stage.pointer.md`,
+read 2026-09-26) identifies seven additional human-rated pixel corpora beyond
+CID22: KADID, TID, CSIQ, LIVE, AIC3, KonJND and PIPAL. Its documented LAN
+location is `s3://codec-corpus/eval372-rev2-2026-09-06/<corpus>/`. Those objects
+and labels have not yet been independently reverified for Margarine. The
+PIPAL guide records a 23,200-pair full set versus a 21,800-row historical
+subset with unexplained exclusions; do not silently reuse that subset.
