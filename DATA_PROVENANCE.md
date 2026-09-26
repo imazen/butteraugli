@@ -1016,3 +1016,17 @@ Malta bank but disables Gaussian grid reduction. It returns factor one with
 the original sigma for every blur. Existing exact-plane, seam, stride and
 row-reuse tests pass without relaxed expectations; this control isolates
 blur reduction from directional-filter sampling and has no speed claim.
+
+The [LIVE approximation controls](benchmarks/margarine_live1_ablation_quality_2026-09-26.tsv)
+separate blur reduction from Malta sampling. `bounded` (`e3e402a6`) retains
+reduced-grid Gaussian blurs but evaluates the complete native Malta outputs;
+`native-gaussian` (`961fac3c`) retains sampled Malta but uses native-grid
+Gaussian blurs. Both pass all twenty matching-norm SROCC/KROCC cohort
+screens at loss <=0.01. The former also has zero pointwise or simultaneously
+supported harmful choices in the [328 observed budgets per norm](benchmarks/margarine_live1_bounded_choices_2026-09-26.tsv).
+The previously measured combination failed, so this experiment implicates an
+interaction rather than either approximation alone. [Provenance](benchmarks/margarine_live1_ablation_2026-09-26.meta.json)
+pins both binaries and uses the same participant draws for the choice
+comparison. Full maps remain on r5900xt in `{bounded,native-gaussian}-live1-2026-09-26/`;
+compact records also exist on the Mac. These controls do not yet establish
+the combined quality/resource goal.
