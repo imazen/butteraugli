@@ -1,0 +1,54 @@
+[
+  {
+    "arm": "teacher",
+    "alpha_ns": 88274.10619454086,
+    "beta_ns_per_pixel": 53.795243525416396,
+    "observed_sizes": 4,
+    "residual_ns": [
+      91320.92060218379,
+      896542.9585682144,
+      -1119985.1811015606,
+      132121.3019310832
+    ],
+    "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+  },
+  {
+    "arm": "features228",
+    "alpha_ns": -222589.52873905748,
+    "beta_ns_per_pixel": 14.694047316075242,
+    "observed_sizes": 4,
+    "residual_ns": [
+      273436.00292027637,
+      249088.3549438615,
+      -594280.1630951874,
+      71755.80523104966
+    ],
+    "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+  },
+  {
+    "arm": "features228-strips",
+    "alpha_ns": -829668.8049877286,
+    "beta_ns_per_pixel": 32.330823211588275,
+    "observed_sizes": 4,
+    "residual_ns": [
+      799234.0276961001,
+      395692.95277085714,
+      -1360466.2082599886,
+      165539.2277930379
+    ],
+    "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+  },
+  {
+    "arm": "features168",
+    "alpha_ns": 41367.08652311936,
+    "beta_ns_per_pixel": 11.055313888605026,
+    "observed_sizes": 4,
+    "residual_ns": [
+      15002.122401417007,
+      58280.87358437292,
+      -83152.5692476891,
+      9869.573261901736
+    ],
+    "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+  }
+]

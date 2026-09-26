@@ -77,6 +77,13 @@ The 228-feature probe passes the quarter-process-memory comparison at 1024²
 and native size, but its mean speedups there are 3.72× and 3.63×. Neither the
 whole-image nor strip probe satisfies both resource targets across these sizes.
 
+The 168-feature ablation (`resource-edges-2026-09-26/`) reaches measured mean
+speedups of 4.79× at 1024² and 4.87× at native size, with total-process RSS
+fractions of 20.1% and 16.2%. At 64² and 256² its RSS fractions are 94.1% and
+55.6%. These are extractor costs only; no fitted predictor, model overhead,
+quality result or confidence-bound pass is implied. Tracked summaries and
+artifact hashes use the `margarine_resource_edges_mac_2026-09-26` prefix.
+
 Heaptrack captures and reports live at `heap-2026-09-26/` on Mac and r5900xt;
 [their pointer](benchmarks/margarine_heap_2026-09-26.pointer.json) carries hashes.
 Heaptrack RSS includes instrumentation overhead. Use fresh-process platform
