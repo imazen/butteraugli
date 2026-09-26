@@ -78,3 +78,6 @@ margarine-kadid-opinions raw dmos output commit:
 
 margarine-panels scored evaluator output candidate commit:
     nice -n 19 python3 experiments/margarine/evaluate_manifest.py "{{scored}}" "{{evaluator}}" "{{output}}" --candidate "{{candidate}}" --build-commit "{{commit}}"
+
+margarine-participant-pairs scored opinions evaluator output candidate commit draws="2000" seed="20260926":
+    nice -n 19 python3 experiments/margarine/participant_pairs.py "{{scored}}" "{{opinions}}" "{{evaluator}}" "{{output}}" --candidate "{{candidate}}" --build-commit "{{commit}}" --draws "{{draws}}" --seed "{{seed}}"

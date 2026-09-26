@@ -50,7 +50,7 @@ fn statistics(rows: &[&Row], candidate: bool) -> Option<[f64; 10]> {
 
 // SplitMix64, followed by rejection sampling so group counts need not be powers
 // of two. The seed is mandatory in the CLI and recorded with every result.
-fn choose(state: &mut u64, n: usize) -> usize {
+pub(super) fn choose(state: &mut u64, n: usize) -> usize {
     let n = n as u64;
     let threshold = n.wrapping_neg() % n;
     loop {
@@ -161,6 +161,7 @@ mod tests {
                     dataset: "d".into(),
                     source: s.to_string(),
                     codec: "c".into(),
+                    pair: format!("{s}-{q}"),
                     target: q as f64,
                     teacher: (s * 10 + q) as f64,
                     candidate: (s * 10 + q) as f64 + 1.0,

@@ -150,6 +150,21 @@ again. It verifies the ledger hash, pair count, identities and scoring arms,
 and records the separate evaluator hash and build commit. Panel replay accepts
 completed older runs too; their original files remain unchanged.
 
+`just margarine-participant-pairs SCORED OPINIONS EVALUATOR NEW_OUTPUT
+CANDIDATE COMMIT DRAWS SEED` joins the full KADID ledger to the reconciled
+sanitized opinions. It resamples workers with replacement, retaining each
+worker's observations across images and repeated judgments. This follows the
+[cluster-bootstrap approach](https://doi.org/10.1111/j.1467-9868.2007.00593.x);
+the image set stays fixed. It writes central 95% percentile intervals for each
+strict metric-order reversal, plus a simultaneous interval radius from the
+maximum centered pair error across every within-source pair. The latter
+comparison family is fixed before observing human losses. Both harmful and
+beneficial disagreements are retained. Native double-precision bootstrap means
+are persisted with image ordering, hashes, seed and evaluator provenance.
+These are approximate bootstrap intervals, not exact finite-sample coverage.
+KADID distortion levels do not provide encoded byte budgets, so these pairwise
+diagnostics cannot establish the matched-rate encoder-choice acceptance gate.
+
 Compare against this repository's FIR, multiresolution Butteraugli with the
 same decoded pixels, intensity target, thread budget, and runtime dispatch.
 Evaluate max and libjxl's mixed p/2p/4p pooling separately (p=1,2,3,6). Plain

@@ -5,6 +5,7 @@ use std::error::Error;
 use std::io::{BufWriter, Write};
 use zenstats::{LightPanel, ValAggregate, compute_panel, spearman};
 
+mod participants;
 mod uncertainty;
 
 const HEADER: &str = "dataset\tsource\tcodec\tpair\ttarget\tdirection\tteacher\tcandidate";
@@ -15,6 +16,7 @@ struct Row {
     dataset: String,
     source: String,
     codec: String,
+    pair: String,
     target: f64,        // normalized polarity only; larger = better
     teacher: f64,       // raw distance; smaller = better
     candidate: f64,     // raw distance; smaller = better
@@ -84,6 +86,7 @@ fn parse(input: &str) -> Result<Vec<Row>> {
             dataset: fields[0].into(),
             source: fields[1].into(),
             codec: fields[2].into(),
+            pair: fields[3].into(),
             target: sign * target,
             teacher,
             candidate,
@@ -230,6 +233,18 @@ fn orders(rows: &[&Row], epsilon: f64) -> Orders {
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--participant-pairs") {
+        if args.len() != 6 {
+            return Err("usage: margarine-eval --participant-pairs SCORED_DIR OPINIONS.tsv NEW_OUTPUT_DIR DRAWS SEED".into());
+        }
+        return participants::run(
+            &args[1],
+            &args[2],
+            &args[3],
+            args[4].parse()?,
+            args[5].parse()?,
+        );
+    }
     if args.first().is_some_and(|a| a == "--published-sigma") {
         if args.len() != 3 {
             return Err(
