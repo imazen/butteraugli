@@ -31,6 +31,33 @@ def digest(path):
     return h.hexdigest()
 
 
+def read_pairs(path, training=False):
+    with path.open() as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        expected = ([TRAINING_FIELDS] if training else
+                    [FIELDS, FIELDS + ["bpp", "setting"], FIELDS + ["sigma", "label_method"]])
+        if reader.fieldnames not in expected:
+            raise ValueError(f"expected manifest header: {expected}")
+        rows = list(reader)
+    if not rows or len({(r['dataset'], r['pair']) for r in rows}) != len(rows):
+        raise ValueError("empty or duplicated manifest")
+    return rows
+
+
+def verify_input_audit(audit_path, pairs_path, images, dimensions):
+    audit = json.loads(audit_path.read_text())
+    if audit["status"] != "images-audited" or digest(pairs_path) != audit["pairs_sha256"]:
+        raise ValueError("source audit is incomplete or pair manifest changed")
+    root = Path(audit["destination_root"])
+    expected = {str(root / name): meta for name, meta in audit["images"].items()}
+    if set(expected) != set(images):
+        raise ValueError("staged image set differs from source audit")
+    for path, meta in expected.items():
+        if (images[path] != meta["sha256"] or list(dimensions[path]) != meta["dimensions"]
+                or Path(path).stat().st_size != meta["bytes"]):
+            raise ValueError(f"staged image differs from source audit: {path}")
+
+
 def audit_png(path):
     """Require untagged RGB8: explicitly interpret both arms as common sRGB."""
     with path.open("rb") as f:
@@ -153,6 +180,7 @@ def main():
     parser.add_argument("--candidate", default="box3", choices=["box3", "multirate", "compact", "compact4", "sparse", "pooled", "perceptual", "physical", "refined", "refined1", "refined2", "stratified", "bounded"], help="direct approximation identity")
     parser.add_argument("--model", type=Path, help="frozen fit directory, with model.tsv and provenance")
     parser.add_argument("--teacher", type=Path, help="existing human-evaluation score directory")
+    parser.add_argument("--input-audit", type=Path, help="source-audited prepare_human manifest; verify staged hashes before scoring")
     args = parser.parse_args()
     if args.teacher_features and args.features_only:
         parser.error("choose teacher-features or features-only")
@@ -161,14 +189,7 @@ def main():
         parser.error("--model requires --teacher; cached teachers apply only to quality evaluation")
     if training and not args.feature_source:
         parser.error("training extraction requires --feature-source")
-    with args.manifest.open() as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        expected = [TRAINING_FIELDS] if training else [FIELDS, FIELDS + ["bpp", "setting"]]
-        if reader.fieldnames not in expected:
-            raise ValueError(f"expected manifest header: {expected}")
-        rows = list(reader)
-    if not rows or len({(r['dataset'], r['pair']) for r in rows}) != len(rows):
-        raise ValueError("empty or duplicated manifest")
+    rows = read_pairs(args.manifest, training)
     args.output.mkdir(parents=True, exist_ok=False)
     maps = args.output / "maps"
     maps.mkdir()
@@ -233,6 +254,9 @@ def main():
             raise ValueError(f"mismatched dimensions: {row['pair']}")
         if training and row["encoded"] not in provenance["images"]:
             provenance["images"][row["encoded"]] = digest(Path(row["encoded"]))
+    if args.input_audit:
+        verify_input_audit(args.input_audit, args.manifest, provenance["images"], dimensions)
+        provenance.update(input_audit=str(args.input_audit.resolve()), input_audit_sha256=digest(args.input_audit))
     manifest_path.write_text(json.dumps(provenance, indent=2) + "\n")
     report(f"Audited {len(dimensions)} images, scoring {len(rows)} pairs")
     from contextlib import ExitStack

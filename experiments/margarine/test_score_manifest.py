@@ -1,4 +1,5 @@
 import struct
+import json
 import tempfile
 import unittest
 import zlib
@@ -6,10 +7,33 @@ import zlib
 from cid22_manifest import audit
 from pathlib import Path
 
-from score_manifest import EDGE_COLUMNS, FIELDS, NORMS, aligned_teacher, audit_png, parse_features, parse_prediction, parse_score
+from score_manifest import EDGE_COLUMNS, FIELDS, NORMS, aligned_teacher, audit_png, digest, parse_features, parse_prediction, parse_score, read_pairs, verify_input_audit
 
 
 class ScoringContract(unittest.TestCase):
+    def test_raw_label_metadata_and_staged_audit_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "pixels"; image.write_bytes(b"original bytes")
+            pairs = root / "pairs.tsv"
+            pairs.write_text("\t".join(FIELDS + ["sigma", "label_method"]) + "\n" +
+                             "\t".join(["corpus", "s", "c", "p", "2", "quality", str(image), str(image), "0.2", "subjective"]) + "\n")
+            row = read_pairs(pairs)[0]
+            self.assertEqual((row["sigma"], row["label_method"]), ("0.2", "subjective"))
+            audit = root / "audit.json"
+            manifest = dict(status="images-audited", pairs_sha256=digest(pairs), destination_root=str(root),
+                            images={"pixels": dict(sha256=digest(image), bytes=image.stat().st_size, dimensions=[2,3])})
+            audit.write_text(json.dumps(manifest))
+            dims = {str(image): (2,3)}
+            verify_input_audit(audit, pairs, {str(image): digest(image)}, dims)
+            image.write_bytes(b"different bytes")
+            with self.assertRaisesRegex(ValueError, "staged image differs"):
+                verify_input_audit(audit, pairs, {str(image): digest(image)}, dims)
+            manifest["status"] = "labels-only"
+            audit.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "incomplete"):
+                verify_input_audit(audit, pairs, {str(image): digest(image)}, dims)
+
     def test_cached_teacher_requires_identical_labels_pixels_and_dimensions(self):
         row = dict(zip(FIELDS, ("aic", "source", "codec", "pair", "2", "quality", "ref", "dist")))
         frozen = dict(row, reference_sha256="a", distorted_sha256="b",

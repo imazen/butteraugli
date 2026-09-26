@@ -477,3 +477,11 @@ completed psycho planes across strips. Exact plane comparisons cover odd
 dimensions and three asymmetry settings. This is a storage/scheduling
 experiment; its speed, process RSS and real-corpus map equivalence require
 separate measurements. It does not use sampled region correction.
+
+The scorer accepts the raw-label adapter's `sigma` and `label_method` columns
+and preserves them in its ledger. `--input-audit PREPARED/_MANIFEST.json`
+requires the full source audit, identical pair-manifest bytes, and an exact
+match of staged image hashes, sizes and dimensions before scoring. This
+connects `prepare_human.py` to evaluation; label-only manifests cannot pass it.
+The current zenstats panel still uses corpus-level Z-RMSE, not the retained
+per-stimulus sigma values.
