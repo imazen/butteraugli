@@ -588,7 +588,10 @@ The selector supports RGB8/RGB16 and strided rows, with no input quantization.
 the ordinary score schema with a final `sigma` column in native label units.
 It reports per-sample OR and Z-RMSE through zenstats, after logistic rescaling,
 in separate columns from the original corpus-standardized panel. Missing sigma
-is explicit `unavailable`; nonpositive or nonfinite supplied values fail.
+is explicit `unavailable`; negative or nonfinite supplied values fail. Zero
+is valid dispersion data and makes the full supplied-sigma panel unavailable
+because sigma-normalized residuals would divide by zero. Ordinary panels keep
+every row, including zero-dispersion observations.
 The manifest scorer writes these additional files when raw labels supply sigma.
 These statistics use the published dispersion as declared by `label_method`;
 they do not reinterpret observer dispersion as a standard error or establish
