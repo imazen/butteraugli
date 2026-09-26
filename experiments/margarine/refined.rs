@@ -22,7 +22,7 @@ struct Region {
     h: usize,
 }
 
-fn select(map: &image::ImageF) -> Vec<Region> {
+fn select(map: &image::ImageF) -> Vec<(Region, f64)> {
     let mut tiles = Vec::new();
     for y in (0..map.height()).step_by(TILE) {
         for x in (0..map.width()).step_by(TILE) {
@@ -42,7 +42,33 @@ fn select(map: &image::ImageF) -> Vec<Region> {
         }
     }
     tiles.sort_by(|a, b| b.0.total_cmp(&a.0));
-    tiles.into_iter().take(PATCHES).map(|(_, r)| r).collect()
+    if cfg!(feature = "stratified") && tiles.len() > 1 {
+        // Keep the peak tile for localization, then represent the remaining
+        // image with the tile nearest its mean cubic error per pixel. Area
+        // weights stop the peak stratum dominating the global correction.
+        let pixels = tiles[1..].iter().map(|(_, r)| r.w * r.h).sum::<usize>() as f64;
+        let mean = tiles[1..].iter().map(|(energy, _)| energy).sum::<f64>() / pixels;
+        let (_, representative) = tiles[1..]
+            .iter()
+            .min_by(|(ae, a), (be, b)| {
+                (ae / (a.w * a.h) as f64 - mean)
+                    .abs()
+                    .total_cmp(&(be / (b.w * b.h) as f64 - mean).abs())
+            })
+            .unwrap();
+        return vec![
+            (tiles[0].1, 1.0),
+            (
+                *representative,
+                pixels / (representative.w * representative.h) as f64,
+            ),
+        ];
+    }
+    tiles
+        .into_iter()
+        .take(PATCHES)
+        .map(|(_, r)| (r, 1.0))
+        .collect()
 }
 
 fn exact_region(
@@ -98,12 +124,12 @@ pub(super) fn compute(
     let regions = select(&map);
     let mut patches = Vec::new();
     let (mut original, mut approximate) = (0.0f64, 0.0f64);
-    for region in regions {
+    for (region, weight) in regions {
         let exact = exact_region(a, b, region, params)?;
         for y in 0..region.h {
             for (x, &value) in exact[y * region.w..(y + 1) * region.w].iter().enumerate() {
-                original += f64::from(value).powi(3);
-                approximate += f64::from(map.row(region.y + y)[region.x + x]).powi(3);
+                original += weight * f64::from(value).powi(3);
+                approximate += weight * f64::from(map.row(region.y + y)[region.x + x]).powi(3);
             }
         }
         patches.push((region, exact));

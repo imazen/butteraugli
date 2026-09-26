@@ -21,6 +21,7 @@ physical = ["perceptual"]
 refined = ["pooled"]
 refined1 = ["refined"]
 refined2 = ["refined"]
+stratified = ["refined2"]
 
 [dependencies]
 butteraugli = { path = "../../butteraugli", features = ["internals"] }
