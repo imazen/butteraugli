@@ -51,6 +51,7 @@ jobs:
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features row-malta --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features wide-malta --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features simd-malta --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --no-default-features --features rayon,avx512,simd-malta,row-malta --bin margarine -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features simd-opsin --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features full-malta,coarse-gaussian --all-targets -- -D warnings
 
@@ -110,6 +111,7 @@ jobs:
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,wide-malta
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,row-malta
+          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --no-default-features --features rayon,avx512,simd-malta,row-malta --bin margarine
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-opsin,row-malta
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features full-malta,coarse-gaussian
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,coarse-gaussian

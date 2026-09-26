@@ -109,3 +109,11 @@ margarine-live1-inputs root output destination commit:
 
 margarine-audited-eval pairs audit binaries output candidate commit teacher="":
     if [ -n "{{teacher}}" ]; then set -- --teacher "{{teacher}}"; else set --; fi; nice -n 19 python3 experiments/margarine/score_manifest.py "{{pairs}}" "{{binaries}}" "{{output}}" --input-audit "{{audit}}" --candidate "{{candidate}}" --build-commit "{{commit}}" --ingress common-srgb "$@"
+
+# The named command uses the frozen primary max candidate and streamed geometry.
+margarine-build:
+    cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
+    nice -n 19 cargo build --release --manifest-path experiments/margarine/Cargo.toml --no-default-features --features rayon,avx512,simd-malta,row-malta --bin margarine -j 2
+
+margarine-cli-replay scored binary output commit:
+    nice -n 19 python3 experiments/margarine/cli_replay.py "{{scored}}" "{{binary}}" "{{output}}" --candidate simd-row-malta --build-commit "{{commit}}"

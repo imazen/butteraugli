@@ -560,7 +560,7 @@ pub(super) fn compute(
     compute_geometry(a, b, rows, columns, params)
 }
 
-fn compute_geometry(
+pub(super) fn compute_geometry(
     a: &ingress::EncodedRows<'_>,
     b: &ingress::EncodedRows<'_>,
     rows: usize,

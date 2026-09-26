@@ -5,6 +5,28 @@ no more than one quarter of Butteraugli's runtime and peak memory. No candidate
 has met those requirements yet. This directory is an unpublished experiment;
 it does not change Butteraugli's API or arithmetic.
 
+Build the named experimental command with `just margarine-build`, then run:
+
+```sh
+experiments/margarine/target/release/margarine reference.png distorted.png
+experiments/margarine/target/release/margarine --all-scores --diffmap new.f32le reference.png distorted.png
+```
+
+Its primary `score` is max pooling; lower means less distortion. JSON also
+includes the already-computed p3 value. `--all-scores` additionally computes
+p1/p2/p6. Diffmaps are native-size row-major little-endian f32; existing output
+files are rejected. Inputs use the declared encoded-sRGB convention and retain
+RGB/RGBA 8/16-bit samples; alpha must be opaque. This command fixes the evaluated
+128-row/512-column geometry and rejects other approximation configurations.
+The minimal build excludes zensim, zenstats and zenbench from its dependency
+graph. Those dependencies remain behind `research` for the existing lab tools.
+
+`margarine-cli-replay` compares every norm and native diffmap byte against a
+frozen corpus ledger, verifies input hashes, and persists both successful and
+failing outputs. The named command shares `kernel.rs` with the evaluation
+binary. It is unpublished and does not imply that the full qualification goal
+has passed; the corpus panels and complete resource curves remain authoritative.
+
 The memory acceptance gate is **total process peak, including decoding and
 caller-owned inputs**, as specified by the user on 2026-09-26. Heap profiles
 diagnose allocation costs; a metric-only heap reduction cannot pass this gate.
