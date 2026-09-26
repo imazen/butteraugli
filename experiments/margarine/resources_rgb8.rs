@@ -6,6 +6,65 @@ use image_io::{DynamicImage, ImageReader};
 use std::{error::Error, hint::black_box, path::Path, time::Duration};
 use zensim::{PixelFormat, StridedBytes, Zensim};
 
+/// Prepare twenty log-spaced reference sizes, capped at native size/4096.
+/// The caller records source lineage and hashes and registers the variant set.
+pub(super) fn render_dense(args: &[String]) -> Result<(), Box<dyn Error>> {
+    use std::io::Write;
+    if args.len() != 3 {
+        return Err("usage: --render-dense SOURCE NEW_DIRECTORY".into());
+    }
+    let image = match ImageReader::open(&args[1])?.decode()? {
+        DynamicImage::ImageRgb8(image) => image,
+        DynamicImage::ImageLuma8(image) => DynamicImage::ImageLuma8(image).into_rgb8(),
+        _ => {
+            return Err("dense SDR renderer accepts RGB8 or losslessly expanded gray8 only".into());
+        }
+    };
+    let (w, h) = image.dimensions();
+    let limit = w.max(h).min(4096);
+    if limit < 64 {
+        return Err("source is too small for twenty distinct log-spaced sizes".into());
+    }
+    let output = Path::new(&args[2]);
+    std::fs::create_dir(output)?;
+    let mut progress = std::fs::File::create(output.join("progress.log"))?;
+    let mut manifest = std::fs::File::create(output.join("renditions.tsv"))?;
+    writeln!(manifest, "width\theight\tpath\tkernel")?;
+    let mut seen = std::collections::BTreeSet::new();
+    for i in 0..20 {
+        let target = (32.0 * (f64::from(limit) / 32.0).powf(f64::from(i) / 19.0)).round() as u32;
+        let target = target.min(limit);
+        let (rw, rh) = if w >= h {
+            (
+                target,
+                (u64::from(h) * u64::from(target) / u64::from(w)).max(1) as u32,
+            )
+        } else {
+            (
+                (u64::from(w) * u64::from(target) / u64::from(h)).max(1) as u32,
+                target,
+            )
+        };
+        if rw > w || rh > h || !seen.insert((rw, rh)) {
+            return Err("invalid or duplicated rendition dimensions".into());
+        }
+        let path = output.join(format!("{rw}x{rh}.png"));
+        let resized =
+            image_io::imageops::resize(&image, rw, rh, image_io::imageops::FilterType::Lanczos3);
+        resized.save(&path)?;
+        writeln!(
+            manifest,
+            "{rw}\t{rh}\t{}\tlanczos3-encoded-srgb",
+            path.display()
+        )?;
+        manifest.flush()?;
+        writeln!(progress, "{}/20: persisted {rw}x{rh}", i + 1)?;
+        progress.flush()?;
+        println!("{}/20: persisted {rw}x{rh}", i + 1);
+    }
+    Ok(())
+}
+
 /// Exact center crops for resource probes; no resampling, synthesis or upscaling.
 pub(super) fn crops(args: &[String]) -> Result<(), Box<dyn Error>> {
     use std::io::Write;

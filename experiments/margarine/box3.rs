@@ -79,6 +79,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     if args.first().is_some_and(|arg| arg == "--resource-crops") {
         return resources_rgb8::crops(&args);
     }
+    if args.first().is_some_and(|arg| arg == "--render-dense") {
+        return resources_rgb8::render_dense(&args);
+    }
     if matches!(
         args.first().map(String::as_str),
         Some("--bench-rgb8" | "--memory-rgb8")

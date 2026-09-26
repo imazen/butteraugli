@@ -25,6 +25,16 @@ pinned reference builder pads sub-64-row tails while its distorted strip stays
 unpadded. A 40-row halo panicked on height 769; the 64-row halo covers that
 minimum as well as the blur support. Tests retain the tight feature agreement
 check on seams and odd bottom tails. This geometry is specific to this profile.
+
+`prepare_dense.py` prepares references from every full-image representative in
+the existing train-only K500 selection, resolving URLs through the canonical
+training catalog and verifying each rendered source against its pinned LFS
+object. The renderer makes twenty log-spaced sizes from 32 to
+`min(native_max,4096)` with Lanczos3 in encoded sRGB, without upscaling. It
+records a uniform q0–100 step-2 plan. This is pilot data preparation: class
+quotas, cross-corpus duplicate checks, validation representatives and canonical
+variant registration must be resolved before treating it as a training corpus.
+No model is fitted by this tool. Each completed source updates the manifest.
 `--resource-crops REF DIST NEW_DIRECTORY` persists exact 64²/256²/1024² center
 crops plus the native pair, recording crop coordinates. It does not resample
 or upscale. These crops diagnose resource scaling on actual distorted pixels;
