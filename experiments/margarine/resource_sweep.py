@@ -47,9 +47,11 @@ def main():
     parser.add_argument("--build-commit", required=True)
     parser.add_argument("--direct", choices=["box3", "multirate", "compact", "compact4", "sparse", "pooled", "perceptual", "physical", "refined", "refined1", "refined2", "stratified", "anchored-pool", "bounded", "lattice", "tiles", "planar", "planar-tiles", "stream-blur", "coarse-gaussian", "row-psycho", "reference-regions", "stable-peak"], help="native-strip direct candidate")
     parser.add_argument("--strip-rows", type=int, default=256)
+    parser.add_argument("--memory-trials", type=int, default=3, help="fresh processes per arm; report largest measured peak")
     parser.add_argument("--model", type=Path, help="measure fitted student scores instead of feature probes")
     args = parser.parse_args()
     if args.model and args.direct: parser.error("choose a fitted model or direct candidate")
+    if args.memory_trials < 1: parser.error("memory trials must be positive")
     if args.strip_rows <= 0: parser.error("strip rows must be positive")
     system = platform.system()
     time_flag = {"Darwin": "-l", "Linux": "-v"}[system]
@@ -68,11 +70,13 @@ def main():
         arms = ("teacher", args.direct)
         bench_names = {arm: f"{arm}_metric" for arm in arms}
     records = []
+    memory_records = []
     provenance = dict(build_commit=args.build_commit, binary=str(args.binary), binary_sha256=sha(args.binary),
         host=platform.node(), system=system, threads=int(environment["RAYON_NUM_THREADS"]),
         crop_manifest=str(args.crops.resolve()), crop_manifest_sha256=sha(args.crops), inputs={},
         timing="zenbench cold pairs, decode excluded, each metric sRGB conversion included",
-        memory="fresh process platform time, decode and inputs included",
+        memory="maximum across repeated fresh process platform time; decode and inputs included",
+        memory_trials=args.memory_trials,
         limitation="same-image crops, feature extraction only; no trained score or coverage claim")
     if args.model:
         provenance.update(model=str(args.model), model_sha256=sha(args.model),
@@ -91,17 +95,24 @@ def main():
             name = f"{w}x{h}"
             pair = [row["reference"], row["distorted"]]
             for path in pair: provenance["inputs"][path] = sha(Path(path))
-            peaks = {}
-            for arm in arms:
-                report(f"{name}: measuring process peak {arm}")
-                log = args.output / f"{name}-{arm}-memory.log"
-                command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-rgb8", arm, *pair]
-                if args.direct and arm == args.direct:
-                    command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-native", str(args.strip_rows), *pair]
-                if arm == "student":
-                    command = ["/usr/bin/time", time_flag, str(args.binary), "--student", str(args.model), *pair]
-                with log.open("x") as out: subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=True)
-                peaks[arm] = rss_bytes(log.read_text(), system)
+            peaks = {arm: 0 for arm in arms}
+            for trial in range(args.memory_trials):
+                for arm in (arms if trial % 2 == 0 else tuple(reversed(arms))):
+                    report(f"{name}: measuring process peak {arm}, trial {trial + 1}/{args.memory_trials}")
+                    suffix = "" if trial == 0 else f"-trial{trial + 1}"
+                    log = args.output / f"{name}-{arm}-memory{suffix}.log"
+                    command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-rgb8", arm, *pair]
+                    if args.direct and arm == args.direct:
+                        command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-native", str(args.strip_rows), *pair]
+                    if arm == "student":
+                        command = ["/usr/bin/time", time_flag, str(args.binary), "--student", str(args.model), *pair]
+                    with log.open("x") as out:
+                        subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=True)
+                    peak = rss_bytes(log.read_text(), system)
+                    peaks[arm] = max(peaks[arm], peak)
+                    memory_records.append(dict(width=w, height=h, arm=arm, trial=trial + 1,
+                                               peak_rss_bytes=peak, log=log.name))
+                    (args.output / "memory_trials.json").write_text(json.dumps(memory_records, indent=2)+"\n")
             report(f"{name}: running interleaved timing")
             result_path = args.output / f"{name}.json"
             with (args.output / f"{name}-bench.log").open("x") as out:
