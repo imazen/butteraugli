@@ -75,8 +75,17 @@ fn pnorm(map: &image::ImageF, p: f64) -> f64 {
         / 3.0
 }
 
+#[path = "resources.rs"]
+mod resources;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if matches!(
+        args.first().map(String::as_str),
+        Some("--bench" | "--memory")
+    ) {
+        return resources::run(&args);
+    }
     if args.len() != 3 {
         return Err("usage: margarine-box3 REF DIST DIFFMAP.f32le".into());
     }

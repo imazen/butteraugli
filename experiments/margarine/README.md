@@ -115,6 +115,17 @@ differ. Never relabel the coarse map as a full-resolution localization map.
 Files are created exclusively, so reruns cannot overwrite earlier results.
 These invocations are scoring tools, not a timing benchmark.
 
+For interleaved cold-pair kernel timing, use `margarine-box3 --bench REF DIST
+NEW_RESULTS.json` under the same nice/thread budget. It predecodes both inputs,
+runs zenbench for 20–40 rounds with runtime SIMD dispatch, and includes scoring,
+diffmap allocation and destruction in both arms. It does not time decoding,
+disk output or auxiliary p1/p2/p6 reductions, and does not measure warm-reference
+comparisons. Set `ZENBENCH_NO_SAVE=1` to disable its separate scratch autosave.
+For fresh-process peak RSS, use platform `time` around `margarine-box3 --memory
+teacher|box3 REF DIST`. This includes decode and input buffers, and computes
+max/p3 plus a retained native diffmap. The input pair must be nonidentical;
+identity shortcuts are not resource measurements of the scoring pipeline.
+
 `score_manifest.py PAIRS.tsv BIN_DIRECTORY NEW_OUTPUT --build-commit COMMIT`
 runs teacher and box3 serially on a manifest from `aic4_sample_manifest.py`.
 It requires untagged RGB8 PNGs and interprets both arms as sRGB, hashes inputs
