@@ -53,9 +53,11 @@ through the existing zenfleet/zenmetrics job system for distributed work.
 ## Dataset identities
 
 Inventory the available dataset versions before claiming “all datasets.” The
-initial required set is CID22 validation, AIC-3, the older AIC-4 sample, full
-AIC2026, KonJND, LIVE, CSIQ, KADID, TID, and non-photo/codec-ladder/corruption
+initial required set is CID22 validation, AIC-3, AIC4_sample, KonJND, LIVE,
+CSIQ, KADID, TID, and non-photo/codec-ladder/corruption
 instruments. Record which corpora were used to develop each candidate.
+The user clarified that `AIC4_sample` is the intended AIC human-quality set.
+Full AIC2026 is separate, additional coverage for teacher agreement.
 
 The current zenmetrics guide distinguishes AIC2026 curve-reconstructed human
 targets from metric-derived `JND_*` columns. It also distinguishes the submitted
@@ -143,9 +145,27 @@ Data availability checked over SSH on `lilith`:
   `/mnt/v/dataset/cid22/CID22_validation_set/`, with its CSV and pairs TSV.
 - The older sample is present at
   `/mnt/v/dataset/aic4_sample/JPEG_AIC-4_Sample_Dataset/`.
-- `/mnt/v/input/datasets/aic2026/` is absent there. The guide's
-  `/tmp/v_ro/input/datasets/aic2026/` path is absent on this Mac and `dev`.
-  Full AIC2026's current location is unresolved; no AIC2026 evaluation ran.
+- Full AIC2026 is on Tower at
+  `root@tower:/mnt/user/coefficient/input/datasets/aic2026/`, reachable from
+  the Mac through `ssh dev 'ssh root@192.168.50.170 ...'`. It is also mounted
+  on `lilith` at `/mnt/tower/input/datasets/aic2026/`. Direct Mac SSH to Tower
+  failed authentication; no credentials or server configuration were changed.
+  The full-image CSV and ZIP align on all 9,618 pairs, 70 sources, and 17
+  codec configurations. This checks archive membership, not pixel decoding
+  or whole-archive checksums. See the
+  [inventory](../../benchmarks/margarine_aic2026_inventory_2026-09-25.json).
+
+The strict `aic2026_manifest.py ROOT OUTPUT --build-commit COMMIT` tool preserves
+the metadata, attribution and README bytes (including hyperlinks), writes
+archive-member identities, and rejects duplicates or missing pair members.
+It does not substitute metric-derived JND values for human targets.
+The generated manifest/provenance copy lives on `lilith` at
+`/mnt/v/output/margarine/aic2026-audit-2026-09-25/`, mirrored to Tower at
+`/mnt/user/coefficient/output/margarine/aic2026-audit-2026-09-25/`.
+The pair TSV SHA-256 is
+`1fcb931ebf008f5434ac5d4527b39e5941d221e8f9911d3c9a429898087f0cbf`.
+Pair TSV, JSON manifest and copied metric CSV hashes match the Tower mirror.
+No AIC2026 perceptual evaluation has run.
 
 Still unimplemented: the actual fine-detail-preserving Margarine candidate,
 source-cluster uncertainty, quality bands, matched-budget encoder regret,

@@ -38,6 +38,7 @@ jobs:
 
       - name: Check Margarine research formatting and lints
         run: |
+          python3 -m unittest discover -s experiments/margarine -p 'test_*.py'
           cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --all-targets -- -D warnings
 
