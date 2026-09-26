@@ -33,3 +33,9 @@ margarine-fit-check python:
 # Fresh-process memory plus interleaved timing; caller sets RAYON_NUM_THREADS.
 margarine-resources crops output commit:
     nice -n 19 python3 experiments/margarine/resource_sweep.py "{{crops}}" experiments/margarine/target/release/margarine-box3 "{{output}}" --build-commit "{{commit}}"
+
+# Broad-blur approximation; shared arithmetic and strided seam contracts.
+margarine-multirate-check:
+    cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
+    nice -n 19 cargo test --manifest-path experiments/margarine/Cargo.toml --features multirate -j 2
+    nice -n 19 cargo clippy --manifest-path experiments/margarine/Cargo.toml --features multirate --all-targets -j 2 -- -D warnings

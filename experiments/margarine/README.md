@@ -390,3 +390,21 @@ instructions from 2,140,821,372 to 1,027,380,192, including decoding. This does
 not establish a wall-clock speedup or either resource gate. The
 [verification pointer](../../benchmarks/margarine_box3_optimization_2026-09-26.pointer.json)
 records the binaries, source hash and persisted comparison artifacts.
+
+## Multirate Butteraugli-lineage experiment
+
+Build with `--features multirate` to replace broad Gaussian calls with area
+reduction, a Gaussian on the reduced lattice, and bilinear reconstruction.
+Sigma ≥6 uses a four-pixel lattice, sigma ≥2 uses two pixels, and narrower
+filters retain the exact FIR. The residual Gaussian variance subtracts the
+analytical reduction/reconstruction variance; these are experimental choices,
+not fitted dataset constants. Opsin conversion, full-resolution residuals,
+Malta filters, masking and multiscale combination retain their shared source.
+Strip origins align to eight input rows to preserve both blur and half-scale
+lattices. Existing seam and fine-artifact tests pass without relaxed tolerances.
+Human-quality and resource acceptance remain unmeasured for this candidate.
+
+`score_manifest.py --candidate multirate --teacher FROZEN_EVALUATION`
+reuses verified teacher scores while persisting every candidate map and norm.
+The same pair, label, source and pixel-hash checks used for the scalar probe
+apply. This avoids recomputing teacher maps for each direct approximation.

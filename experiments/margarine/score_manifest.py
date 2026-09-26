@@ -150,14 +150,15 @@ def main():
     parser.add_argument("--features-only", action="store_true",
                         help="refresh the separate training feature sidecar without recomputing teacher maps")
     parser.add_argument("--feature-source", help="required extractor dependency commit for training feature runs")
+    parser.add_argument("--candidate", default="box3", choices=["box3", "multirate"], help="direct approximation identity")
     parser.add_argument("--model", type=Path, help="frozen fit directory, with model.tsv and provenance")
     parser.add_argument("--teacher", type=Path, help="existing human-evaluation score directory")
     args = parser.parse_args()
     if args.teacher_features and args.features_only:
         parser.error("choose teacher-features or features-only")
     training = args.teacher_features or args.features_only
-    if bool(args.model) != bool(args.teacher) or (args.model and training):
-        parser.error("--model and --teacher are paired and apply only to quality evaluation")
+    if (args.model and not args.teacher) or (args.teacher and training):
+        parser.error("--model requires --teacher; cached teachers apply only to quality evaluation")
     if training and not args.feature_source:
         parser.error("training extraction requires --feature-source")
     with args.manifest.open() as f:
@@ -178,7 +179,7 @@ def main():
         print(message, flush=True)
         print(message, file=progress, flush=True)
 
-    names = ["margarine-box3"] if args.features_only or args.model else ["margarine-score", "margarine-box3"]
+    names = ["margarine-box3"] if args.features_only or args.teacher else ["margarine-score", "margarine-box3"]
     if not training:
         names.append("margarine-eval")
     binaries = {name: args.binaries.resolve() / name for name in names}
@@ -188,7 +189,8 @@ def main():
                       n_pairs=len(rows), images={}, status="running")
     provenance["mode"] = ("features-only" if args.features_only else
                           "teacher-features" if training else "quality-evaluation")
-    candidate = "student" if args.model else "box3"
+    candidate = "student" if args.model else args.candidate
+    provenance["candidate"] = candidate
     if args.model:
         model = args.model / "model.tsv"
         fitted = json.loads((args.model / "_MANIFEST.json").read_text())
@@ -196,15 +198,17 @@ def main():
             raise ValueError("model hash mismatch")
         if provenance["binaries"]["margarine-box3"] != fitted["feature_binaries"]["margarine-box3"]:
             raise ValueError("runtime binary differs from fitted feature extractor")
+        provenance.update(model_sha256=digest(model),
+                          model_manifest_sha256=digest(args.model / "_MANIFEST.json"))
+    if args.teacher:
         teachers = frozen_teacher(args.teacher)
         if set(teachers) != {(r["dataset"], r["pair"]) for r in rows}:
             raise ValueError("teacher and evaluation pair sets differ")
-        provenance.update(candidate=candidate, model_sha256=digest(model),
-                          model_manifest_sha256=digest(args.model / "_MANIFEST.json"),
-                          teacher_directory=str(args.teacher.resolve()),
+        provenance.update(teacher_directory=str(args.teacher.resolve()),
                           teacher_manifest_sha256=digest(args.teacher / "_MANIFEST.json"),
                           teacher_cells_sha256=digest(args.teacher / "cells.jsonl"),
-                          spatial_output="teacher maps retained in original store; student predicts scalar norms only")
+                          spatial_output=("teacher maps retained in original store; student predicts scalar norms only"
+                                          if args.model else "teacher maps retained in original store; candidate maps persisted"))
     if training:
         provenance["feature_columns"] = EDGE_COLUMNS
         provenance["feature_profile"] = "168 edges; 256-row strips, 64-row halo"
@@ -242,10 +246,11 @@ def main():
             cell["distorted_sha256"] = provenance["images"][row["distorted"]]
             cell["encoded_sha256"] = provenance["images"][row.get("encoded", row["distorted"])]
             cell["scores"] = {}
-            if args.model:
+            if args.teacher:
                 cell["scores"]["teacher"] = aligned_teacher(
                     row, teachers[row["dataset"], row["pair"]], provenance["images"],
                     dimensions[row["reference"]])
+            if args.model:
                 run = subprocess.run([str(binaries["margarine-box3"]), "--student", str(model),
                                       row["reference"], row["distorted"]],
                                      capture_output=True, text=True, check=False)
@@ -254,7 +259,7 @@ def main():
                 _, scores = parse_prediction(run.stdout, "margarine-probe", dimensions[row["reference"]])
                 cell["scores"][candidate] = scores
             modes = (() if args.features_only or args.model else
-                     ("teacher",) if training else ("teacher", "box3"))
+                     ("teacher",) if training else (candidate,) if args.teacher else ("teacher", candidate))
             for mode in modes:
                 path = maps / f"pending-{i}-{mode}.f32le"
                 cmd = ([str(binaries["margarine-score"]), "teacher"] if mode == "teacher"

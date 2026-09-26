@@ -83,7 +83,14 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             }
             _ => return Err("memory arm must be teacher, box3 or box3-strip".into()),
         };
-        println!("{}\t{w}\t{h}\t{score}\t{p3}", args[1]);
+        println!(
+            "{}\t{w}\t{h}\t{score}\t{p3}",
+            if args[1] == "box3" {
+                CANDIDATE
+            } else {
+                &args[1]
+            }
+        );
         return Ok(());
     }
     if Path::new(&args[3]).exists() {
@@ -157,7 +164,7 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                     });
                 });
             }
-            group.bench("box3", move |bench| {
+            group.bench(CANDIDATE, move |bench| {
                 bench.iter(|| {
                     diff::compute_butteraugli_linear_impl(
                         black_box(&reference),

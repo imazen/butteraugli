@@ -58,11 +58,12 @@ pub(super) fn compute(
     for start in (0..h).step_by(rows) {
         let end = start.saturating_add(rows).min(h);
         // Align to the original 2x2 lattice, including odd final dimensions.
-        let y0 = start.saturating_sub(halo) / 2 * 2;
+        let lattice = if cfg!(feature = "multirate") { 8 } else { 2 };
+        let y0 = start.saturating_sub(halo) / lattice * lattice;
         let y1 = end
             .saturating_add(halo)
-            .div_ceil(2)
-            .saturating_mul(2)
+            .div_ceil(lattice)
+            .saturating_mul(lattice)
             .min(h);
         let a = packed_strip(reference, w, stride, y0, y1);
         let b = packed_strip(distorted, w, stride, y0, y1);

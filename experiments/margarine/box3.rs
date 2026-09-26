@@ -12,7 +12,17 @@
 extern crate image as image_io;
 
 #[path = "box_blur.rs"]
+#[cfg(not(feature = "multirate"))]
 mod blur;
+#[path = "multirate_blur.rs"]
+#[cfg(feature = "multirate")]
+mod blur;
+
+const CANDIDATE: &str = if cfg!(feature = "multirate") {
+    "multirate"
+} else {
+    "box3"
+};
 #[path = "../../butteraugli/src/consts.rs"]
 #[allow(clippy::inconsistent_digit_grouping, clippy::excessive_precision)]
 mod consts;
@@ -147,7 +157,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("mode\twidth\theight\tmax\tp1\tp2\tp3\tp6\tdiffmap");
     println!(
         "{}\t{w}\t{h}\t{:.17}\t{:.17}\t{:.17}\t{:.17}\t{:.17}\t{}",
-        if strip { "box3-strip" } else { "box3" },
+        if strip {
+            format!("{CANDIDATE}-strip")
+        } else {
+            CANDIDATE.to_owned()
+        },
         result.score,
         pnorm(map, 1.0),
         pnorm(map, 2.0),
