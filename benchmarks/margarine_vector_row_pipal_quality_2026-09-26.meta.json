@@ -1,0 +1,16 @@
+{
+  "build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+  "binaries": {
+    "margarine-score": "74ad0247327ea3da3a423441ba3ae908f1d7c5e6f654ec2322751db447735b9e",
+    "margarine-box3": "332b7ccf67424010fa3a91135248caeec4a5d013d0b153a60f17d744e289e619",
+    "margarine-eval": "ad9d82f07827482aa330bc206f67c3666b4afac5bfdafa985cfb75ae36e11b8a"
+  },
+  "ingress": "common-srgb",
+  "n_pairs": 23200,
+  "cells_sha256": "425dc7d81e3364b4b384d5e2aa9b3190d6e7a5621a9076d7d386d05b13a8346e",
+  "status": "complete",
+  "source_directory": "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-pipal-container-2026-09-26",
+  "original_directory": "lilith:/home/lilith/work/codec-artifacts/margarine/vector-expand-row-streamed-pipal-container-2026-09-26",
+  "manifest_sha256": "678c533003cb1a558289bf9f8e995fcc5d7ba0ecaeaee94ff1e56d23c1f7c6dd",
+  "limitations": "Ordinary human-quality panels; no participant uncertainty or matched byte budgets supplied"
+}

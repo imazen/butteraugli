@@ -1,12 +1,26 @@
 # Margarine data index
 
-The 168-feature fitted candidate fails the human-quality rank-loss limit on
-AIC4_sample and CID22. It has no resource qualification as a fitted score. The analytic box-filter
-control and feature-extraction cost probes remain separate experiments.
-Human-quality coverage measured so far is AIC4_sample and CID22 validation, not
-every required dataset. The total-process memory gate includes decoding and inputs.
-The user permits smaller-image resource ratios to taper, provided they remain
-below Butteraugli; larger-image targets remain 4× speed and quarter process RAM.
+Current candidate: the streamed Butteraugli-lineage `simd-row-malta` kernel,
+128 rows × 512 columns, primary max pooling. The named `margarine` command
+ships in the unpublished experiment; its minimal build excludes zensim.
+Frozen quality build `6bb371fb` is evaluated on 43,506 pairs across nine
+corpora/releases (121 AIC3 labels are estimated and reported separately).
+All thirteen corpus/cohort primary point panels meet the 0.01 rank-loss
+screen against Butteraugli max. [All-norm comparison](benchmarks/margarine_vector_row_primary_comparison_2026-09-26.tsv)
+
+Full acceptance is not established: CID22 lacks participant uncertainty for
+the harmful-choice gate; LIVE has one supported harmful choice in 328
+overall budgets (one in 87 in its affected session); several narrower
+quality bands lose more than 0.01 SROCC. Large RGB8 scoring/resource targets
+pass on the measured photo pairs, while decoding-inclusive speedups remain
+below 4×. The user permits smaller-image ratios to taper below Butteraugli's
+usage. Report individual measurements, not a uniform or unmeasured guarantee.
+
+Named build `b6c1e6b1` adds exact native-16 conversion caching and reproduces
+all 4,292 frozen CID22 maps and all five norms byte for byte. Its native-16
+resource curve is measured through 512²; larger native-16 inputs are unmeasured.
+Historical experiments below retain their own build identities and do not
+replace this candidate. [Current command](experiments/margarine/README.md)
 
 ## Evaluation inputs
 
@@ -1426,3 +1440,11 @@ measures 1.280794×/2.312701×/3.721443× scoring speedups at
 Both timing arms use the exact table where applicable, and fresh-process
 memory includes its construction. Baseline and new runs are separate
 measurements, not paired confidence bounds on the optimization itself.
+
+The complete [PIPAL panels](benchmarks/margarine_vector_row_pipal_quality_2026-09-26.tsv)
+cover all 23,200 pairs and 200 sources. Primary SROCC is 0.462825908 versus
+Butteraugli's 0.462835702 (delta −0.000009795); KROCC delta is −0.000127853.
+All five pooling variants and the full zenstats corpus panels are retained.
+Native maps and the score ledger live on WSL in
+`vector-expand-row-streamed-pipal-container-2026-09-26`; Tower mirroring is in
+progress. No participant-uncertainty choice result is inferred from these ranks.
