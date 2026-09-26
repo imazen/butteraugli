@@ -1510,3 +1510,13 @@ changes no weights or thresholds and uses no human labels during scoring.
 Its exact bank-selection, channel scheduling and strided-map tests pass on
 macOS; corpus and resource evaluation remain necessary. The selected named
 command remains `simd-row-malta`.
+
+The native-UHF control's [complete LIVE panels](benchmarks/margarine_native_uhf_live1_2026-09-26.tsv)
+cover 344 scored images across four sessions. Primary SROCC changes range
+from −0.002307333 to +0.002879743; KROCC changes range from −0.001069376
+to +0.005351173. Its [participant-supported choices](benchmarks/margarine_native_uhf_live1_choices_2026-09-26.tsv)
+have zero harmful selections in all 328 budgets, both pointwise and under
+the saved simultaneous interval procedure, in every session. These are
+within-corpus results after examining earlier candidates, not independent
+holdout certification. The numeric kernel's release tests also pass on Zen 3.
+Full native maps remain on r5900xt; local metadata and hashes identify them.
