@@ -173,8 +173,14 @@ dependencies = [
 name = "margarine-lab"
 version = "0.0.0"
 dependencies = [
+ "archmage",
  "butteraugli",
+ "enough",
  "image",
+ "imgref",
+ "magetypes",
+ "rayon",
+ "rgb",
  "zenstats",
 ]
 

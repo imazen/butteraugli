@@ -12,6 +12,15 @@ must retain a full-resolution fine-detail signal while reducing storage and
 work in the coarse frequency paths. Streaming intermediates and a smaller
 directional-filter bank are hypotheses to test, not measured wins.
 
+The `margarine-box3` control retains the full-resolution signal and all scoring
+stages, replacing general Gaussian filters with three running-sum box filters.
+Box widths are derived from the Gaussian variance, without dataset fitting.
+The 5×5 opsin preprocessing filter remains exact. Scoring modules are included
+from the production source so this experiment does not fork their arithmetic.
+Clipped, renormalized box boundaries differ from the teacher's Gaussian filter.
+The experiment retains the teacher's full-image intermediate storage; this is
+an accuracy/cost control, not an implementation of the memory target.
+
 ## Evaluation contract
 
 Compare against this repository's FIR, multiresolution Butteraugli with the
@@ -96,6 +105,8 @@ cargo run --release --manifest-path experiments/margarine/Cargo.toml \
   --bin margarine-score -- teacher ref.png dist.png teacher.f32le
 cargo run --release --manifest-path experiments/margarine/Cargo.toml \
   --bin margarine-score -- half-control ref.png dist.png half.f32le
+cargo run --release --manifest-path experiments/margarine/Cargo.toml \
+  --bin margarine-box3 -- ref.png dist.png box3.f32le
 ```
 
 Both write raw little-endian f32 diffmaps (dimensions are in stdout) and print
@@ -167,7 +178,7 @@ The pair TSV SHA-256 is
 Pair TSV, JSON manifest and copied metric CSV hashes match the Tower mirror.
 No AIC2026 perceptual evaluation has run.
 
-Still unimplemented: the actual fine-detail-preserving Margarine candidate,
+Still unimplemented: a Margarine candidate meeting both resource targets,
 source-cluster uncertainty, quality bands, matched-budget encoder regret,
 corruption/local-edit panels, and measured runtime/peak-memory gates. The
 contract above records the intended evaluation, not completed coverage.
