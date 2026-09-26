@@ -19,7 +19,11 @@ mod blur;
 mod blur;
 
 const CANDIDATE: &str = if cfg!(feature = "full-malta") {
-    "full-malta"
+    if cfg!(feature = "coarse-gaussian") {
+        "coarse-full-malta"
+    } else {
+        "full-malta"
+    }
 } else if cfg!(feature = "native-gaussian") {
     "native-gaussian"
 } else if cfg!(feature = "native-mask") {

@@ -48,6 +48,7 @@ jobs:
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features native-gaussian --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features native-mask --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features full-malta --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features full-malta,coarse-gaussian --all-targets -- -D warnings
 
       # The corpus-tests feature gates conformance tests that need the local
       # jpegli corpus (JPEGLI_TESTDATA). CI can't run them (no corpus), but

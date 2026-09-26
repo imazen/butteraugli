@@ -1075,3 +1075,11 @@ slices while retaining each pixel's arithmetic. Existing exact frequency-plane
 and map-seam tests pass. This targets the previously measured opsin stage
 (6.02% of the FIR-lanes instruction profile); a speed improvement requires
 new measurement and is not inferred from the source rewrite.
+
+`full-malta,coarse-gaussian` has the distinct identity `coarse-full-malta`.
+It restores every native Malta output while applying the existing analytical
+reduced-grid blur geometry to the fine band as well. This reuses the prior
+coarse-blur control without selecting new weights or using human labels in
+scoring. The unchanged stage/seam tests pass; corpus and resource measurements
+must determine whether restoring Malta resolves that control's earlier
+quality failure.
