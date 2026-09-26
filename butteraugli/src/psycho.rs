@@ -515,8 +515,10 @@ fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &Buffe
 
 /// Performs the full frequency decomposition on an XYB image.
 ///
-/// This is the main entry point for creating a PsychoImage from
-/// an XYB color-space image.
+/// Borrowed variant for tests and the unstable `internals` API. The production
+/// pipeline owns its XYB image and uses [`separate_frequencies_owned`] so those
+/// input buffers can be recycled immediately after LF/MF extraction.
+#[cfg(any(test, feature = "internals"))]
 pub fn separate_frequencies(xyb: &Image3F, pool: &BufferPool) -> PsychoImage {
     let width = xyb.width();
     let height = xyb.height();
@@ -532,6 +534,20 @@ pub fn separate_frequencies(xyb: &Image3F, pool: &BufferPool) -> PsychoImage {
     // Separate HF into HF and UHF
     separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf, pool);
 
+    ps
+}
+
+/// Frequency decomposition when the caller owns the XYB planes.
+///
+/// Only LF/MF extraction reads XYB. Return those three buffers to the pool
+/// immediately afterward so HF/UHF blurs can reuse them instead of keeping
+/// another three full-size planes live until the entire decomposition ends.
+pub(crate) fn separate_frequencies_owned(xyb: Image3F, pool: &BufferPool) -> PsychoImage {
+    let mut ps = PsychoImage::from_pool(xyb.width(), xyb.height(), pool);
+    separate_lf_and_mf(&xyb, &mut ps.lf, &mut ps.mf, pool);
+    xyb.recycle(pool);
+    separate_mf_and_hf(&mut ps.mf, &mut ps.hf, pool);
+    separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf, pool);
     ps
 }
 
@@ -587,5 +603,55 @@ mod tests {
         // Just verify it runs and produces valid data
         assert_eq!(ps.width(), 32);
         assert_eq!(ps.height(), 32);
+    }
+
+    #[test]
+    fn owned_frequency_separation_matches_borrowed_at_odd_width() {
+        // The larger case also exercises the parallel blur branches.
+        for (width, height) in [(33, 37), (769, 769)] {
+            let mut xyb = Image3F::new(width, height);
+            for c in 0..3 {
+                for y in 0..height {
+                    for x in 0..width {
+                        xyb.plane_mut(c).set(
+                            x,
+                            y,
+                            ((x * 7 + y * 13 + c * 17) % 251) as f32 / 251.0,
+                        );
+                    }
+                }
+            }
+            let borrowed = separate_frequencies(&xyb, &BufferPool::new());
+            let owned = separate_frequencies_owned(xyb, &BufferPool::new());
+            let borrowed_planes = [
+                &borrowed.uhf[0],
+                &borrowed.uhf[1],
+                &borrowed.hf[0],
+                &borrowed.hf[1],
+                borrowed.mf.plane(0),
+                borrowed.mf.plane(1),
+                borrowed.mf.plane(2),
+                borrowed.lf.plane(0),
+                borrowed.lf.plane(1),
+                borrowed.lf.plane(2),
+            ];
+            let owned_planes = [
+                &owned.uhf[0],
+                &owned.uhf[1],
+                &owned.hf[0],
+                &owned.hf[1],
+                owned.mf.plane(0),
+                owned.mf.plane(1),
+                owned.mf.plane(2),
+                owned.lf.plane(0),
+                owned.lf.plane(1),
+                owned.lf.plane(2),
+            ];
+            for (borrowed, owned) in borrowed_planes.into_iter().zip(owned_planes) {
+                for y in 0..height {
+                    assert_eq!(borrowed.row(y), owned.row(y));
+                }
+            }
+        }
     }
 }

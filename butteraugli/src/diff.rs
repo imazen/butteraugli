@@ -11,7 +11,7 @@ use crate::image::{BufferPool, Image3F, ImageF};
 use crate::malta::malta_diff_map;
 use crate::mask::compute_mask_from_hf_uhf;
 use crate::opsin::linear_rgb_to_xyb_butteraugli;
-use crate::psycho::{PsychoImage, separate_frequencies};
+use crate::psycho::{PsychoImage, separate_frequencies_owned};
 use crate::{ButteraugliError, ButteraugliParams};
 use enough::Stop;
 use imgref::ImgRef;
@@ -638,12 +638,12 @@ pub(crate) fn compute_diffmap_single_resolution_linear(
         || {
             let pool = BufferPool::new();
             let xyb = linear_rgb_to_xyb_image(rgb1, width, height, intensity_target, &pool);
-            separate_frequencies(&xyb, &pool)
+            separate_frequencies_owned(xyb, &pool)
         },
         || {
             let pool = BufferPool::new();
             let xyb = linear_rgb_to_xyb_image(rgb2, width, height, intensity_target, &pool);
-            separate_frequencies(&xyb, &pool)
+            separate_frequencies_owned(xyb, &pool)
         },
     );
 
