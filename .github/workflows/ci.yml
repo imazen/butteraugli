@@ -36,6 +36,11 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Check Margarine research formatting and lints
+        run: |
+          cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
+          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --all-targets -- -D warnings
+
       # The corpus-tests feature gates conformance tests that need the local
       # jpegli corpus (JPEGLI_TESTDATA). CI can't run them (no corpus), but
       # compiling them here keeps the gated code from rotting. Not running
@@ -75,6 +80,9 @@ jobs:
 
       - name: Run unit tests
         run: cargo test -p butteraugli --lib
+
+      - name: Run Margarine research tests
+        run: cargo test --locked --manifest-path experiments/margarine/Cargo.toml
 
       - name: Run conformance tests
         run: cargo test -p butteraugli --test conformance
@@ -186,6 +194,9 @@ jobs:
       # suite here so that arithmetic is exercised at 32-bit pointer width.
       - name: linear-planes parity (cross/QEMU)
         run: cross test -p butteraugli --features linear-planes --test linear_planes_parity --target ${{ matrix.target }}
+
+      - name: Margarine research tests (cross/QEMU)
+        run: cross test --locked --manifest-path experiments/margarine/Cargo.toml --target ${{ matrix.target }}
 
   # ==========================================================================
   # WASM compilation check (archmage supports wasm32-simd128)

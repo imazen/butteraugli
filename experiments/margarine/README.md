@@ -122,3 +122,32 @@ disagreements. The initial report contains corpus/codec/source panels and
 within-source cross-codec order counts. It explicitly marks the other contract
 panels and uncertainty as not measured. Progress goes to stderr: capture both
 stdout and stderr in a persistent log. No ship verdict is produced.
+
+## Initial verification, 2026-09-25
+
+At `aef8e034`, five lab tests, clippy with `-D warnings`, and a release build
+passed on the ARM Mac. The checkerboard test proves a failure of the
+half-resolution control: the reduced pair is identical and scores zero while
+the full-resolution Butteraugli score is positive. A 64×64 RGB8 photograph
+identity smoke run wrote 64×64 teacher and 32×32 control maps; all stored f32
+values and all five pooled scores were zero. This is I/O and correctness
+evidence only, not perceptual-accuracy or performance evidence.
+
+CI runs the lab on the existing native matrix (including Windows ARM and
+macOS Intel), plus i686/armv7 cross jobs. The workflow passed local actionlint;
+remote test results must be checked separately.
+
+Data availability checked over SSH on `lilith`:
+
+- CID22 validation is present at
+  `/mnt/v/dataset/cid22/CID22_validation_set/`, with its CSV and pairs TSV.
+- The older sample is present at
+  `/mnt/v/dataset/aic4_sample/JPEG_AIC-4_Sample_Dataset/`.
+- `/mnt/v/input/datasets/aic2026/` is absent there. The guide's
+  `/tmp/v_ro/input/datasets/aic2026/` path is absent on this Mac and `dev`.
+  Full AIC2026's current location is unresolved; no AIC2026 evaluation ran.
+
+Still unimplemented: the actual fine-detail-preserving Margarine candidate,
+source-cluster uncertainty, quality bands, matched-budget encoder regret,
+corruption/local-edit panels, and measured runtime/peak-memory gates. The
+contract above records the intended evaluation, not completed coverage.
