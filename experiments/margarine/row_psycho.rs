@@ -214,18 +214,25 @@ impl<'a, 'b> Graph<'a, 'b> {
                 let radius = kernel.len() / 2;
                 let start = y.saturating_sub(radius);
                 let end = (y + radius + 1).min(self.nodes[source].height);
-                let rows: Vec<_> = (start..end).map(|y| self.row(source, y)).collect();
+                let mut rows: [Option<Row>; 64] = std::array::from_fn(|_| None);
+                let count = end - start;
+                for (i, slot) in rows[..count].iter_mut().enumerate() {
+                    *slot = Some(self.row(source, start + i));
+                }
                 let raw = &kernel[start + radius - y..end + radius - y];
+                let mut border = [0.0; 64];
                 let weights = if raw.len() == kernel.len() {
-                    scaled.as_ref().clone()
+                    &scaled[..]
                 } else {
                     let inv = 1.0 / raw.iter().sum::<f32>();
-                    raw.iter().map(|v| v * inv).collect()
+                    for (out, value) in border.iter_mut().zip(raw) {
+                        *out = value * inv;
+                    }
+                    &border[..count]
                 };
-                // All channels share row weights; planar concatenation permits
-                // a single vectorized call without a channel-boundary stencil.
-                let views: Vec<_> = rows.iter().map(|r| r.as_slice()).collect();
-                stream_blur::vertical(&views, &weights, &mut out);
+                let views: [&[f32]; 64] =
+                    std::array::from_fn(|i| rows[i].as_deref().map_or(&[][..], |r| r.as_slice()));
+                stream_blur::vertical(&views[..count], weights, &mut out);
             }
             Op::Expand(source, factor) => {
                 let sw = self.nodes[source].width;
@@ -299,9 +306,30 @@ fn mirror_horizontal(
     out: &mut [f32],
 ) {
     let [a, b, c] = weights;
-    for (x, v) in out.iter_mut().enumerate() {
+    let begin = 2.min(input.len());
+    let end = input.len().saturating_sub(2).max(begin);
+    for x in (0..begin).chain(end..input.len()) {
         let at = |dx| input[mirror(x as isize + dx, input.len())];
-        *v = at(0) * a + (at(-1) + at(1)) * b + (at(-2) + at(2)) * c;
+        out[x] = at(0) * a + (at(-1) + at(1)) * b + (at(-2) + at(2)) * c;
+    }
+    let full = (end - begin) / 8 * 8;
+    for (block, dst) in out[begin..begin + full]
+        .as_chunks_mut::<8>()
+        .0
+        .iter_mut()
+        .enumerate()
+    {
+        let start = begin + block * 8 - 2;
+        let values: &[f32; 12] = input[start..start + 12].try_into().unwrap();
+        for i in 0..8 {
+            dst[i] = values[i + 2] * a
+                + (values[i + 1] + values[i + 3]) * b
+                + (values[i] + values[i + 4]) * c;
+        }
+    }
+    for x in begin + full..end {
+        out[x] =
+            input[x] * a + (input[x - 1] + input[x + 1]) * b + (input[x - 2] + input[x + 2]) * c;
     }
 }
 #[archmage::autoversion]
@@ -390,11 +418,10 @@ fn expand_row(
             &a[channel * sw..(channel + 1) * sw],
             &b[channel * sw..(channel + 1) * sw],
         );
-        for (x, v) in dst.iter_mut().enumerate() {
-            let (x0, x1, fx) = coordinate(x, factor, sw);
-            let top = a[x0] + fx * (a[x1] - a[x0]);
-            let bottom = b[x0] + fx * (b[x1] - b[x0]);
-            *v = top + fy * (bottom - top);
+        match factor {
+            2 => blur::expand_row::<2>(a, b, fy, dst),
+            4 => blur::expand_row::<4>(a, b, fy, dst),
+            _ => unreachable!(),
         }
     }
 }

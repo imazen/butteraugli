@@ -144,7 +144,7 @@ pub(crate) fn reduce(
 }
 
 #[inline(always)]
-fn expand_row<const F: usize>(a: &[f32], b: &[f32], fy: f32, out: &mut [f32]) {
+pub(crate) fn expand_row<const F: usize>(a: &[f32], b: &[f32], fy: f32, out: &mut [f32]) {
     let left = (F / 2).min(out.len());
     out[..left].fill(a[0] + fy * (b[0] - a[0]));
     let interior = ((a.len() - 1) * F).min(out.len() - left) / F * F;
