@@ -500,3 +500,15 @@ choices and human-label harm before accepting this architecture. All maps
 remain on r5900xt in `stratified-{aic4,cid22}-2026-09-26/`; the Mac holds
 compact metadata, panels, and choice diagnostics. These maps are not yet
 mirrored to Tower and must not be deleted.
+
+The fuller multirate candidate's [teacher-regret diagnostic](benchmarks/margarine_multirate_choices_cid22_2026-09-26.tsv)
+is substantially closer: at 1% relative teacher regret, max exceeds at 194
+of 4,285 budgets, p1/p2 at zero, p3 at 13 and p6 at 11. Human-label loss
+curves are recorded for [multirate](benchmarks/margarine_multirate_human_choices_cid22_2026-09-26.tsv)
+and [stratified correction](benchmarks/margarine_stratified_human_choices_cid22_2026-09-26.tsv).
+At a diagnostic loss greater than five native CID22 MCOS units, multirate
+exceeds at 40 max-norm budgets and 12 p3 budgets; stratified correction
+exceeds at 262 and 137. Five MCOS units is not an agreed materiality threshold.
+The observed mean human-label change can improve while harmful tails remain.
+These comparisons use raw point labels, not participant uncertainty; the
+CID22 CSV provides opinion counts but no per-stimulus standard errors.
