@@ -523,6 +523,14 @@ discarded from the output. Bitwise map comparisons cover both tile axes, odd
 RGB16 dimensions and strided rows. The tile geometry is experimental and has
 no resource qualification until measured across the complete size workload.
 
+The `planar` feature retains lattice scoring and converts encoded rows directly
+into its pooled linear RGB planes. Half-scale rows average native linear samples
+during conversion, preserving the existing arithmetic order and odd-edge counts.
+This removes the interleaved linear strip and subsampling intermediates. Bitwise
+tests cover RGB/RGBA 8/16-bit samples, input strides, output padding, odd dimensions
+and complete strip maps. Default, lattice and planar tests pass on the ARM Mac;
+corpus-wide equivalence and resource improvements require separate measurements.
+
 ### Reference-only region selection
 
 The `reference-regions` experiment uses the same paired-RGB proxy and original

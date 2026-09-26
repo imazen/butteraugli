@@ -75,7 +75,28 @@ pub(super) fn compute_encoded(
     {
         tiles::compute(reference, distorted, rows, params)
     }
-    #[cfg(not(feature = "tiles"))]
+    #[cfg(all(not(feature = "tiles"), feature = "planar"))]
+    {
+        compose_scaled(w, h, rows, params, |factor, y0, y1, pool| {
+            let prepare = |input: &ingress::EncodedRows<'_>| {
+                let mut linear = image::Image3F::from_pool_dirty(w.div_ceil(factor), y1 - y0, pool);
+                let (r, g, b) = linear.planes_mut();
+                for y in 0..y1 - y0 {
+                    input.linear_planar_row(
+                        (y0 + y) * factor,
+                        factor,
+                        [r.row_mut(y), g.row_mut(y), b.row_mut(y)],
+                    );
+                }
+                let xyb = opsin::opsin_dynamics_image(&linear, params.intensity_target(), pool);
+                linear.recycle(pool);
+                psycho::separate_frequencies_owned(xyb, pool)
+            };
+            let (a, b) = diff::maybe_join(|| prepare(reference), || prepare(distorted));
+            finish_scale(a, b, params, pool)
+        })
+    }
+    #[cfg(not(any(feature = "tiles", feature = "planar")))]
     compose(w, h, rows, params, |y0, y1| {
         (
             reference.linear_strip(y0, y1).into(),
@@ -100,6 +121,15 @@ pub(super) fn single_scale(
         psycho::separate_frequencies_owned(xyb, pool)
     };
     let (a, b) = diff::maybe_join(|| prepare(a), || prepare(b));
+    finish_scale(a, b, params, pool)
+}
+
+fn finish_scale(
+    a: psycho::PsychoImage,
+    b: psycho::PsychoImage,
+    params: &ButteraugliParams,
+    pool: &image::BufferPool,
+) -> image::ImageF {
     #[cfg(not(feature = "bounded"))]
     let mut ac =
         diff::compute_psycho_diff_malta(&a, &b, params.hf_asymmetry(), params.xmul(), pool);
@@ -120,6 +150,28 @@ fn compose<'a>(
     rows: usize,
     params: &ButteraugliParams,
     mut load: impl FnMut(usize, usize) -> (std::borrow::Cow<'a, [f32]>, std::borrow::Cow<'a, [f32]>),
+) -> Result<diff::InternalResult, Box<dyn Error>> {
+    compose_scaled(w, h, rows, params, |factor, y0, y1, pool| {
+        let (a, b) = load(y0 * factor, (y1 * factor).min(h));
+        if factor == 1 {
+            single_scale(&a, &b, w.div_ceil(factor), y1 - y0, params, pool)
+        } else {
+            let height = (y1 * factor).min(h) - y0 * factor;
+            let (a, aw, ah) = diff::subsample_linear_rgb_2x(&a, w, height);
+            let (b, bw, bh) = diff::subsample_linear_rgb_2x(&b, w, height);
+            debug_assert_eq!((aw, ah), (w.div_ceil(factor), y1 - y0));
+            debug_assert_eq!((bw, bh), (w.div_ceil(factor), y1 - y0));
+            single_scale(&a, &b, w.div_ceil(factor), y1 - y0, params, pool)
+        }
+    })
+}
+
+fn compose_scaled(
+    w: usize,
+    h: usize,
+    rows: usize,
+    params: &ButteraugliParams,
+    mut evaluate: impl FnMut(usize, usize, usize, &image::BufferPool) -> image::ImageF,
 ) -> Result<diff::InternalResult, Box<dyn Error>> {
     let mut scale = |factor: usize| {
         let sw = w.div_ceil(factor);
@@ -147,17 +199,7 @@ fn compose<'a>(
                 pool.clear();
                 previous_height = y1 - y0;
             }
-            let (a, b) = load(y0 * factor, (y1 * factor).min(h));
-            let map_strip = if factor == 1 {
-                single_scale(&a, &b, sw, y1 - y0, params, &pool)
-            } else {
-                let height = (y1 * factor).min(h) - y0 * factor;
-                let (a, aw, ah) = diff::subsample_linear_rgb_2x(&a, w, height);
-                let (b, bw, bh) = diff::subsample_linear_rgb_2x(&b, w, height);
-                debug_assert_eq!((aw, ah), (sw, y1 - y0));
-                debug_assert_eq!((bw, bh), (sw, y1 - y0));
-                single_scale(&a, &b, sw, y1 - y0, params, &pool)
-            };
+            let map_strip = evaluate(factor, y0, y1, &pool);
             for y in start..end {
                 map.row_mut(y).copy_from_slice(map_strip.row(y - y0));
             }

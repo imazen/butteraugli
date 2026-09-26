@@ -97,15 +97,12 @@ impl<'a> EncodedRows<'a> {
 
     pub(crate) fn linear_region(&self, x0: usize, x1: usize, start: usize, end: usize) -> Vec<f32> {
         assert!(start <= end && end <= self.height && x0 < x1 && x1 <= self.width);
-        static LUT: std::sync::LazyLock<[f32; 256]> = std::sync::LazyLock::new(|| {
-            std::array::from_fn(|v| butteraugli::opsin::srgb_to_linear(v as u8))
-        });
         let mut result = vec![0.0; (end - start) * (x1 - x0) * 3];
         for (y, out) in (start..end).zip(result.chunks_exact_mut((x1 - x0) * 3)) {
             let range = y * self.stride + x0 * self.channels..y * self.stride + x1 * self.channels;
             match self.samples {
                 Samples::U8(v) => {
-                    let lut = &*LUT;
+                    let lut = linear8_table();
                     for (p, dst) in v[range]
                         .chunks_exact(self.channels)
                         .zip(out.as_chunks_mut::<3>().0.iter_mut())
@@ -129,6 +126,118 @@ impl<'a> EncodedRows<'a> {
         }
         result
     }
+
+    /// Write one full-width planar row, optionally averaging a native 2x2 cell.
+    /// The destination slices are logical rows; caller-owned row padding is untouched.
+    #[cfg(feature = "planar")]
+    #[allow(dead_code, reason = "shared with the teacher binary")]
+    pub(crate) fn linear_planar_row(&self, y: usize, factor: usize, out: [&mut [f32]; 3]) {
+        assert!(matches!(factor, 1 | 2) && y < self.height);
+        assert!(
+            out.iter()
+                .all(|row| row.len() == self.width.div_ceil(factor))
+        );
+        let lut = linear8_table();
+        match (&self.samples, self.channels) {
+            (Samples::U8(v), 3) => planar_row::<_, 3>(
+                v,
+                self.width,
+                self.height,
+                self.stride,
+                y,
+                factor,
+                out,
+                |v| lut[v as usize],
+            ),
+            (Samples::U8(v), 4) => planar_row::<_, 4>(
+                v,
+                self.width,
+                self.height,
+                self.stride,
+                y,
+                factor,
+                out,
+                |v| lut[v as usize],
+            ),
+            (Samples::U16(v), 3) => planar_row::<_, 3>(
+                v,
+                self.width,
+                self.height,
+                self.stride,
+                y,
+                factor,
+                out,
+                linear16,
+            ),
+            (Samples::U16(v), 4) => planar_row::<_, 4>(
+                v,
+                self.width,
+                self.height,
+                self.stride,
+                y,
+                factor,
+                out,
+                linear16,
+            ),
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[cfg(feature = "planar")]
+#[allow(clippy::too_many_arguments)]
+fn planar_row<T: Copy, const C: usize>(
+    input: &[T],
+    width: usize,
+    height: usize,
+    stride: usize,
+    y: usize,
+    factor: usize,
+    out: [&mut [f32]; 3],
+    linear: impl Fn(T) -> f32,
+) {
+    let [r, g, b] = out;
+    let a = &input[y * stride..y * stride + width * C];
+    if factor == 1 {
+        for (((p, r), g), b) in a.as_chunks::<C>().0.iter().zip(r).zip(g).zip(b) {
+            *r = linear(p[0]);
+            *g = linear(p[1]);
+            *b = linear(p[2]);
+        }
+        return;
+    }
+    let second = (y + 1 < height).then(|| &input[(y + 1) * stride..(y + 1) * stride + width * C]);
+    for (x, ((r, g), b)) in r.iter_mut().zip(g).zip(b).enumerate() {
+        let x0 = x * 2 * C;
+        let p0: &[T; C] = a[x0..x0 + C].try_into().unwrap();
+        let p1 = (x * 2 + 1 < width).then(|| <&[T; C]>::try_from(&a[x0 + C..x0 + 2 * C]).unwrap());
+        let (p2, p3) = if let Some(second) = second {
+            let p2: &[T; C] = second[x0..x0 + C].try_into().unwrap();
+            let p3 = p1.map(|_| <&[T; C]>::try_from(&second[x0 + C..x0 + 2 * C]).unwrap());
+            (Some(p2), p3)
+        } else {
+            (None, None)
+        };
+        for (c, dst) in [r, g, b].into_iter().enumerate() {
+            // Match subsample_linear_rgb_2x's exact addition order and edge count.
+            *dst = match (p1, p2, p3) {
+                (Some(p1), Some(p2), Some(p3)) => {
+                    (linear(p0[c]) + linear(p1[c]) + linear(p2[c]) + linear(p3[c])) * 0.25
+                }
+                (Some(p1), None, None) => (linear(p0[c]) + linear(p1[c])) * 0.5,
+                (None, Some(p2), None) => (linear(p0[c]) + linear(p2[c])) * 0.5,
+                (None, None, None) => linear(p0[c]),
+                _ => unreachable!(),
+            };
+        }
+    }
+}
+
+fn linear8_table() -> &'static [f32; 256] {
+    static LUT: std::sync::LazyLock<[f32; 256]> = std::sync::LazyLock::new(|| {
+        std::array::from_fn(|v| butteraugli::opsin::srgb_to_linear(v as u8))
+    });
+    &LUT
 }
 
 pub(crate) fn decode(path: impl AsRef<Path>) -> Result<DynamicImage> {
@@ -157,6 +266,62 @@ pub(crate) fn load(path: impl AsRef<Path>) -> Result<(Vec<f32>, usize, usize)> {
 mod tests {
     use super::*;
     use image_io::{ImageBuffer, Rgb, Rgba};
+
+    #[cfg(feature = "planar")]
+    #[test]
+    fn planar_rows_preserve_native_samples_and_odd_cell_arithmetic() {
+        for (w, h) in [(1, 1), (2, 2), (3, 7), (31, 6), (32, 7), (33, 7)] {
+            for channels in [3, 4] {
+                let stride = w * channels + 5;
+                let mut a = vec![0u8; stride * h];
+                let mut b = vec![0u16; stride * h];
+                for y in 0..h {
+                    for x in 0..w {
+                        for c in 0..channels {
+                            let i = y * stride + x * channels + c;
+                            a[i] = if c == 3 { 255 } else { ((i * 79) % 256) as u8 };
+                            b[i] = if c == 3 {
+                                65535
+                            } else {
+                                ((i * 313) % 65536) as u16
+                            };
+                        }
+                    }
+                }
+                for samples in [Samples::U8(&a), Samples::U16(&b)] {
+                    let view = EncodedRows::new(samples, w, h, stride, channels).unwrap();
+                    let packed = view.linear_strip(0, h);
+                    for factor in [1, 2] {
+                        for y in (0..h).step_by(factor) {
+                            let width = w.div_ceil(factor);
+                            let mut planes =
+                                std::array::from_fn::<_, 3, _>(|_| vec![f32::NAN; width + 3]);
+                            let [r, g, b] = &mut planes;
+                            view.linear_planar_row(
+                                y,
+                                factor,
+                                [&mut r[..width], &mut g[..width], &mut b[..width]],
+                            );
+                            for (c, plane) in planes.iter().enumerate() {
+                                for (x, &actual) in plane[..width].iter().enumerate() {
+                                    let mut sum = 0.0;
+                                    let mut count = 0;
+                                    for yy in y..(y + factor).min(h) {
+                                        for xx in x * factor..((x + 1) * factor).min(w) {
+                                            sum += packed[(yy * w + xx) * 3 + c];
+                                            count += 1;
+                                        }
+                                    }
+                                    assert_eq!(actual.to_bits(), (sum / count as f32).to_bits());
+                                }
+                                assert!(plane[width..].iter().all(|v| v.is_nan()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn bmp_ingress_preserves_bgr_channels_row_padding_and_orientation() {

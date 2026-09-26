@@ -21,7 +21,11 @@ mod blur;
 const CANDIDATE: &str = if cfg!(feature = "tiles") {
     "tiles"
 } else if cfg!(feature = "lattice") {
-    "lattice"
+    if cfg!(feature = "planar") {
+        "planar"
+    } else {
+        "lattice"
+    }
 } else if cfg!(feature = "bounded") {
     "bounded"
 } else if cfg!(feature = "stable-peak") {
