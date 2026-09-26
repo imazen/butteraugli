@@ -836,3 +836,15 @@ overlap. Tests compare all ten frequency planes exactly against shared source
 for strided RGB16, odd/tiny dimensions and both scales, and verify each stage
 produces each row once across overlapping strips. This is a scheduling change;
 corpus parity and process resources still require measurement.
+
+The first row-frequency schedule (`30733a96`) [preserves all 300 AIC4 maps and
+five scalar norms exactly](benchmarks/margarine_row_psycho_aic4_parity_2026-09-26.json)
+against the fused rolling-Gaussian build. Its [initial resource sweep](benchmarks/margarine_row_psycho_resources_2026-09-26.tsv)
+fails: 1 MP/8.44 MP metric speedups are 1.583×/1.437× and process RSS fractions
+37.59%/18.39%; 64² is slower than teacher (0.918×). The initial caches retained
+the entire downstream delay. A subsequent execution change sizes caches by
+direct-consumer delay; the unchanged tests still verify exact planes and no
+row recomputation. That change needs its own measurements. Full initial maps
+remain on r5900xt in `row-psycho-aic4-2026-09-26/`; resources and compact replay
+metadata also exist on the Mac. Guard peak RSS was 1.56 GiB, minimum available
+RAM 56,641 MiB, peak load 1.60.
