@@ -82,5 +82,8 @@ margarine-panels scored evaluator output candidate commit:
 margarine-quality-bands evaluator scores output bands="5":
     nice -n 19 "{{evaluator}}" --quality-bands "{{scores}}" "{{output}}" "{{bands}}"
 
+margarine-aic-intervals scored labels output candidate commit:
+    nice -n 19 python3 experiments/margarine/interval_disagreements.py "{{scored}}" "{{labels}}" "{{output}}" --candidate "{{candidate}}" --build-commit "{{commit}}"
+
 margarine-participant-pairs scored opinions evaluator output candidate commit draws="2000" seed="20260926":
     nice -n 19 python3 experiments/margarine/participant_pairs.py "{{scored}}" "{{opinions}}" "{{evaluator}}" "{{output}}" --candidate "{{candidate}}" --build-commit "{{commit}}" --draws "{{draws}}" --seed "{{seed}}"

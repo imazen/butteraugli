@@ -165,6 +165,14 @@ These are approximate bootstrap intervals, not exact finite-sample coverage.
 KADID distortion levels do not provide encoded byte budgets, so these pairwise
 diagnostics cannot establish the matched-rate encoder-choice acceptance gate.
 
+`just margarine-aic-intervals SCORED ORIGINAL_LABELS NEW_OUTPUT CANDIDATE COMMIT`
+uses AIC4's pinned original `CI_min`/`CI_max` columns. It records strict
+within-source metric reversals, point-label loss, and non-overlap of the
+published marginal 95% JND intervals, with separate cross-codec counts. The
+source/target identities must match all 300 scored pairs. Marginal intervals
+do not supply a paired-difference interval or simultaneous coverage; the tool
+does not claim either. The image-only sample also lacks encoded byte budgets.
+
 Compare against this repository's FIR, multiresolution Butteraugli with the
 same decoded pixels, intensity target, thread budget, and runtime dispatch.
 Evaluate max and libjxl's mixed p/2p/4p pooling separately (p=1,2,3,6). Plain
