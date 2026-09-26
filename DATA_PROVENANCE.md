@@ -1492,3 +1492,21 @@ by the resource harness when compiled into the scalar scorer (`ec5f328a`),
 and the precision test uses fixed array chunks (`dd3315ca`). Default and
 selected-candidate all-target clippy pass locally without relaxing precision
 assertions. Remote CI must still establish the complete platform matrix.
+
+## Native UHF control and refreshed full-Malta baseline
+
+The [latest full-Malta resource sweep](benchmarks/margarine_latest_full_resources_2026-09-26.tsv)
+uses build `6c32889d`, streamed 128×512 geometry, Zen 3 AVX2 and two threads.
+It measures 3.583750×/3.962403× scoring speedup at 1 MP/8.44 MP, with
+process RSS fractions 0.187297/0.081313. Decode-inclusive speedups are
+3.034528×/3.404761×. Tiny and small measurements remain below teacher cost.
+This updated baseline still misses 4×; the earlier full-bank LIVE choice
+result does not establish resource acceptance. Full logs and binary/input
+hashes are retained by the adjacent metadata file.
+
+`native-uhf` (`14b1b68a`) is a separate, unselected control preserving both
+native UHF response banks while interpolating the four HF/MF banks. This
+changes no weights or thresholds and uses no human labels during scoring.
+Its exact bank-selection, channel scheduling and strided-map tests pass on
+macOS; corpus and resource evaluation remain necessary. The selected named
+command remains `simd-row-malta`.
