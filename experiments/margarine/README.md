@@ -49,8 +49,10 @@ training catalog and verifying each rendered source against its pinned LFS
 object. The renderer makes twenty log-spaced sizes from 32 to
 `min(native_max,4096)` with Lanczos3 in encoded sRGB, without upscaling. It
 records a uniform q0–100 step-2 plan. This is pilot data preparation: class
-quotas, cross-corpus duplicate checks, validation representatives and canonical
-variant registration must be resolved before treating it as a training corpus.
+quotas, cross-corpus duplicate checks and validation representatives must be
+resolved before treating it as a complete training corpus. Generated experiment
+artifacts stay under Margarine with source provenance; they do not belong in
+the canonical image store.
 No model is fitted by this tool. Each completed source updates the manifest.
 `--resource-crops REF DIST NEW_DIRECTORY` persists exact 64²/256²/1024² center
 crops plus the native pair, recording crop coordinates. It does not resample

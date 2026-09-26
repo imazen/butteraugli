@@ -49,7 +49,7 @@ def main():
             source_classes=dict(Counter(s["content_class"] for s in sources)), sources=sources,
             complete=complete,
             quality_grid=list(range(0,101,2)), sizes_per_source=20, references=files,
-            variant_registration="pending; no canonical registry changed")
+            variant_registration="project-local Margarine experiment; no canonical image-store change")
         (args.output/"_MANIFEST.json").write_text(json.dumps(manifest,indent=2)+"\n")
     checkpoint()
     with (args.output/"progress.log").open("x", buffering=1) as progress:

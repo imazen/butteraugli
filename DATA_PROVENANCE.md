@@ -148,8 +148,20 @@ cluster IDs/sizes and per-render hashes remain in `_MANIFEST.json`. Resampling i
 Lanczos3 in encoded sRGB, with no upscaling and a 4096-pixel maximum dimension.
 
 This is preparation only. No encodes, teacher targets or trained score exist for
-this pilot yet. Canonical variant registration, per-class coverage, cross-corpus
-near-duplicate checks and held-out representatives remain outstanding. The pilot
+this pilot yet. Per-class coverage, cross-corpus near-duplicate checks and
+held-out representatives remain outstanding. These are project-local Margarine
+artifacts; the image store remains unchanged. The original manifest’s pending
+registration note is superseded by this disposition. The pilot
 is not a complete training corpus. Its Tower mirror is
 `/mnt/user/coefficient/output/margarine/dense-references-pilot-2026-09-26/`;
 the manifest and three deterministic output hashes match the Mac copy.
+
+The three-cell `encode-smoke-2026-09-26/` on dev and Mac exercises Zenfleet
+encode-only jobs (JPEG q0/50/100, one 21×32 reference). The Mac
+`teacher-feature-smoke-2026-09-26/` persists all five teacher norms, native maps
+and the separate 168-feature sidecar. Every encoded/map hash and sidecar join
+was checked; this is pipeline validation, not fitting or quality evidence.
+[The pointer](benchmarks/margarine_teacher_feature_smoke_2026-09-26.pointer.json)
+pins the image digest, controller hash and extraction build. Local worker output
+is `ledger.chunk-*.parquet`; the controller's local `pairs` command still
+requires an endpoint argument (an unused localhost URL sufficed).
