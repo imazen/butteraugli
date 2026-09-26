@@ -758,3 +758,15 @@ not the original codec bitstreams, and this report has no matched byte budgets.
 The [source methodology](https://arxiv.org/html/2504.06301v1) describes resampling
 BTC/PTC responses and reconstructing scales. Original CSV and README links
 remain preserved in Mac `aic4-sample-audit-2026-09-25/`.
+
+Combining planar ingress with 256-column tiles (`0b13ee78`, 128-row interiors)
+reduces [process RSS](benchmarks/margarine_planar_tiles_resources_2026-09-26.tsv)
+to 14.80% at 1 MP and 7.58% at 8.44 MP. Metric speedups remain 1.902×
+and 1.825×, so it fails the speed target. At 64², RSS is 6,152,192 versus
+5,615,616 bytes for teacher, also failing the small-image memory condition.
+The original tile/strip bitwise tests pass; no new corpus map run qualifies
+this combination yet. Every size has at least twenty interleaved rounds.
+The [metadata](benchmarks/margarine_planar_tiles_resources_2026-09-26.meta.json)
+records the full size curve and timing fits. Guard peak RSS is 1.55 GiB,
+minimum available RAM 56,682 MiB and peak load 1.46. Raw measurements remain
+in `planar-tiles-resources-2026-09-26/` on r5900xt and the Mac.
