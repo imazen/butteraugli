@@ -3,7 +3,7 @@
 use crate::malta_bank::{V, Window};
 
 #[inline(always)]
-pub(crate) fn hf_bank<W: Window>(window: &W) -> V {
+pub(crate) fn hf_bank<W: Window<Vector = V>>(window: &W) -> V {
     let mut result = V::splat(0.0);
     // Original pattern 1: 9 taps.
     let sum = window.load(-2, 0) * V::splat(1.5)
@@ -185,7 +185,7 @@ pub(crate) fn hf_bank<W: Window>(window: &W) -> V {
 }
 
 #[inline(always)]
-pub(crate) fn lf_bank<W: Window>(window: &W) -> V {
+pub(crate) fn lf_bank<W: Window<Vector = V>>(window: &W) -> V {
     let mut result = V::splat(0.0);
     // Original pattern 1: 5 taps.
     let sum = window.load(-2, 0)

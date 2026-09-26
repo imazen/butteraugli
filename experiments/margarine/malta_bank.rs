@@ -29,8 +29,13 @@ impl<const N: usize> V<N> {
     }
 }
 
-pub(crate) trait Window<const N: usize = 8> {
-    fn load(&self, dx: isize, dy: isize) -> V<N>;
+pub(crate) trait Window {
+    type Vector: Copy
+        + std::ops::Add<Output = Self::Vector>
+        + std::ops::Mul<Output = Self::Vector>
+        + std::ops::AddAssign;
+    fn zero(&self) -> Self::Vector;
+    fn load(&self, dx: isize, dy: isize) -> Self::Vector;
 }
 macro_rules! w {
     ($window:expr,$dx:expr,$dy:expr) => {
@@ -39,8 +44,8 @@ macro_rules! w {
 }
 
 #[inline(always)]
-pub(crate) fn hf_bank<const N: usize, W: Window<N>>(window: &W) -> V<N> {
-    let mut retval = V([0.0; N]);
+pub(crate) fn hf_bank<W: Window>(window: &W) -> W::Vector {
+    let mut retval = window.zero();
 
     // Pattern 1: x grows, y constant (horizontal line)
     {
@@ -260,8 +265,8 @@ pub(crate) fn hf_bank<const N: usize, W: Window<N>>(window: &W) -> V<N> {
 }
 
 #[inline(always)]
-pub(crate) fn lf_bank<const N: usize, W: Window<N>>(window: &W) -> V<N> {
-    let mut retval = V([0.0; N]);
+pub(crate) fn lf_bank<W: Window>(window: &W) -> W::Vector {
+    let mut retval = window.zero();
 
     // Pattern 1: x grows, y constant (sparse horizontal)
     {

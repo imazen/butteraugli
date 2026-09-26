@@ -50,6 +50,7 @@ jobs:
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features full-malta --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features row-malta --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features wide-malta --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features simd-malta --all-targets -- -D warnings
           cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features full-malta,coarse-gaussian --all-targets -- -D warnings
 
       # The corpus-tests feature gates conformance tests that need the local
@@ -105,6 +106,9 @@ jobs:
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features full-malta
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features row-malta
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features wide-malta
+          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta
+          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,wide-malta
+          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,row-malta
           cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features full-malta,coarse-gaussian
 
       - name: Run conformance tests

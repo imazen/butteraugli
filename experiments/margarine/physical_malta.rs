@@ -26,6 +26,11 @@ struct Window<'a> {
     rows: [&'a [f32; 12]; 5],
 }
 impl BankWindow for Window<'_> {
+    type Vector = V;
+    #[inline(always)]
+    fn zero(&self) -> V {
+        V::splat(0.0)
+    }
     #[inline(always)]
     fn load(&self, dx: isize, dy: isize) -> V {
         let row = self.rows[(dy + 2) as usize];

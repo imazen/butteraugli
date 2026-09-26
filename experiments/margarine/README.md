@@ -639,3 +639,11 @@ Debug and release exact-response tests pass on aarch64 and x86_64; these checks
 do not establish a speed improvement. `margarine-direct-perf` records CPU cycles
 for the interleaved timing workload. Its percentages include teacher, candidate
 and decoding arms, and instrumented timings do not qualify resource targets.
+
+`simd-malta` uses explicit safe vector loads for the same native Malta stencils.
+The stencil interface accepts either array or SIMD vectors without changing
+addition order. Runtime dispatch generates x86, NEON, WASM and scalar variants
+from one kernel; `wide-malta` selects sixteen lanes, and `row-malta` independently
+selects alternate-row sampling. Exact border/tail tests pass in debug and release
+on ARM and x86 for the eight-lane full bank. No speed gain is implied by those
+tests; corpus replay and resource measurements remain separate.

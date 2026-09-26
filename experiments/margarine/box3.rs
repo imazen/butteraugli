@@ -18,7 +18,19 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "wide-malta") {
+const CANDIDATE: &str = if cfg!(feature = "simd-malta") {
+    if cfg!(feature = "wide-malta") {
+        if cfg!(feature = "row-malta") {
+            "simd-wide-row-malta"
+        } else {
+            "simd-wide-full-malta"
+        }
+    } else if cfg!(feature = "row-malta") {
+        "simd-row-malta"
+    } else {
+        "simd-full-malta"
+    }
+} else if cfg!(feature = "wide-malta") {
     if cfg!(feature = "row-malta") {
         "wide-row-malta"
     } else {

@@ -107,6 +107,11 @@ struct NativeWindow<'a> {
     rows: [&'a [f32; 23]; 9],
 }
 impl BankWindow for NativeWindow<'_> {
+    type Vector = V;
+    #[inline(always)]
+    fn zero(&self) -> V {
+        V::splat(0.0)
+    }
     #[inline(always)]
     fn load(&self, dx: isize, dy: isize) -> V {
         let row = self.rows[(dy + 4) as usize];
@@ -248,6 +253,11 @@ struct Window<'a> {
     rows: [[&'a [f32; 12]; 2]; 9],
 }
 impl BankWindow for Window<'_> {
+    type Vector = V;
+    #[inline(always)]
+    fn zero(&self) -> V {
+        V::splat(0.0)
+    }
     #[inline(always)]
     fn load(&self, dx: isize, dy: isize) -> V {
         let row = self.rows[(dy + 4) as usize][dx.rem_euclid(2) as usize];

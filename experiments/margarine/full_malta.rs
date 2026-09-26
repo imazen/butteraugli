@@ -8,7 +8,12 @@ const WINDOW: usize = LANES + 8;
 struct NativeWindow<'a> {
     rows: [&'a [f32; WINDOW]; 9],
 }
-impl Window<LANES> for NativeWindow<'_> {
+impl Window for NativeWindow<'_> {
+    type Vector = V<LANES>;
+    #[inline(always)]
+    fn zero(&self) -> Self::Vector {
+        V::splat(0.0)
+    }
     #[inline(always)]
     fn load(&self, dx: isize, dy: isize) -> V<LANES> {
         let start = (dx + 4) as usize;
@@ -40,6 +45,7 @@ pub(crate) fn malta_diff_map(
     out
 }
 
+#[cfg(not(feature = "simd-malta"))]
 #[archmage::autoversion]
 fn evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, step: usize, out: &mut ImageF) {
     let width = out.width();
@@ -59,6 +65,71 @@ fn evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, step: usize,
                 hf_bank(&window)
             };
             row[start..start + LANES].copy_from_slice(&values.0);
+        }
+    }
+}
+
+#[cfg(feature = "simd-malta")]
+fn evaluate(padded: &ImageF, lf: bool, step: usize, out: &mut ImageF) {
+    archmage::incant!(
+        evaluate_simd(padded, lf, step, out),
+        [v4, v3, neon, wasm128, scalar]
+    )
+}
+
+#[cfg(feature = "simd-malta")]
+struct LoadWindow<F, T> {
+    load: F,
+    zero: T,
+}
+#[cfg(feature = "simd-malta")]
+impl<F, T> Window for LoadWindow<F, T>
+where
+    F: Fn(isize, isize) -> T,
+    T: Copy + std::ops::Add<Output = T> + std::ops::Mul<Output = T> + std::ops::AddAssign,
+{
+    type Vector = T;
+    #[inline(always)]
+    fn zero(&self) -> T {
+        self.zero
+    }
+    #[inline(always)]
+    fn load(&self, dx: isize, dy: isize) -> T {
+        (self.load)(dx, dy)
+    }
+}
+
+#[cfg(feature = "simd-malta")]
+#[archmage::magetypes(v4, v3, neon, wasm128, scalar)]
+fn evaluate_simd(token: Token, padded: &ImageF, lf: bool, step: usize, out: &mut ImageF) {
+    #[cfg(not(feature = "wide-malta"))]
+    type Lanes = magetypes::simd::generic::f32x8<Token>;
+    #[cfg(feature = "wide-malta")]
+    type Lanes = magetypes::simd::generic::f32x16<Token>;
+    let width = out.width();
+    for y in (0..out.height()).step_by(step) {
+        let row = out.row_mut(y);
+        for block in 0..width.div_ceil(LANES) {
+            let start = (block * LANES).min(width - LANES);
+            let rows: [&[f32; WINDOW]; 9] = std::array::from_fn(|r| {
+                padded.row(y + r)[start..start + WINDOW].try_into().unwrap()
+            });
+            let window = LoadWindow {
+                zero: Lanes::splat(token, 0.0),
+                load: |dx: isize, dy: isize| {
+                    let x = (dx + 4) as usize;
+                    Lanes::load(
+                        token,
+                        rows[(dy + 4) as usize][x..x + LANES].try_into().unwrap(),
+                    )
+                },
+            };
+            let values = if lf {
+                lf_bank(&window)
+            } else {
+                hf_bank(&window)
+            };
+            values.store((&mut row[start..start + LANES]).try_into().unwrap());
         }
     }
 }
