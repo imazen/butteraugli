@@ -1,15 +1,17 @@
 {
-  "build_commit": "6a5dde7134d4db0e057c3d786b64586fe3b7ca58",
+  "build_commit": "ec53d7becb17692304b2f7cd31e61addcc0587ac",
   "inputs": {
     "margarine_vector_row_primary_comparison_2026-09-26.tsv": "0a1ba68015c1bd05cc60b03e5b7f49da48ae941f29cc8adfa988c00cc2890529",
     "margarine_latest_rgb8_resources_2026-09-26.tsv": "3b8c84f8364886845ba506b417a0323f4fc856cbf78f437e766d5e286e0ac0d2",
     "margarine_native16_lut_resources_2026-09-26.tsv": "411b897f6a42d79f98890809e8b088ac6c37e46ec6d4fd33c074fd8d5e7849c7",
     "margarine_vector_row_cid22_point_choices_2026-09-26.tsv": "a91f4fc351db439efe60188293e1b825231b1b6c2949d93f3b264442b4a0432f",
-    "margarine_vector_row_aic3_point_choices_2026-09-26.tsv": "c986e4a01d7d68b76925959b7bf9b0e0a2b610da7272516e2d20ab154be2ad8a"
+    "margarine_vector_row_aic3_point_choices_2026-09-26.tsv": "c986e4a01d7d68b76925959b7bf9b0e0a2b610da7272516e2d20ab154be2ad8a",
+    "margarine_vector_expand_row_aic4_bootstrap_2026-09-26.tsv": "9a00d9a97f11e5de42aed462a1f82d6393ccc36f2834b722f72cd98ace89b653",
+    "margarine_vector_row_cid22_bootstrap_2026-09-26.tsv": "dc3efd684e4ad84e979f5fbb9900f95d74d72ce1741a40b0168117df7470c653"
   },
-  "report_sha256": "4ba2dfdf02112e24d841cabbf2a56d4d6b31ee279a336d1b56af1ce0800a85f7",
+  "report_sha256": "b610f72d32becc0e5079b4d898d3612cce6e914a7745be1d0a5654a602d9bf4b",
   "qualification": "incomplete; corpus point screens are not universal or uncertainty-based choice guarantees",
-  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/qualification-report-2026-09-26",
+  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/qualification-report-final-2026-09-26",
   "served_url": "http://192.168.50.159:3300/margarine/qualification-2026-09-26/index.html",
   "served_bytes_verified": true
 }
