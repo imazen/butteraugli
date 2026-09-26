@@ -1,0 +1,15 @@
+{
+  "build_commit": "d9bc297b75607fbb539ac47f1fae34488ac7a3d6",
+  "scope": "explicit alternative baseline diagnostic, not revised acceptance",
+  "quality": "differences between previously evaluated ordinary pooled panels; positive rank deltas favor candidate; lower OR and Z-RMSE favor candidate",
+  "inputs": {
+    "benchmarks/margarine_stratified_aic4_2026-09-26.tsv": "54c350892329820f25ce980ef43a606bb2ce7817774dd91eeab8930e8281d64d",
+    "benchmarks/margarine_stratified_cid22_2026-09-26.tsv": "b484f798f527af7412ab660f27004138347145e22e9b2212780488a14d7d7b3d",
+    "benchmarks/margarine_stratified_csiq_2026-09-26.tsv": "25b7b9ee26b98e1068b10b8689f5dc56bde0bfc9ceb130bd835ba67205463836",
+    "benchmarks/margarine_stratified_kadid_2026-09-26.tsv": "0115badcdac3179331beb2c184206da0a5c6895253db574ca31943bd6aa4a459",
+    "benchmarks/margarine_live1_quality_2026-09-26.tsv": "b38a7400c17d8367a571e657138db6952f63c175ec167ae0c5face2b868a826a",
+    "/Users/lilith/work/codec-artifacts/margarine/faithful-live1-fixed-max-choices-2026-09-26/participant-summary.tsv": "fd833dada98bc39739e264862bdebd835d2c21e1fb982f9084e768405f92ca1e",
+    "/Users/lilith/work/codec-artifacts/margarine/stratified-live1-fixed-max-choices-2026-09-26/participant-summary.tsv": "37dfa2b6888b96c39070d5e317cdfe90e3d8c8c3621d603a1dd67a0518d83549"
+  },
+  "choices": "LIVE per-cohort participant bootstrap conditional on published normalization/outlier selection; within-codec observed budgets only"
+}

@@ -990,3 +990,14 @@ selection test verifies that an isolated peak wins over a higher-energy tile
 and that area weights still cover the image. Existing finite-halo and ingress
 tests remain unchanged. Quality and resource qualification require separate
 measurements; no improvement is inferred from this selection rule.
+
+The [fixed-teacher-max pooling diagnostic](benchmarks/margarine_fixed_max_diagnostics_2026-09-26.tsv)
+compares each stratified norm against Butteraugli's default max, without
+changing the acceptance rule. Stratified p2 has no participant-supported
+harmful LIVE choices in the [observed budgets](benchmarks/margarine_fixed_max_live1_choices_2026-09-26.tsv),
+but loses pooled SROCC 0.073367 on KADID and 0.029822 on CSIQ against that
+baseline. Switching the primary scalar therefore does not solve the combined
+quality problem. All five norms and all ordinary panel differences remain
+reported. [Input hashes and scope](benchmarks/margarine_fixed_max_diagnostics_2026-09-26.meta.json)
+preserve the alternative comparison explicitly; these results are not
+replacement matching-norm acceptance measurements.
