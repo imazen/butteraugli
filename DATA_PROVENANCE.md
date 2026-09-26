@@ -901,3 +901,12 @@ fresh-process measurements. Full maps remain on r5900xt in
 `phase-rows-aic4-2026-09-26/`; compact replay and resource records also exist
 on the Mac. Guard peak RSS was 1.58 GiB, minimum available RAM 56,596 MiB,
 peak load 1.40.
+
+After the approved zero-dispersion correction (`0e9ec80a`), [replayed panels](benchmarks/margarine_zero_sigma_panels_2026-09-26.tsv)
+retain all 10,125 KADID and 866 CSIQ pairs for lattice and stratified across
+all five norms. Ordinary SROCC, PLCC, KROCC, OR, PWRC, Z-RMSE and composites
+are measured. Every whole-corpus supplied-sigma panel explicitly reports
+unavailable, with full sigma counts; no epsilon or row removal substitutes
+for the two KADID and twenty-two CSIQ zero dispersions. [Provenance and hashes](benchmarks/margarine_zero_sigma_panels_2026-09-26.meta.json)
+pin the unchanged score ledgers and new evaluator. Full replay outputs are
+in Mac `{lattice,stratified}-{kadid,csiq}-zero-sigma-panels-2026-09-26/`.
