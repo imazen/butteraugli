@@ -33,6 +33,7 @@ refined1 = ["refined"]
 refined2 = ["refined"]
 stratified = ["refined2"]
 anchored-pool = ["stratified"]
+peak-stratified = ["stratified"]
 reference-regions = ["refined2"]
 stable-peak = ["reference-regions"]
 

@@ -981,3 +981,12 @@ remain on r5900xt in `{faithful,stratified}-live1-2026-09-26/`; compact panels,
 bootstrap arrays and choice records also exist on the Mac in
 `{faithful,stratified}-live1-participants-2026-09-26/`. Tower backup remains
 outstanding. Neither candidate currently meets the combined goal.
+
+The `peak-stratified` experiment isolates correction-region selection: its
+first exact tile contains the largest proxy-map value, while its second tile
+still represents the remaining image's mean cubic error. The previous
+stratified selector ranked the first tile by total cubic energy. A focused
+selection test verifies that an isolated peak wins over a higher-energy tile
+and that area weights still cover the image. Existing finite-halo and ingress
+tests remain unchanged. Quality and resource qualification require separate
+measurements; no improvement is inferred from this selection rule.

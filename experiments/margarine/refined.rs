@@ -46,6 +46,22 @@ fn select(map: &image::ImageF) -> Vec<(Region, f64)> {
         }
     }
     tiles.sort_by(|a, b| b.0.total_cmp(&a.0));
+    #[cfg(feature = "peak-stratified")]
+    if let Some(index) = tiles
+        .iter()
+        .enumerate()
+        .max_by(|(_, (_, a)), (_, (_, b))| {
+            let peak = |r: &Region| {
+                (r.y..r.y + r.h)
+                    .flat_map(|y| map.row(y)[r.x..r.x + r.w].iter().copied())
+                    .fold(0.0f32, f32::max)
+            };
+            peak(a).total_cmp(&peak(b))
+        })
+        .map(|(i, _)| i)
+    {
+        tiles.swap(0, index);
+    }
     if cfg!(feature = "stratified") && tiles.len() > 1 {
         // Keep the peak tile for localization, then represent the remaining
         // image with the tile nearest its mean cubic error per pixel. Area
@@ -207,6 +223,40 @@ pub(super) fn compute(
 mod tests {
     use super::*;
     use ingress::{EncodedRows, Samples};
+    #[cfg(feature = "peak-stratified")]
+    #[test]
+    fn isolated_peak_is_corrected_even_when_another_tile_has_more_energy() {
+        let mut map = image::ImageF::new(3 * TILE, TILE);
+        for y in 0..TILE {
+            map.row_mut(y)[..TILE].fill(2.0);
+            map.row_mut(y)[TILE..2 * TILE].fill(1.0);
+            map.row_mut(y)[2 * TILE..].fill(0.5);
+        }
+        map.row_mut(7)[2 * TILE + 3] = 9.0;
+        let selected = select(&map);
+        assert_eq!(selected.len(), 2);
+        assert_eq!(
+            selected[0],
+            (
+                Region {
+                    x: 2 * TILE,
+                    y: 0,
+                    w: TILE,
+                    h: TILE
+                },
+                1.0
+            )
+        );
+        assert_ne!(selected[0].0, selected[1].0);
+        assert_eq!(
+            selected
+                .iter()
+                .map(|(r, weight)| (r.w * r.h) as f64 * weight)
+                .sum::<f64>(),
+            (3 * TILE * TILE) as f64
+        );
+    }
+
     #[test]
     fn finite_halo_matches_full_original_map_at_interior_and_edges() {
         let (w, h, stride) = (355, 337, 355 * 3 + 7);

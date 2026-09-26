@@ -49,7 +49,9 @@ const CANDIDATE: &str = if cfg!(feature = "tiles") {
 } else if cfg!(feature = "reference-regions") {
     "reference-regions"
 } else if cfg!(feature = "stratified") {
-    if cfg!(feature = "anchored-pool") {
+    if cfg!(feature = "peak-stratified") {
+        "peak-stratified"
+    } else if cfg!(feature = "anchored-pool") {
         "anchored-pool"
     } else {
         "stratified"
