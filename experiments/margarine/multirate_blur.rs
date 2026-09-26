@@ -148,12 +148,33 @@ pub(crate) fn expand_row<const F: usize>(a: &[f32], b: &[f32], fy: f32, out: &mu
     let left = (F / 2).min(out.len());
     out[..left].fill(a[0] + fy * (b[0] - a[0]));
     let interior = ((a.len() - 1) * F).min(out.len() - left) / F * F;
-    for ((dst, a), b) in out[left..left + interior]
+    // Eight independent coarse cells expose all interpolation lanes together.
+    // Keep the per-pixel operation order identical to the reference expansion.
+    let full = interior / (8 * F) * (8 * F);
+    for block in 0..full / (8 * F) {
+        let start = block * 8;
+        let a: &[f32; 9] = a[start..start + 9].try_into().unwrap();
+        let b: &[f32; 9] = b[start..start + 9].try_into().unwrap();
+        let dst = &mut out[left + block * 8 * F..left + (block + 1) * 8 * F];
+        for phase in 0..F {
+            let fx = (phase as f32 + 0.5) / F as f32;
+            let mut values = [0.0; 8];
+            for i in 0..8 {
+                let top = a[i] + fx * (a[i + 1] - a[i]);
+                let bottom = b[i] + fx * (b[i + 1] - b[i]);
+                values[i] = top + fy * (bottom - top);
+            }
+            for i in 0..8 {
+                dst[i * F + phase] = values[i];
+            }
+        }
+    }
+    for ((dst, a), b) in out[left + full..left + interior]
         .as_chunks_mut::<F>()
         .0
         .iter_mut()
-        .zip(a.windows(2))
-        .zip(b.windows(2))
+        .zip(a[full / F..].windows(2))
+        .zip(b[full / F..].windows(2))
     {
         let [a0, a1]: [f32; 2] = a.try_into().unwrap();
         let [b0, b1]: [f32; 2] = b.try_into().unwrap();
