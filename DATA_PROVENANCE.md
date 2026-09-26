@@ -1037,3 +1037,17 @@ It retains the existing shared sigma and coefficients and introduces no
 fitted constant. The unchanged row-plane, seam and stride tests pass. This
 isolates masking from frequency blur reduction; it is not yet a quality or
 resource qualification.
+
+The native-Gaussian control (`961fac3c`) also passes the [AIC4 pooled
+rank screen](benchmarks/margarine_native_gaussian_aic4_2026-09-26.tsv), but
+retains one simultaneously supported harmful LIVE max choice among 87
+JPEG2000 session-1 budgets. [Choice counts and source metadata](benchmarks/margarine_native_gaussian_quality_2026-09-26.meta.json)
+retain that failure. The [resource curve](benchmarks/margarine_native_gaussian_resources_2026-09-26.tsv)
+measures 2.178×/2.386× metric speed and 19.15%/8.16% process RSS at
+1 MP/8.44 MP; decode-inclusive speeds are 2.035×/2.268×. Tiny and small
+time/RAM remain below teacher. All sizes have at least twenty interleaved
+rounds and largest-of-three process peaks. Guard peak RSS was 1.54 GiB,
+minimum available RAM 56,577 MiB and peak load 1.56. Full maps remain in
+r5900xt `native-gaussian-aic4-2026-09-26/`; compact quality, choice and
+resource artifacts also exist on the Mac. This control fails speed and the
+per-cohort choice screen despite passing both measured rank panels.
