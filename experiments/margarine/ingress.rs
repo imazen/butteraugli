@@ -66,6 +66,28 @@ impl<'a> EncodedRows<'a> {
         })
     }
 
+    /// Borrow a column interval without changing row stride or sample precision.
+    /// The parent has already validated geometry and opaque alpha.
+    #[allow(
+        dead_code,
+        reason = "shared ingress also compiles in the teacher binary"
+    )]
+    pub(crate) fn columns(&self, start: usize, end: usize) -> EncodedRows<'_> {
+        assert!(start < end && end <= self.width);
+        let offset = start * self.channels;
+        let samples = match self.samples {
+            Samples::U8(v) => Samples::U8(&v[offset..]),
+            Samples::U16(v) => Samples::U16(&v[offset..]),
+        };
+        EncodedRows {
+            samples,
+            width: end - start,
+            height: self.height,
+            stride: self.stride,
+            channels: self.channels,
+        }
+    }
+
     pub(crate) fn from_image(image: &'a DynamicImage) -> Result<Self> {
         let (w, h) = (image.width() as usize, image.height() as usize);
         match image {

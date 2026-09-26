@@ -506,31 +506,54 @@ pub(super) fn compute(
     let (w, h) = (a.width, a.height);
     let scale = |factor| {
         let (sw, sh) = (w.div_ceil(factor), h.div_ceil(factor));
-        let pool = image::BufferPool::with_capacity(if sh > rows { 32 } else { 0 });
-        // A single scoring strip has no overlap to reuse. Keep that case on
-        // the shared planar schedule to avoid constructing row caches.
-        if sh <= rows {
-            return strips::single_scale_encoded(a, b, factor, [0, 0, sw, sh], params, &pool);
-        }
-        let mut a = Graph::new(a, factor, params.intensity_target());
-        let mut b = Graph::new(b, factor, params.intensity_target());
-        let mut previous_height = 0;
         let mut result = image::ImageF::new(sw, sh);
-        for start in (0..sh).step_by(rows) {
-            let end = (start + rows).min(sh);
-            let y0 = start.saturating_sub(local_halo()) / 4 * 4;
-            let y1 = (end + local_halo()).div_ceil(4).saturating_mul(4).min(sh);
-            if y1 - y0 != previous_height {
-                pool.clear();
-                previous_height = y1 - y0;
+        let columns = if cfg!(feature = "row-tiles") { 512 } else { sw };
+        for left in (0..sw).step_by(columns) {
+            let right = (left + columns).min(sw);
+            let x0 = left.saturating_sub(strips::halo()) / 4 * 4;
+            let x1 = (right + strips::halo())
+                .div_ceil(4)
+                .saturating_mul(4)
+                .min(sw);
+            let a = a.columns(x0 * factor, (x1 * factor).min(w));
+            let b = b.columns(x0 * factor, (x1 * factor).min(w));
+            let pool = image::BufferPool::with_capacity(if sh > rows { 32 } else { 0 });
+            // One strip has no vertical overlap to reuse.
+            if sh <= rows {
+                let map = strips::single_scale_encoded(
+                    &a,
+                    &b,
+                    factor,
+                    [0, 0, x1 - x0, sh],
+                    params,
+                    &pool,
+                );
+                for y in 0..sh {
+                    result.row_mut(y)[left..right]
+                        .copy_from_slice(&map.row(y)[left - x0..right - x0]);
+                }
+                continue;
             }
-            let (pa, pb) =
-                diff::maybe_join(|| a.prepare(y0, y1, &pool), || b.prepare(y0, y1, &pool));
-            let map = strips::finish_scale(pa, pb, params, &pool);
-            for y in start..end {
-                result.row_mut(y).copy_from_slice(map.row(y - y0));
+            let mut a = Graph::new(&a, factor, params.intensity_target());
+            let mut b = Graph::new(&b, factor, params.intensity_target());
+            let mut previous_height = 0;
+            for start in (0..sh).step_by(rows) {
+                let end = (start + rows).min(sh);
+                let y0 = start.saturating_sub(local_halo()) / 4 * 4;
+                let y1 = (end + local_halo()).div_ceil(4).saturating_mul(4).min(sh);
+                if y1 - y0 != previous_height {
+                    pool.clear();
+                    previous_height = y1 - y0;
+                }
+                let (pa, pb) =
+                    diff::maybe_join(|| a.prepare(y0, y1, &pool), || b.prepare(y0, y1, &pool));
+                let map = strips::finish_scale(pa, pb, params, &pool);
+                for y in start..end {
+                    result.row_mut(y)[left..right]
+                        .copy_from_slice(&map.row(y - y0)[left - x0..right - x0]);
+                }
+                map.recycle(&pool);
             }
-            map.recycle(&pool);
         }
         result
     };
@@ -550,6 +573,43 @@ pub(super) fn compute(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn column_tiles_preserve_full_map_with_rgb16_stride_and_odd_edges() {
+        use ingress::{EncodedRows, Samples};
+        let (w, h, stride) = (1031, 137, 1031 * 3 + 7);
+        let mut a = vec![0; stride * h];
+        let mut b = a.clone();
+        for y in 0..h {
+            for x in 0..w {
+                for c in 0..3 {
+                    let i = y * stride + x * 3 + c;
+                    a[i] = ((x * 113 + y * 331 + c * 19937 + x * y * 7) % 65536) as u16;
+                    b[i] = a[i].saturating_add(((x + y + c) % 101) as u16);
+                }
+            }
+        }
+        let a = EncodedRows::new(Samples::U16(&a), w, h, stride, 3).unwrap();
+        let b = EncodedRows::new(Samples::U16(&b), w, h, stride, 3).unwrap();
+        let params = ButteraugliParams::default();
+        let expected = strips::compute(
+            &a.linear_strip(0, h),
+            &b.linear_strip(0, h),
+            w,
+            h,
+            w * 3,
+            64,
+            &params,
+        )
+        .unwrap();
+        let actual = compute(&a, &b, 64, &params).unwrap();
+        for y in 0..h {
+            assert_eq!(
+                actual.diffmap.as_ref().unwrap().row(y),
+                expected.diffmap.as_ref().unwrap().row(y),
+                "row {y}"
+            );
+        }
+    }
     #[test]
     fn every_frequency_row_matches_shared_pipeline_without_recomputation() {
         use ingress::{EncodedRows, Samples};
