@@ -35,7 +35,11 @@ pub(crate) fn coarse_diff_map(
         crate::shared_malta::malta_scaled_differences(a, b, greater, smaller, norm, lf, pool);
     let mut coarse = ImageF::from_pool_dirty(a.width().div_ceil(2), a.height().div_ceil(2), pool);
     if cfg!(feature = "lattice") {
-        native_evaluate(&padded, lf, &mut coarse);
+        if cfg!(feature = "phase-rows") {
+            rolling_evaluate(&padded, lf, &mut coarse, pool);
+        } else {
+            native_evaluate(&padded, lf, &mut coarse);
+        }
         padded.recycle(pool);
     } else {
         let phases = phase_planes(&padded, pool);
@@ -153,6 +157,66 @@ fn native_evaluate(_token: archmage::SimdToken, padded: &ImageF, lf: bool, out: 
             dst.copy_from_slice(&values.0[..dst.len()]);
         }
     }
+}
+
+/// Retain nine deinterleaved native rows. Adjacent sampled rows share seven
+/// of them, and stencil loads become contiguous without four full phase planes.
+#[archmage::autoversion]
+fn rolling_evaluate(
+    _token: archmage::SimdToken,
+    padded: &ImageF,
+    lf: bool,
+    out: &mut ImageF,
+    pool: &BufferPool,
+) {
+    let width = padded.width().div_ceil(2) + 8;
+    let mut ring = ImageF::from_pool_dirty(width, 18, pool);
+    let mut next = 0;
+    for y in 0..out.height() {
+        while next < y * 2 + 9 {
+            let input = padded.row(next);
+            for phase in 0..2 {
+                let dst = ring.row_mut((next % 9) * 2 + phase);
+                let full = input.len().saturating_sub(phase) / 16 * 8;
+                for (block, target) in dst[..full].as_chunks_mut::<8>().0.iter_mut().enumerate() {
+                    let start = block * 16 + phase;
+                    let values: &[f32; 15] = input[start..start + 15].try_into().unwrap();
+                    for i in 0..8 {
+                        target[i] = values[i * 2];
+                    }
+                }
+                let mut written = full;
+                for (&v, d) in input
+                    .iter()
+                    .skip(full * 2 + phase)
+                    .step_by(2)
+                    .zip(&mut dst[full..])
+                {
+                    *d = v;
+                    written += 1;
+                }
+                dst[written..].fill(0.0);
+            }
+            next += 1;
+        }
+        for (block, dst) in out.row_mut(y).chunks_mut(8).enumerate() {
+            let rows = std::array::from_fn(|r| {
+                std::array::from_fn(|phase| {
+                    ring.row(((y * 2 + r) % 9) * 2 + phase)[block * 8..block * 8 + 12]
+                        .try_into()
+                        .unwrap()
+                })
+            });
+            let window = Window { rows };
+            let value = if lf {
+                lf_bank(&window)
+            } else {
+                hf_bank(&window)
+            };
+            dst.copy_from_slice(&value.0[..dst.len()]);
+        }
+    }
+    ring.recycle(pool);
 }
 
 fn phase_planes(input: &ImageF, pool: &BufferPool) -> [ImageF; 4] {
