@@ -1,0 +1,17 @@
+{
+  "probe_commit": "eb5cbde818793b4bb579e4742f3c0394cfd4fe4b",
+  "binary_sha256": "60a1d1cd6b1d91535758a36b3e976866da2bc14013f33761758769e3d16af49b",
+  "host": "ARM Mac",
+  "rayon_threads": 2,
+  "size": [
+    620,
+    800
+  ],
+  "reference": "PTC_00002_0ref_00.png",
+  "distorted": "PTC_00002_AVIF_01.png",
+  "features228_peak_rss_bytes": 43401216,
+  "memory_method": "fresh process /usr/bin/time -l including decoding and input conversions",
+  "timing_method": "zenbench paired 30 rounds, all flagged noisy, decode and representation conversion outside timing",
+  "limitation": "feature extraction only, not a trained metric; single pair; target not demonstrated",
+  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/features228-resources-2026-09-26"
+}
