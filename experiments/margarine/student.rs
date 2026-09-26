@@ -53,6 +53,19 @@ pub(crate) fn extract(
     height: usize,
     stride: usize,
 ) -> Result<Vec<f64>, Box<dyn Error>> {
+    extract_mode(scorer, reference, distorted, width, height, stride, false)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn extract_mode(
+    scorer: &Zensim,
+    reference: &[u8],
+    distorted: &[u8],
+    width: usize,
+    height: usize,
+    stride: usize,
+    strips: bool,
+) -> Result<Vec<f64>, Box<dyn Error>> {
     let a = StridedBytes::try_with_alpha_mode(
         reference,
         width,
@@ -69,7 +82,12 @@ pub(crate) fn extract(
         PixelFormat::LinearF32Rgba,
         AlphaMode::Opaque,
     )?;
-    let features = scorer.compute_all_features(&a, &b)?.into_features();
+    let result = if strips {
+        scorer.compute_streaming_strips(&a, &b, 256, 128)?
+    } else {
+        scorer.compute_all_features(&a, &b)?
+    };
+    let features = result.into_features();
     if !matches!(features.len(), 228 | 372) || !features.iter().all(|v| v.is_finite()) {
         return Err("unexpected or nonfinite feature vector".into());
     }
@@ -105,6 +123,28 @@ mod tests {
                 extract(&scorer, &pad(&a), &pad(&b), w, h, stride).unwrap()
             );
             assert_eq!(extract(&scorer, &a, &b, w, h, w * 16).unwrap().len(), count);
+        }
+    }
+    #[test]
+    fn strip_features_agree_on_seams_and_bottom_tail() {
+        let (w, h) = (65, 801);
+        let a: Vec<_> = (0..w * h * 3)
+            .map(|i| ((i * 31 + i / 195 * 7) % 101) as f32 / 101.0)
+            .collect();
+        let b: Vec<_> = a
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| if (i / (w * 3)) % 256 < 3 { v * 0.91 } else { v })
+            .collect();
+        let (a, b) = (rgba(&a), rgba(&b));
+        let scorer = extractor(228).with_parallel(false);
+        let whole = extract(&scorer, &a, &b, w, h, w * 16).unwrap();
+        let strips = extract_mode(&scorer, &a, &b, w, h, w * 16, true).unwrap();
+        for (i, (a, b)) in whole.iter().zip(&strips).enumerate() {
+            assert!(
+                (a - b).abs() <= 1e-12 * a.abs().max(b.abs()).max(1.0),
+                "feature {i}: {a} vs {b}"
+            );
         }
     }
 }

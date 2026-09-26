@@ -53,13 +53,21 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 black_box(&result);
                 (result.score, result.pnorm_3)
             }
-            "features228" | "features372" => {
-                let count = if args[1] == "features228" { 228 } else { 372 };
+            "features228" | "features372" | "features228-strips" => {
+                let count = if args[1] != "features372" { 228 } else { 372 };
                 let a = student::rgba(&reference);
                 drop(reference);
                 let b = student::rgba(&distorted);
                 drop(distorted);
-                let features = student::extract(&student::extractor(count), &a, &b, w, h, w * 16)?;
+                let features = student::extract_mode(
+                    &student::extractor(count).with_parallel(args[1] != "features228-strips"),
+                    &a,
+                    &b,
+                    w,
+                    h,
+                    w * 16,
+                    args[1] == "features228-strips",
+                )?;
                 println!(
                     "features{count}\t{w}\t{h}\t{} features; no trained score",
                     features.len()
@@ -110,6 +118,22 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 });
             });
             if let Some((scorer, a, b)) = features {
+                let (as_strip, bs_strip) = (a.clone(), b.clone());
+                let strip_scorer = student::extractor(228).with_parallel(false);
+                group.bench("features228_strips_only", move |bench| {
+                    bench.iter(|| {
+                        student::extract_mode(
+                            &strip_scorer,
+                            black_box(&as_strip),
+                            black_box(&bs_strip),
+                            w,
+                            h,
+                            w * 16,
+                            true,
+                        )
+                        .unwrap()
+                    });
+                });
                 let (a228, b228) = (a.clone(), b.clone());
                 let scorer228 = student::extractor(228);
                 group.bench("features228_only", move |bench| {

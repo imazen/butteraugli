@@ -259,3 +259,9 @@ rejects other color tags. It records bpp and encoder settings, and explicitly
 excludes the 49 identity rows with zero opinions from the 4,292 rated pairs.
 Opaque alpha is checked during decoding. This convention does not apply the
 small transfer-table differences between the embedded sRGB profiles.
+
+The cost probe also includes the base 228-feature set and its existing
+Zensim strip entry (256-row interiors, 128-row margins, serial strips).
+`--memory features228-strips REF DIST` selects that memory probe. A 65×801
+seam/tail test compares all 228 strip features to the whole-image extractor.
+These remain feature-cost probes, not trained Margarine implementations.
