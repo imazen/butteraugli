@@ -661,3 +661,10 @@ operation descriptors. Area reduction borrows up to four cached row views from
 a stack array. This removes per-row kernel reference counting and temporary
 reduction vectors while preserving filter coefficients and arithmetic; the
 unchanged row/strip equivalence tests cover the resulting maps.
+
+Row-cache consumers now ensure their input rows first, then borrow immutable
+slices from the graph's owned buffers. An explicit stored-row assertion checks
+that the derived cache support retains every requested input. This removes
+per-row `Arc` allocation and cloning; it does not change cache geometry or
+filter arithmetic. Exact row/strip tests pass on ARM and x86, with ARM checks
+also covering phase rows, native Gaussian and alternate-row Malta.

@@ -3,9 +3,9 @@
 //! the contract; this is an experimental execution schedule.
 use crate::{blur, consts::*, diff, image, ingress, opsin, psycho, stream_blur, strips};
 use butteraugli::ButteraugliParams;
-use std::{error::Error, sync::Arc};
+use std::error::Error;
 
-type Row = Arc<Vec<f32>>;
+type Row = Vec<f32>;
 #[derive(Clone, Copy)]
 enum Op {
     Input,
@@ -147,17 +147,31 @@ impl<'a, 'b> Graph<'a, 'b> {
             self.add(Op::Expand(vertical, factor), [w, h, c, step, latency])
         }
     }
-    fn row(&mut self, id: usize, y: usize) -> Row {
+    fn row(&mut self, id: usize, y: usize) -> &[f32] {
+        self.ensure(id, y);
+        self.cached(id, y)
+    }
+    fn cached(&self, id: usize, y: usize) -> &[f32] {
+        let node = &self.nodes[id];
+        let (stored, row) = node.cache[y % node.cache.len()].as_ref().unwrap();
+        assert_eq!(
+            *stored, y,
+            "row-cache support must retain all consumer inputs"
+        );
+        row
+    }
+    fn ensure(&mut self, id: usize, y: usize) {
         let node = &mut self.nodes[id];
         let slot = y % node.cache.len();
-        if let Some((stored, row)) = &node.cache[slot]
-            && *stored == y
+        if node.cache[slot]
+            .as_ref()
+            .is_some_and(|(stored, _)| *stored == y)
         {
-            return row.clone();
+            return;
         }
         let mut out = node.cache[slot]
             .take()
-            .and_then(|(_, r)| Arc::try_unwrap(r).ok())
+            .map(|(_, r)| r)
             .unwrap_or_else(|| vec![0.0; node.width * node.channels]);
         let (op, w, c) = (node.op, node.width, node.channels);
         match op {
@@ -168,7 +182,8 @@ impl<'a, 'b> Graph<'a, 'b> {
                     .linear_planar_row(y * self.factor, self.factor, [r, g, b]);
             }
             Op::MirrorH(source, weights) => {
-                let row = self.row(source, y);
+                self.ensure(source, y);
+                let row = self.cached(source, y);
                 for channel in 0..c {
                     mirror_horizontal(
                         &row[channel * w..(channel + 1) * w],
@@ -179,28 +194,38 @@ impl<'a, 'b> Graph<'a, 'b> {
             }
             Op::MirrorV(source, weights) => {
                 let h = self.nodes[source].height;
-                let rows: [Row; 5] = std::array::from_fn(|i| {
-                    self.row(source, mirror(y as isize + i as isize - 2, h))
-                });
-                mirror_vertical(rows.each_ref().map(|r| r.as_slice()), weights, &mut out);
+                let ys: [usize; 5] =
+                    std::array::from_fn(|i| mirror(y as isize + i as isize - 2, h));
+                for yy in ys {
+                    self.ensure(source, yy);
+                }
+                mirror_vertical(ys.map(|yy| self.cached(source, yy)), weights, &mut out);
             }
             Op::Opsin(a, b) => {
-                let (a, b) = (self.row(a, y), self.row(b, y));
-                opsin_row(&a, &b, self.intensity, w, &mut out);
+                self.ensure(a, y);
+                self.ensure(b, y);
+                let (a, b) = (self.cached(a, y), self.cached(b, y));
+                opsin_row(a, b, self.intensity, w, &mut out);
             }
             Op::Reduce(source, factor) => {
                 let sw = self.nodes[source].width;
                 let end = ((y + 1) * factor).min(self.nodes[source].height);
                 let count = end - y * factor;
-                let rows: [Option<Row>; 4] =
-                    std::array::from_fn(|i| (i < count).then(|| self.row(source, y * factor + i)));
-                let views = rows
-                    .each_ref()
-                    .map(|r| r.as_deref().map_or(&[][..], |r| r.as_slice()));
+                for yy in y * factor..end {
+                    self.ensure(source, yy);
+                }
+                let views: [&[f32]; 4] = std::array::from_fn(|i| {
+                    if i < count {
+                        self.cached(source, y * factor + i)
+                    } else {
+                        &[]
+                    }
+                });
                 reduce_row(&views[..count], sw, w, factor, &mut out);
             }
             Op::GaussianH(source, kernel_id) => {
-                let row = self.row(source, y);
+                self.ensure(source, y);
+                let row = self.cached(source, y);
                 let (kernel, scaled) = &self.kernels[kernel_id];
                 for channel in 0..c {
                     stream_blur::horizontal(
@@ -215,10 +240,9 @@ impl<'a, 'b> Graph<'a, 'b> {
                 let radius = self.kernels[kernel_id].0.len() / 2;
                 let start = y.saturating_sub(radius);
                 let end = (y + radius + 1).min(self.nodes[source].height);
-                let mut rows: [Option<Row>; 64] = std::array::from_fn(|_| None);
                 let count = end - start;
-                for (i, slot) in rows[..count].iter_mut().enumerate() {
-                    *slot = Some(self.row(source, start + i));
+                for yy in start..end {
+                    self.ensure(source, yy);
                 }
                 let (kernel, scaled) = &self.kernels[kernel_id];
                 let raw = &kernel[start + radius - y..end + radius - y];
@@ -232,34 +256,45 @@ impl<'a, 'b> Graph<'a, 'b> {
                     }
                     &border[..count]
                 };
-                let views: [&[f32]; 64] =
-                    std::array::from_fn(|i| rows[i].as_deref().map_or(&[][..], |r| r.as_slice()));
+                let views: [&[f32]; 64] = std::array::from_fn(|i| {
+                    if i < count {
+                        self.cached(source, start + i)
+                    } else {
+                        &[]
+                    }
+                });
                 stream_blur::vertical(&views[..count], weights, &mut out);
             }
             Op::Expand(source, factor) => {
                 let sw = self.nodes[source].width;
                 let sh = self.nodes[source].height;
                 let (a, b, fy) = coordinate(y, factor, sh);
-                let (a, b) = (self.row(source, a), self.row(source, b));
-                expand_row(&a, &b, [sw, w, factor], fy, &mut out);
+                self.ensure(source, a);
+                self.ensure(source, b);
+                let (a, b) = (self.cached(source, a), self.cached(source, b));
+                expand_row(a, b, [sw, w, factor], fy, &mut out);
             }
             Op::Subtract(a, b) => {
-                let (a, b) = (self.row(a, y), self.row(b, y));
-                subtract_row(&a, &b, &mut out);
+                self.ensure(a, y);
+                self.ensure(b, y);
+                let (a, b) = (self.cached(a, y), self.cached(b, y));
+                subtract_row(a, b, &mut out);
             }
             Op::High(a, b) => {
-                let (a, b) = (self.row(a, y), self.row(b, y));
-                high_row(&a, &b, w, &mut out);
+                self.ensure(a, y);
+                self.ensure(b, y);
+                let (a, b) = (self.cached(a, y), self.cached(b, y));
+                high_row(a, b, w, &mut out);
             }
             Op::Finish(sources) => {
-                let rows = sources.map(|id| self.row(id, y));
-                finish_row(rows.each_ref().map(|r| r.as_slice()), w, &mut out);
+                for id in sources {
+                    self.ensure(id, y);
+                }
+                finish_row(sources.map(|id| self.cached(id, y)), w, &mut out);
             }
         }
-        let result = Arc::new(out);
-        self.nodes[id].cache[slot] = Some((y, result.clone()));
+        self.nodes[id].cache[slot] = Some((y, out));
         self.nodes[id].generated += 1;
-        result
     }
     fn prepare(&mut self, y0: usize, y1: usize, pool: &image::BufferPool) -> psycho::PsychoImage {
         let w = self.nodes[self.output].width;
