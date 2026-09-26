@@ -72,3 +72,6 @@ margarine-direct-profile binary reference distorted output commit rows="128":
 # Point-label diagnostics; participant significance remains a separate gate.
 margarine-disagreements ledger output candidate teacher_maps candidate_maps commit:
     nice -n 19 python3 experiments/margarine/disagreements.py "{{ledger}}" "{{output}}" --candidate "{{candidate}}" --teacher-maps "{{teacher_maps}}" --candidate-maps "{{candidate_maps}}" --build-commit "{{commit}}"
+
+margarine-kadid-opinions raw dmos output commit:
+    nice -n 19 python3 experiments/margarine/prepare_kadid_opinions.py "{{raw}}" "{{dmos}}" "{{output}}" --build-commit "{{commit}}"

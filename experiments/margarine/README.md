@@ -538,3 +538,13 @@ representatives and a 32-pixel interior around the proxy's maximum. All three
 regions use original Butteraugli with its finite halo. Only reference-stable
 regions determine the global cubic correction; the peak patch is inserted
 afterwards. These are experimental sampling dimensions, not calibrated defaults.
+
+### Raw participant opinions
+
+`prepare_kadid_opinions.py` audits KADID crowd ratings against the published
+rounded DMOS and variance. It separates TID controls and gold/tainted rows,
+retains original image links, and replaces worker identifiers with stable
+pseudonyms. Location and IP fields are not copied. Its manifest reports counts,
+duplicate worker/image observations, and exact agreement within the published
+decimal rounding intervals. A `requires-reconciliation` result must not be
+treated as the participant sample behind the published labels.
