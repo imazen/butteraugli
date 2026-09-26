@@ -1300,3 +1300,27 @@ uses 2,000 draws over five sources: the SROCC delta interval is
 [-0.005227962, 0.003264655], while KROCC spans [-0.010790240, 0.003945304].
 Thus point estimates pass, but the KROCC interval crosses the -0.01 boundary.
 These are per-statistic intervals, with no simultaneous coverage claim.
+
+Optional `simd-opsin` full-Malta build `a0cc0f0d` passes unchanged exact tests
+in debug/release on x86 and ARM. Its [resource curve](benchmarks/margarine_opsin_full_resources_2026-09-26.tsv)
+measures 4.094713× at 1 MP but 3.828098× at 8.44 MP, with process RSS fractions
+18.8706% and 8.1146%. Tiny/small resources remain below the teacher in this
+run. It therefore does not meet the complete speed screen and is not selected.
+The first resource invocation used the Mac-path crop manifest and failed before
+measurement; the completed `opsin-full-resources-v2-2026-09-26/` uses the Linux
+manifest. Both artifacts are preserved.
+
+The frozen r5900xt candidate requires glibc 2.39, newer than the WSL host's
+runtime. Evaluation on `lilith` therefore uses the already-installed
+`ghcr.io/imazen/zenfleet-worker:exec-gpu-cuda13-6d4f9963` image (verified glibc
+2.39 and Python 3.12.3), with 12 GiB memory/no-swap and two-CPU caps. The image
+ID is recorded beside the extended input audits. Scoring still runs serially
+through the same manifest harness and frozen binaries; these are quality runs,
+not host performance measurements. The failed native invocation is preserved.
+
+[KonJND-1k](https://github.com/angchen-dev/KonJND-1k) supplies picturewise
+noticeability thresholds rather than a MOS for every distorted image. Its
+WSL `subjective_ratings.csv` contains compression-level ratings per source;
+those values must not be reused as ordinary quality labels for arbitrary
+JPEG/BPG files. A threshold-specific evaluation is distinct from the ordinary
+TID/AIC3/LIVE/PIPAL panels.

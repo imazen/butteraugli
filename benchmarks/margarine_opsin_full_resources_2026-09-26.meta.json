@@ -1,0 +1,124 @@
+{
+  "build_commit": "a0cc0f0df1b42e4de146e9069906daadc5e9c704",
+  "binary": "/home/lilith/work/codec-artifacts/margarine/opsin-full-binaries-a0cc0f0df1b42e4de146e9069906daadc5e9c704/margarine-box3",
+  "binary_sha256": "69262dcafb4d49ff0dd88296333f6f4778eca9667fad5f7724bf30187c1f6271",
+  "host": "r5900xt",
+  "system": "Linux",
+  "threads": 2,
+  "crop_manifest": "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/crops-linux.tsv",
+  "crop_manifest_sha256": "6aaf8fa1f417fdcd039f22cac519b96ac5c4a56e4eb1042ed8b931afba255f5f",
+  "inputs": {
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/64x64-ref.png": "47c4196bdb2450b5a1e5e843ac132fb1b57d31ccf332e62f893f80d26c2fa188",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/64x64-dist.png": "ae36fb193a8427c22d4b80cac447c42e7110f13c920fd8831bdf5b0ad55ddefe",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/256x256-ref.png": "dfb31e29f4a06ac91f4a043c73214a4e8a8d7868a84a492f544463299096abf6",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/256x256-dist.png": "7f901c803499c2e4bc9b55a9213e57cfd75ae76b37202dcba65c2fe15644b271",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-ref.png": "19d33faa59a6354e5a5b50540f770b5f8fe5863754371a7aadca6397e07ae152",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/1024x1024-dist.png": "3eaa954d429ec7b4322a3fc09e6ff975b0e8f5d843c516b15adaa846564461ca",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/3355x2516-ref.png": "8cf7c241f8c00f3b92181bde4391cba15ea0fa24aa4e35942c0014fb72643b8e",
+    "/home/lilith/work/codec-artifacts/margarine/resource-crops-2026-09-26/3355x2516-dist.png": "a5c0560b2b205916398338a8bc2043ca01357ce315989087e12ff9b7c07362cf"
+  },
+  "timing": "interleaved metric-only and file-open/decode/metric arms; warm OS file cache",
+  "memory": "maximum across repeated fresh process platform time; decode and inputs included",
+  "memory_trials": 3,
+  "limitation": "same-image crops; no independent content coverage",
+  "candidate": "opsin-full-malta",
+  "strip_rows": 128,
+  "tile_columns": 512,
+  "artifact_sha256": {
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/64x64-teacher-memory-trial2.log": "fd470b913525eab2a4ebd08c808edee5b569aaea15f29dcb04b543f5f7bad5b3",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/3355x2516-teacher-memory-trial2.log": "f64fb9372f60b3ff2db7859e8c7a3b9b672d89d36285f514f263279483405e18",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/3355x2516-teacher-memory-trial3.log": "8f3ceaa4cd395fedb8943ace652869d7de9fa33fa44f7acc3bbff3f608cfd10e",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/64x64-bench.log": "f4b636fbb687fb2453e2c4e5cc2772bb7a8a9bc7a94b0ca342cbaa2dbe9b8898",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/64x64-teacher-memory-trial3.log": "e0ce90ebd9d8cd8cb4599f35dc9d37234b05f10fe612a5d02b8e8a2bf13c033a",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/3355x2516-opsin-full-malta-memory-trial3.log": "48fff5849afaba93d7a793f6db66749b0b0f2d001ff6fc785ed99e583cf280e5",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/1024x1024-teacher-memory.log": "d55b00aadb922379d6bcb5966cb187431d7a27d48c0878cf7d0e700767c281c9",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/3355x2516-teacher-memory.log": "85616cea02a0041366fb70616536ad8631330f7c855bd7b212c407b2897126e1",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/3355x2516-opsin-full-malta-memory-trial2.log": "51ab63646b056bbf33277d6955dc4e44ad15ddf44089c5702c2a610766591f1e",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/256x256.json": "556afb9f70ce84a6115e994125a0ffae2c0c9559e4c656761846ba5a83ccb6bf",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/1024x1024.json": "6a4405d07c437731ddb1a66363dc83a09bdaa764de5d1f65ce8852be54f40ed5",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/1024x1024-opsin-full-malta-memory.log": "92d028ac8df5f74ade29e528c9b45e4e301ce24fd34209cd33b42948053fc407",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/64x64-teacher-memory.log": "625e38ccd7ee1b2c64a85c9b8bf8612f2829fa0c40944c425b0acfee35294324",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/1024x1024-teacher-memory-trial2.log": "510c70e79035719638a7e57aae8ca88ae0f5664876aa66943b59edd1628146ad",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/256x256-teacher-memory-trial2.log": "4b029d9be73017d2262ddd9d5b3fba5aeb1e1cbcaf0b5c5dcc6e139ffde29297",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/256x256-teacher-memory-trial3.log": "54aef7734c782466f56914f41a8611b5a6daf25b6079e077797dc665a0375633",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/1024x1024-teacher-memory-trial3.log": "7ac5bd8f1a42264b3baecdb6ee646409314b8e7f12109a893ff742db7b09cf11",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/1024x1024-opsin-full-malta-memory-trial3.log": "27cac735461e2b210d3df95113cf2ea96c461fa6d6aa2a980df210bbcd914dca",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/memory_trials.json": "7dd8cdbb7e828feba126584e03a73a2d100748fcfb1d77c670e682b0076b6e39",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/1024x1024-opsin-full-malta-memory-trial2.log": "88e1547aecfd2d84519e9d9d13aabe5d3f448aa03af97e9e279eabc2e5380cbe",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/64x64-opsin-full-malta-memory.log": "6a0de2751a6349d204e01ff0bd4ec271dcdeb4456b515bbd89e6a0c6ebfcdee4",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/1024x1024-bench.log": "ef55a417d7613202814dded727beaacdef94d9e281064bea8ef9270c1974b763",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/256x256-opsin-full-malta-memory.log": "fdda9e964b7b09139d64961e0019c471aca6def29db7dbc7e26f3e1204793087",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/3355x2516-bench.log": "333be0812af9ba80a0d20d574385a07df345c156060166021240ad767f4f673d",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/256x256-bench.log": "95fa877c636ce905ff17e54ee0a52d6999365b7506f68354cc59bd5180ee4a77",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/3355x2516.json": "0152a265e50a5b82a5f95517b5e50a8326b02799feda45191dfedf1b2970ca8d",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/64x64-opsin-full-malta-memory-trial3.log": "0ad7dc80ece8e86737b5d9777d238c7ffb85d23261eac1cea78778c24a9facac",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/64x64-opsin-full-malta-memory-trial2.log": "3822ce3ba3516e70ea05d31962133df2455eb08f6dcecc09a2b89f6cb8a5d9fc",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/_MANIFEST.json": "458066521c86f07ccc0805c9abe27f4625b6d96121aac5ea2ea6305a49d7142e",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/256x256-opsin-full-malta-memory-trial3.log": "11f2a3ac2cafd12306a05971b5e33774b0ce2e47efff2b6133b3265fbcd8d282",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/64x64.json": "1998af8a5eae2ea2caa3d6caff8f260e5361cb5dbd0b904355a9ed10552c20ef",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/256x256-opsin-full-malta-memory-trial2.log": "553a7f0852fa23a674f837373ae154f6bffb93f04509f033943eb092db669324",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/3355x2516-opsin-full-malta-memory.log": "5acc585b6241aeb2eef8885177a61de1d3c5635cccfa0a177bf94f9e7e0c1124",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/progress.log": "6b9a136f9c1aef8b037a14d03d694ebfeb8f91473119c601cedeaccc6b3c296f",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/256x256-teacher-memory.log": "0769e249d7d3e76adbb80b041328133642fed19ed02266465df9f1c2f72555b5",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/time_fits.json": "07426b6681ce755604e10e47efdea9d73c557378cb357710cc19b714c90a4da5",
+    "/Users/lilith/work/codec-artifacts/margarine/opsin-full-resources-v2-2026-09-26/summary.tsv": "60c932f93be6b2ffeb4e79ebf18130951c0a946d63311b7f98a0faaa8b99c2db"
+  },
+  "time_fits": [
+    {
+      "arm": "teacher",
+      "timing": "mean_ns",
+      "alpha_ns": -6391549.2790567875,
+      "beta_ns_per_pixel": 155.93351589964712,
+      "observed_sizes": 4,
+      "residual_ns": [
+        6352921.670600484,
+        2251330.4310575146,
+        -9801211.58893159,
+        1196959.4872734547
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "teacher",
+      "timing": "decode_included_mean_ns",
+      "alpha_ns": -5753696.859954774,
+      "beta_ns_per_pixel": 171.54978992137154,
+      "observed_sizes": 4,
+      "residual_ns": [
+        5733699.442113424,
+        1551827.0276677683,
+        -8301980.541252673,
+        1016454.0714716911
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "opsin-full-malta",
+      "timing": "mean_ns",
+      "alpha_ns": -2012807.724492833,
+      "beta_ns_per_pixel": 40.7439762468452,
+      "observed_sizes": 4,
+      "residual_ns": [
+        2129239.460037739,
+        2032965.497179586,
+        -4733375.066365272,
+        571170.1091479659
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    },
+    {
+      "arm": "opsin-full-malta",
+      "timing": "decode_included_mean_ns",
+      "alpha_ns": -1766333.1946361363,
+      "beta_ns_per_pixel": 52.184573023865724,
+      "observed_sizes": 4,
+      "residual_ns": [
+        1929626.852528398,
+        1963945.3419440724,
+        -4427361.571513809,
+        533789.3770412803
+      ],
+      "note": "OLS description of measured sizes, not extrapolation or a performance gate"
+    }
+  ]
+}
