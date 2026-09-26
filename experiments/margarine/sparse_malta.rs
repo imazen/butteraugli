@@ -76,18 +76,15 @@ impl std::ops::AddAssign for V {
 }
 
 struct Window<'a> {
-    planes: &'a [ImageF; 4],
-    center: usize,
-    stride: usize,
+    // Nine native rows, split into two column phases. Each twelve-value row
+    // covers every eight-lane load at the five possible coarse x offsets.
+    rows: [[&'a [f32; 12]; 2]; 9],
 }
 #[inline(always)]
 fn load(window: &Window<'_>, dx: isize, dy: isize) -> V {
-    let phase = (dy.rem_euclid(2) * 2 + dx.rem_euclid(2)) as usize;
-    let offset = dy.div_euclid(2) * window.stride as isize + dx.div_euclid(2);
-    let start = (window.center as isize + offset) as usize;
-    let values: &[f32; 8] = window.planes[phase].data()[start..start + 8]
-        .try_into()
-        .unwrap();
+    let row = window.rows[(dy + 4) as usize][dx.rem_euclid(2) as usize];
+    let start = (dx.div_euclid(2) + 2) as usize;
+    let values: &[f32; 8] = row[start..start + 8].try_into().unwrap();
     V(*values)
 }
 macro_rules! w {
@@ -96,16 +93,26 @@ macro_rules! w {
     };
 }
 
+#[inline(always)]
+fn phases_data(planes: &[ImageF; 4], phase: usize, start: usize) -> &[f32; 12] {
+    planes[phase].data()[start..start + 12].try_into().unwrap()
+}
+
 #[archmage::autoversion]
 fn evaluate(_token: archmage::SimdToken, planes: &[ImageF; 4], lf: bool, out: &mut ImageF) {
     let stride = planes[0].stride();
     for y in 0..out.height() {
         for (block, dst) in out.row_mut(y).chunks_mut(8).enumerate() {
-            let window = Window {
-                planes,
-                center: (y + 2) * stride + 2 + block * 8,
-                stride,
-            };
+            let rows = std::array::from_fn(|row| {
+                let dy = row as isize - 4;
+                std::array::from_fn(|phase_x| {
+                    let phase = dy.rem_euclid(2) as usize * 2 + phase_x;
+                    let iy = (y as isize + 2 + dy.div_euclid(2)) as usize;
+                    let start = iy * stride + block * 8;
+                    phases_data(planes, phase, start)
+                })
+            });
+            let window = Window { rows };
             let value = if lf {
                 lf_bank(&window)
             } else {
