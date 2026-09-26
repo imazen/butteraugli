@@ -500,3 +500,13 @@ Crop origins preserve the blur, Malta, and SIMD phases; finite halos are
 discarded from the output. Bitwise map comparisons cover both tile axes, odd
 RGB16 dimensions and strided rows. The tile geometry is experimental and has
 no resource qualification until measured across the complete size workload.
+
+### Reference-only region selection
+
+The `reference-regions` experiment uses the same paired-RGB proxy and original
+Butteraugli regional correction as `refined2`. It partitions reference tiles
+into two texture strata using encoded-RGB squared neighbor differences, then
+samples the tile nearest each stratum's area-weighted mean. Area weights enter
+the correction. Distorted pixels cannot change region selection. This tests
+selection stability; it does not establish quality or resource acceptance.
+The selector supports RGB8/RGB16 and strided rows, with no input quantization.

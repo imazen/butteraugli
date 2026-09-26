@@ -24,6 +24,8 @@ const CANDIDATE: &str = if cfg!(feature = "tiles") {
     "lattice"
 } else if cfg!(feature = "bounded") {
     "bounded"
+} else if cfg!(feature = "reference-regions") {
+    "reference-regions"
 } else if cfg!(feature = "stratified") {
     "stratified"
 } else if cfg!(feature = "refined2") {

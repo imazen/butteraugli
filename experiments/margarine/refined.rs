@@ -14,13 +14,17 @@ const PATCHES: usize = if cfg!(feature = "refined1") {
 // doubled for the half-resolution contribution, plus its sampling footprint.
 const HALO: usize = 76;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct Region {
     x: usize,
     y: usize,
     w: usize,
     h: usize,
 }
+
+#[cfg(feature = "reference-regions")]
+#[path = "reference_regions.rs"]
+mod reference_regions;
 
 fn select(map: &image::ImageF) -> Vec<(Region, f64)> {
     let mut tiles = Vec::new();
@@ -121,6 +125,9 @@ pub(super) fn compute(
         return strips::compute_encoded(a, b, rows, params);
     }
     let mut map = paired_pool::compute_map(a, b, rows, params)?;
+    #[cfg(feature = "reference-regions")]
+    let regions = reference_regions::select(a);
+    #[cfg(not(feature = "reference-regions"))]
     let regions = select(&map);
     let mut patches = Vec::new();
     let (mut original, mut approximate) = (0.0f64, 0.0f64);

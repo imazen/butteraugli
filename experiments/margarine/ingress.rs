@@ -77,6 +77,20 @@ impl<'a> EncodedRows<'a> {
         }
     }
 
+    /// Encoded RGB sample for reference-only region selection. No quantization.
+    #[allow(
+        dead_code,
+        reason = "shared ingress also compiles in the teacher binary"
+    )]
+    pub(crate) fn encoded_rgb(&self, x: usize, y: usize) -> [f32; 3] {
+        assert!(x < self.width && y < self.height);
+        let i = y * self.stride + x * self.channels;
+        match self.samples {
+            Samples::U8(v) => std::array::from_fn(|c| f32::from(v[i + c]) / 255.0),
+            Samples::U16(v) => std::array::from_fn(|c| f32::from(v[i + c]) / 65535.0),
+        }
+    }
+
     pub(crate) fn linear_strip(&self, start: usize, end: usize) -> Vec<f32> {
         self.linear_region(0, self.width, start, end)
     }
