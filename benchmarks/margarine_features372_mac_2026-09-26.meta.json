@@ -1,0 +1,19 @@
+{
+  "probe_commit": "a69881a31ea7",
+  "evaluation_commit": "e81d68f79bdf",
+  "binary_sha256": "79b0f69f91ffb7c8ff60a0a22d59a8dbdb6d296e6cf4bce04a2ef0f2b0cf8403",
+  "host": "ARM Mac",
+  "rayon_threads": 2,
+  "size": [
+    620,
+    800
+  ],
+  "reference": "PTC_00002_0ref_00.png",
+  "distorted": "PTC_00002_AVIF_01.png",
+  "teacher_peak_rss_bytes": 99500032,
+  "features372_peak_rss_bytes": 43352064,
+  "memory_method": "fresh process /usr/bin/time -l including decoding and input conversions",
+  "timing_method": "zenbench paired 30 rounds; decode and representation conversion outside timing; all 30 rounds flagged noisy",
+  "limitation": "feature extraction only; no trained student score; single pair; fails both resource targets",
+  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/features372-resources-2026-09-26"
+}
