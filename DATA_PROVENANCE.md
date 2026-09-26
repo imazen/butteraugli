@@ -446,3 +446,29 @@ peak load 2.66. Raw logs/maps remain in r5900xt `refined2-aic4-2026-09-26/`
 and `refined2-resources-2026-09-26/`. The subsequent optimization removes
 an unused proxy reduction and uses the paired-RGB path at dimensions up to
 64; it requires its own quality/size verification before any resource claim.
+
+The optimized two-region candidate (`01445505`) is rejected by CID22 p1:
+SROCC falls from 0.82905345 to 0.81487377 (loss 0.01417968). The other four
+norms stay within the rank-loss limit; the
+[full panel](benchmarks/margarine_refined2_cid22_2026-09-26.tsv) retains the
+Z-RMSE and composite changes. All 300 AIC4 candidate maps and five norms
+remain [bit-identical](benchmarks/margarine_refined2_opt_parity_2026-09-26.json)
+after removing the unused proxy reduction. The
+[updated size sweep](benchmarks/margarine_refined2_opt_resources_2026-09-26.tsv)
+now meets the measured metric-time and RAM means at every required crop size:
+1 MP/8.44 MP speedups 4.169×/4.719× and RSS fractions 19.73%/12.11%; both
+smaller sizes stay below teacher time and RAM. Decode-inclusive speedups
+remain 3.469×/3.838× at the larger sizes. Guard peak RSS 1.58 GiB,
+minimum available 56,548 MiB, peak load 2.27. Resource success does not
+qualify a candidate that failed quality. Full maps and logs remain in
+r5900xt `refined2-cid22-2026-09-26/` and `refined2-opt-aic4-2026-09-26/`.
+
+A fresh broader-corpus audit found the documented
+`/mnt/v/zen/zensim-training/rev2-lan-stage-2026-09-06/` directory absent on
+lilith. The original local corpus directories and pair tables remain present.
+Do not treat the staging guide as evidence that its manifests currently exist.
+All 10,125 KADID legacy pair targets exactly equal `(5-dmos)/4`, the inverse
+of canonical quality `(dmos-1)/4`; raw `dmos.csv` has mean values declining
+from 4.078528 at level 1 to 2.006726 at level 5. New Margarine adapters must
+read raw labels and preserve declared orientation rather than reuse that
+legacy target column. Existing dataset files were left unchanged.
