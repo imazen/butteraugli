@@ -469,3 +469,11 @@ the flag to record an explicit diagnostic curve. Positive loss means worse
 human quality, accounting for each dataset's declared label direction. Labels
 must be complete and finite. These are observed-label differences, without
 a confidence/significance claim or an agreed material-reversal threshold.
+
+The `bounded` feature retains the multirate approximation's frequency bands,
+all six Malta filters, constants, and accumulation order. It schedules Malta
+by channel and recycles HF/MF response maps immediately, then reuses the
+completed psycho planes across strips. Exact plane comparisons cover odd
+dimensions and three asymmetry settings. This is a storage/scheduling
+experiment; its speed, process RSS and real-corpus map equivalence require
+separate measurements. It does not use sampled region correction.

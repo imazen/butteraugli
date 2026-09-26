@@ -87,7 +87,7 @@ fn single_scale(
     params: &ButteraugliParams,
     pool: &image::BufferPool,
 ) -> image::ImageF {
-    if !cfg!(feature = "reuse") {
+    if !cfg!(any(feature = "reuse", feature = "bounded")) {
         return diff::compute_diffmap_single_resolution_linear(a, b, w, h, params);
     }
     let prepare = |rgb: &[f32]| {
@@ -95,8 +95,11 @@ fn single_scale(
         psycho::separate_frequencies_owned(xyb, pool)
     };
     let (a, b) = diff::maybe_join(|| prepare(a), || prepare(b));
+    #[cfg(not(feature = "bounded"))]
     let mut ac =
         diff::compute_psycho_diff_malta(&a, &b, params.hf_asymmetry(), params.xmul(), pool);
+    #[cfg(feature = "bounded")]
+    let mut ac = bounded_diff::compute(&a, &b, params.hf_asymmetry(), pool);
     let mask = diff::mask_psycho_image(&a, &b, Some(ac.plane_mut(1)), pool);
     let map = diff::combine_channels_to_diffmap_fused(&mask, &a.lf, &b.lf, &ac, params.xmul());
     a.recycle(pool);
@@ -117,7 +120,13 @@ fn compose<'a>(
         let sw = w.div_ceil(factor);
         let sh = h.div_ceil(factor);
         let mut map = image::ImageF::new(sw, sh);
-        let pool = image::BufferPool::with_capacity(if cfg!(feature = "reuse") { 32 } else { 0 });
+        let pool = image::BufferPool::with_capacity(
+            if cfg!(any(feature = "reuse", feature = "bounded")) {
+                32
+            } else {
+                0
+            },
+        );
         let mut previous_height = 0;
         let halo = halo();
         let lattice = if cfg!(feature = "multirate") { 4 } else { 1 };

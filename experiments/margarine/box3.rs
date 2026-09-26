@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "stratified") {
+const CANDIDATE: &str = if cfg!(feature = "bounded") {
+    "bounded"
+} else if cfg!(feature = "stratified") {
     "stratified"
 } else if cfg!(feature = "refined2") {
     "refined2"
@@ -121,6 +123,8 @@ fn pnorm(map: &image::ImageF, p: f64) -> f64 {
         / 3.0
 }
 
+#[cfg(feature = "bounded")]
+mod bounded_diff;
 mod learned;
 #[cfg(any(feature = "pooled", feature = "perceptual"))]
 mod paired_pool;

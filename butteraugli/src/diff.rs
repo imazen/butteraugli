@@ -118,7 +118,12 @@ pub(crate) fn add_supersampled_2x(
 
 /// Accumulates two source images into a destination: dst[x] += a[x] + b[x].
 #[archmage::autoversion]
-fn accumulate_two(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
+pub(crate) fn accumulate_two(
+    _token: archmage::SimdToken,
+    a: &ImageF,
+    b: &ImageF,
+    dst: &mut ImageF,
+) {
     let height = a.height();
     for y in 0..height {
         let ra = a.row(y);
@@ -134,7 +139,13 @@ fn accumulate_two(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut
 ///
 /// Computes squared difference weighted by w and adds to diffmap.
 #[archmage::autoversion]
-fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffmap: &mut ImageF) {
+pub(crate) fn l2_diff(
+    _token: archmage::SimdToken,
+    i0: &ImageF,
+    i1: &ImageF,
+    w: f32,
+    diffmap: &mut ImageF,
+) {
     let height = i0.height();
 
     for y in 0..height {
@@ -154,7 +165,7 @@ fn l2_diff(_token: archmage::SimdToken, i0: &ImageF, i1: &ImageF, w: f32, diffma
 /// Like `l2_diff` but overwrites diffmap instead of accumulating.
 /// Use when diffmap is uninitialized or dirty — avoids needing zeroed memory.
 #[archmage::autoversion]
-fn l2_diff_write(
+pub(crate) fn l2_diff_write(
     _token: archmage::SimdToken,
     i0: &ImageF,
     i1: &ImageF,
@@ -187,7 +198,7 @@ fn l2_diff_write(
 /// * `w_0lt1` - Weight when original < reconstructed (penalize artifacts)
 /// * `diffmap` - Output difference map (accumulated)
 #[archmage::autoversion]
-fn l2_diff_asymmetric(
+pub(crate) fn l2_diff_asymmetric(
     _token: archmage::SimdToken,
     i0: &ImageF,
     i1: &ImageF,
