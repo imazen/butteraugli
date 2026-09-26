@@ -1,0 +1,288 @@
+{
+  "build_commit": "112a06b203d0c325c6bbff9f4ba84c899f7f5edd",
+  "input_manifest_sha256": "90554858e99eeff5ec26323274a33978b62aef3131e30c7ed53cb54fa33eb8a0",
+  "input_cells_sha256": "8e9dac6e33476b5205c11c985f6bc9f52e6770e5f8305fbf1472f9255da13382",
+  "input_features_sha256": "31ea44f3c6d8a1376578d5e8dbb01d0339dcf2af6257c11c57a847e9cc7574fd",
+  "feature_manifest_sha256": "90554858e99eeff5ec26323274a33978b62aef3131e30c7ed53cb54fa33eb8a0",
+  "feature_provenance": "168 edges; 256-row strips, 64-row halo; zensim 9c0635f1ceb9a07fbaa2f1b975f17c617669c8bc",
+  "feature_binaries": {
+    "margarine-score": "3c5462e9e910a2c85b5cc7bfe984b92866d9652dd7ff07661887141ceef44403",
+    "margarine-box3": "76d3a49fe4bdc22aef8675876b27f00793278ffcf85e7ba922170834f37a3523"
+  },
+  "splits_sha256": "34ef2258b54f7814338280092e4f55c00c6caa0eb8e0f82187760557700f010e",
+  "splits": {
+    "1068": "fit",
+    "1492": "fit",
+    "1508": "test",
+    "1510": "fit",
+    "1638": "fit",
+    "2206": "tune",
+    "2404": "fit",
+    "5038": "tune",
+    "6000": "tune",
+    "6016": "fit",
+    "6606": "fit",
+    "7024": "fit",
+    "7032": "tune",
+    "7050": "test",
+    "7074": "fit",
+    "7078": "test",
+    "8010": "fit",
+    "8118": "test",
+    "8132": "tune",
+    "8182": "fit",
+    "8300": "fit",
+    "8392": "fit",
+    "8394": "fit",
+    "8402": "fit",
+    "8414": "test",
+    "8432": "tune",
+    "9070": "test",
+    "9074": "fit",
+    "9106": "fit",
+    "9108": "test",
+    "9132": "fit",
+    "9154": "tune",
+    "9292": "fit",
+    "9306": "fit",
+    "9364": "fit",
+    "9398": "tune",
+    "9460": "test",
+    "9502": "fit",
+    "9526": "test",
+    "9532": "tune",
+    "9546": "fit",
+    "9564": "tune",
+    "9594": "fit",
+    "9724": "test",
+    "9756": "test",
+    "9778": "fit",
+    "9786": "fit",
+    "9802": "tune",
+    "9836": "fit",
+    "9888": "fit"
+  },
+  "numpy": "2.5.3",
+  "scipy": "1.18.1",
+  "python": "3.14.7 (main, Aug  5 2026, 10:29:49) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "model_sha256": "b163e60dd51aa826d86f3eaa666fdf47feb5f093afa51d03fe9aac74cf84bb17",
+  "chosen_penalties": {
+    "max": 0.01,
+    "p1": 0.01,
+    "p2": 0.01,
+    "p3": 0.01,
+    "p6": 0.01
+  },
+  "trials": [
+    {
+      "norm": "max",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.050149497468532256
+    },
+    {
+      "norm": "max",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.05002464787463849
+    },
+    {
+      "norm": "max",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.04865199612206518
+    },
+    {
+      "norm": "max",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.06868686922493338
+    },
+    {
+      "norm": "p1",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.007636897031497622
+    },
+    {
+      "norm": "p1",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.007646350228486394
+    },
+    {
+      "norm": "p1",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.007307804278055819
+    },
+    {
+      "norm": "p1",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.01001843307722278
+    },
+    {
+      "norm": "p2",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.009470263635811495
+    },
+    {
+      "norm": "p2",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.009435911867360086
+    },
+    {
+      "norm": "p2",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.009060576425361356
+    },
+    {
+      "norm": "p2",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.012081332478705995
+    },
+    {
+      "norm": "p3",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.01195161465151277
+    },
+    {
+      "norm": "p3",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.01193320974722525
+    },
+    {
+      "norm": "p3",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.011567853234809248
+    },
+    {
+      "norm": "p3",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.015313825816076914
+    },
+    {
+      "norm": "p6",
+      "penalty": 1e-06,
+      "tune_source_weighted_log_mse": 0.018921425382964034
+    },
+    {
+      "norm": "p6",
+      "penalty": 0.0001,
+      "tune_source_weighted_log_mse": 0.018889292652419842
+    },
+    {
+      "norm": "p6",
+      "penalty": 0.01,
+      "tune_source_weighted_log_mse": 0.01848467270737391
+    },
+    {
+      "norm": "p6",
+      "penalty": 0.1,
+      "tune_source_weighted_log_mse": 0.024280602210298943
+    }
+  ],
+  "metrics": {
+    "fit": {
+      "n_pairs": 28560,
+      "n_sources": 28,
+      "norms": {
+        "max": {
+          "signed_teacher_srocc": 0.9356226497080494,
+          "source_weighted_log_rmse": 0.20137944473935307,
+          "source_weighted_raw_rmse": 1.2473587018044408
+        },
+        "p1": {
+          "signed_teacher_srocc": 0.9770193133287599,
+          "source_weighted_log_rmse": 0.07785410412224959,
+          "source_weighted_raw_rmse": 0.22890848732305963
+        },
+        "p2": {
+          "signed_teacher_srocc": 0.9748275588844504,
+          "source_weighted_log_rmse": 0.084330421535336,
+          "source_weighted_raw_rmse": 0.26258803181728624
+        },
+        "p3": {
+          "signed_teacher_srocc": 0.9711091859719462,
+          "source_weighted_log_rmse": 0.09431020646835551,
+          "source_weighted_raw_rmse": 0.312458965577133
+        },
+        "p6": {
+          "signed_teacher_srocc": 0.9620120448541858,
+          "source_weighted_log_rmse": 0.11959406066260864,
+          "source_weighted_raw_rmse": 0.46117149695002685
+        }
+      }
+    },
+    "tune": {
+      "n_pairs": 11220,
+      "n_sources": 11,
+      "norms": {
+        "max": {
+          "signed_teacher_srocc": 0.9160733877401055,
+          "source_weighted_log_rmse": 0.2205719749244341,
+          "source_weighted_raw_rmse": 1.3198738952841074
+        },
+        "p1": {
+          "signed_teacher_srocc": 0.9624502513778224,
+          "source_weighted_log_rmse": 0.08548569633602933,
+          "source_weighted_raw_rmse": 0.2235684648008643
+        },
+        "p2": {
+          "signed_teacher_srocc": 0.9574964352966354,
+          "source_weighted_log_rmse": 0.0951870601781637,
+          "source_weighted_raw_rmse": 0.2746237060806252
+        },
+        "p3": {
+          "signed_teacher_srocc": 0.9508670726052013,
+          "source_weighted_log_rmse": 0.10755395499380414,
+          "source_weighted_raw_rmse": 0.3338008104025594
+        },
+        "p6": {
+          "signed_teacher_srocc": 0.9378594527404654,
+          "source_weighted_log_rmse": 0.13595834916390354,
+          "source_weighted_raw_rmse": 0.4898387916507259
+        }
+      }
+    },
+    "test": {
+      "n_pairs": 11220,
+      "n_sources": 11,
+      "norms": {
+        "max": {
+          "signed_teacher_srocc": 0.9400309781986054,
+          "source_weighted_log_rmse": 0.18972166267986695,
+          "source_weighted_raw_rmse": 1.2606249929476963
+        },
+        "p1": {
+          "signed_teacher_srocc": 0.9527624064271942,
+          "source_weighted_log_rmse": 0.0950206922592513,
+          "source_weighted_raw_rmse": 0.27026090892991345
+        },
+        "p2": {
+          "signed_teacher_srocc": 0.9532406360242806,
+          "source_weighted_log_rmse": 0.09869155502245282,
+          "source_weighted_raw_rmse": 0.30747306919320766
+        },
+        "p3": {
+          "signed_teacher_srocc": 0.9560600069643737,
+          "source_weighted_log_rmse": 0.10326083425182793,
+          "source_weighted_raw_rmse": 0.345286682396497
+        },
+        "p6": {
+          "signed_teacher_srocc": 0.9566907385572888,
+          "source_weighted_log_rmse": 0.1193343377514494,
+          "source_weighted_raw_rmse": 0.46184249980198794
+        }
+      }
+    }
+  },
+  "formula": "expm1(sum_i weight_i * log1p(feature_i / scale_i))); no intercept",
+  "status": "feasibility-only; not a validated or released Margarine score",
+  "limitations": [
+    "coverage is inherited from the input experiment, not certified by this fit",
+    "source-ID partitions do not establish a cross-corpus near-duplicate audit",
+    "no human-quality or encoder-choice acceptance result"
+  ],
+  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/fit-old-extractor-control-2026-09-26",
+  "role": "Original-extractor teacher-agreement control; incompatible with updated runtime; no human acceptance result",
+  "artifact_sha256": {
+    "model.tsv": "b163e60dd51aa826d86f3eaa666fdf47feb5f093afa51d03fe9aac74cf84bb17",
+    "predictions.tsv": "01d3fe51e47e6747c53b36f551659747bd718a250dfb2ca1b8ab830e6fceb432",
+    "_MANIFEST.json": "0c6db38ed093b9afaa079fb56a4c59c899a0b27436ec524379b81169b59e466d",
+    "run.log": "0a50d408d16a0d1c5045b23a04e1dad262d924fc437f6f442e0c6ebef9d3e8d8"
+  }
+}

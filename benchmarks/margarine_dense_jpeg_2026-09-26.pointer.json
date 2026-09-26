@@ -31,12 +31,17 @@
   "artifact_root": "/Users/lilith/work/codec-artifacts/margarine",
   "encoder_stage": "dense-jpeg-pilot-2026-09-26",
   "extraction": "dense-jpeg-teacher-features-2026-09-26",
-  "extraction_status": "running; consult its _MANIFEST.json",
+  "extraction_status": "complete: all 51000 pairs",
   "encoder_image": "sha256:a048cdb743bd70610912c6b17e299786eff99794bd59a4b741274b9bf6ed0678",
   "teacher_feature_build": "8fe68ff79563298da877db53825c4156c29147a6",
   "binary_freeze": "teacher-feature-binaries-8fe68ff7",
-  "model_status": "not fitted",
+  "model_status": "original-extractor control fitted; see margarine_old_extractor_fit_2026-09-26.pointer.json; no human-quality qualification",
   "encoder_remote_copy": "dev:/home/lilith/work/codec-artifacts/margarine/dense-jpeg-pilot-2026-09-26/",
   "tower_encoded_mirror": "tower:/mnt/user/coefficient/output/margarine/dense-jpeg-pilot-2026-09-26/",
-  "tower_verification": "Stage manifest, pairs export and three deterministic blob hashes verified. refs/ excluded: bytes already live in dense-references-pilot-2026-09-26/."
+  "tower_verification": "Stage manifest, pairs export and three deterministic blob hashes verified. refs/ excluded: bytes already live in dense-references-pilot-2026-09-26/.",
+  "extraction_hashes": {
+    "cells_sha256": "8e9dac6e33476b5205c11c985f6bc9f52e6770e5f8305fbf1472f9255da13382",
+    "features_sha256": "31ea44f3c6d8a1376578d5e8dbb01d0339dcf2af6257c11c57a847e9cc7574fd",
+    "manifest_sha256": "90554858e99eeff5ec26323274a33978b62aef3131e30c7ed53cb54fa33eb8a0"
+  }
 }

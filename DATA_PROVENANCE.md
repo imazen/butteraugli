@@ -1,7 +1,8 @@
 # Margarine data index
 
-No trained Margarine model exists. The current candidate is an analytic box-filter
-control; feature-extraction measurements are cost probes, not quality predictions.
+A teacher-agreement feasibility model has been fitted on the original extractor.
+It has no human-quality or resource qualification. The analytic box-filter
+control and feature-extraction cost probes remain separate experiments.
 Human-quality coverage measured so far is AIC4_sample and CID22 validation, not
 every required dataset. The total-process memory gate includes decoding and inputs.
 The user permits smaller-image resource ratios to taper, provided they remain
@@ -150,9 +151,9 @@ pins source/render commits and records class counts. Original URLs, source hashe
 cluster IDs/sizes and per-render hashes remain in `_MANIFEST.json`. Resampling is
 Lanczos3 in encoded sRGB, with no upscaling and a 4096-pixel maximum dimension.
 
-The reference preparation feeds the JPEG feasibility run below. No trained
-score exists yet. Per-class coverage, cross-corpus near-duplicate checks and
-held-out representatives remain outstanding. These are project-local Margarine
+The reference preparation feeds the JPEG feasibility run below. Per-class
+coverage and cross-corpus near-duplicate checks remain outstanding; the
+feasibility fit uses the frozen source partitions described below. These are project-local Margarine
 artifacts; the image store remains unchanged. The original manifest’s pending
 registration note is superseded by this disposition. The pilot
 is not a complete training corpus. Its Tower mirror is
@@ -178,7 +179,8 @@ Every encoded blob and staged reference hash was verified by the input adapter.
 The broad class counts are 25 photo-like (including generated products),
 10 screen, 7 line-art and 8 mixed; these do not meet final per-class quotas.
 
-The Mac `dense-jpeg-teacher-features-2026-09-26/` extraction is running with
+The Mac `dense-jpeg-teacher-features-2026-09-26/` extraction completed all 51,000
+pairs with
 copied, hash-pinned binaries from `teacher-feature-binaries-8fe68ff7/`. Their
 Rust entry sources and the runner match commit `8fe68ff79563`. Its native maps
 require exactly 95,322,589,380 bytes for the declared cells; disk capacity was
@@ -219,12 +221,21 @@ and silently run the resulting model with the newer extractor.
 
 `dense-jpeg-features-ad18b444-2026-09-26/` on dev is the in-progress feature-only
 refresh, using frozen `feature-binaries-caccee81/` and runner `710d9f19`.
-The original Mac teacher run continues unchanged; its maps and five scalar
-targets are retained. After both complete, `fit_probe.py --features` joins by
+The original Mac teacher run is complete; its maps and five scalar
+targets are retained. After the refresh completes, `fit_probe.py --features` joins by
 reference/encoded SHA-256 and requires equal key sets. The original 28/11/11
 source partitions remain fixed. This refresh generates no new encodes or maps.
 
 The private scalar runtime and cached-teacher evaluator are implemented, but no
-trained model has been evaluated. The four-pair CID22 adapter smoke on r5900xt
+trained model has been evaluated against human labels. The four-pair CID22 adapter smoke on r5900xt
 uses synthetic coefficients solely to test alignment and panel generation;
 its artifacts are `student-eval-smoke-2026-09-26/`, not quality evidence.
+
+The original-extractor control is fitted in Mac
+`fit-old-extractor-control-2026-09-26/`. On its fixed 11-source / 11,220-pair
+test split, teacher SROCC is max 0.940031, p1 0.952762, p2 0.953241,
+p3 0.956060 and p6 0.956691. Every norm selected ridge penalty 0.01 using
+tuning sources only. These are teacher-agreement results, not human SROCC loss
+or an encoder-choice gate. The [fit pointer](benchmarks/margarine_old_extractor_fit_2026-09-26.pointer.json)
+records all splits, metrics and artifact hashes. This model uses the original
+Mac extractor and must not be loaded with the updated extractor.
