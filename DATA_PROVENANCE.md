@@ -368,3 +368,11 @@ records teacher/candidate means 143.855/87.633 ms over 21 rounds. The
 found no changed map bytes or scalar values on 300 pairs. This candidate
 has not had a fresh total-process RSS sweep. The capture and full map
 comparison remain in r5900xt `reuse-2026-09-26/`.
+
+The full-direction spatially sparse candidate `32db0d72` completed AIC4.
+Its [panel](benchmarks/margarine_sparse_aic4_2026-09-26.tsv) has largest pooled SROCC loss
+0.00251958 (p3). The initial 1 MP means are 136.723/86.116 ms
+(teacher/candidate, 21 rounds). Validated fixed row windows in `56414d83`
+produce 142.668/86.866 ms in another 21-round run; that is no demonstrated
+speed improvement. Neither reaches the resource goal. Native maps remain
+in r5900xt `sparse-aic4-2026-09-26/`; compact metadata is copied to the Mac.
