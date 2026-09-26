@@ -1536,3 +1536,19 @@ contains all 300 pairs and five norms. Primary SROCC changes by
 −0.000176446, KROCC by +0.000713489, and Z-RMSE by −0.000609074
 (lower Z-RMSE is better). This remains a point panel with five source
 images; no new source-bootstrap or matched-byte choice claim is made.
+
+The native-UHF [CID22 panel](benchmarks/margarine_native_uhf_cid22_2026-09-26.tsv)
+completed all 4,292 pairs. Primary SROCC changes by +0.000675806,
+KROCC by +0.000858774, and Z-RMSE by −0.000872377 versus Butteraugli max.
+All five norm panels and native maps are retained. Thus this control passes
+the primary point screen on AIC4, CID22 and four LIVE1 sessions, and removes
+the supported LIVE choice loss while meeting mean scoring/resource targets
+on the measured large photographic crops. It has not received the selected
+candidate's complete nine-corpus evaluation or source-bootstrap intervals;
+CID22 participant uncertainty remains unavailable. No default is changed.
+
+Work stopped at the user's request to wrap up. The next numeric comparison
+is this native-UHF control on the remaining existing corpus ledgers and the
+independent content/resource pairs, before considering selection. New native-UHF
+maps are retained on r5900xt and metadata on the Mac; these new runs have not
+yet been mirrored to Tower. Earlier selected-candidate mirrors are unchanged.
