@@ -388,20 +388,51 @@ fn reduce_row(
     factor: usize,
     out: &mut [f32],
 ) {
+    match factor {
+        2 => reduce_fixed::<2, 16>(rows, sw, w, out),
+        4 => reduce_fixed::<4, 32>(rows, sw, w, out),
+        _ => unreachable!(),
+    }
+}
+
+#[inline(always)]
+fn reduce_fixed<const F: usize, const N: usize>(
+    rows: &[Row],
+    sw: usize,
+    w: usize,
+    out: &mut [f32],
+) {
     for (channel, dst) in out.chunks_exact_mut(w).enumerate() {
-        for (x, v) in dst.iter_mut().enumerate() {
-            let x0 = x * factor;
-            let x1 = (x0 + factor).min(sw);
-            let mut sum = 0.0;
+        let full = if rows.len() == F { sw / F / 8 * 8 } else { 0 };
+        for (block, target) in dst[..full].as_chunks_mut::<8>().0.iter_mut().enumerate() {
+            let mut sums = [0.0; 8];
             for row in rows {
-                for &value in &row[channel * sw + x0..channel * sw + x1] {
-                    sum += value;
+                let start = channel * sw + block * 8 * F;
+                let values: &[f32; N] = row[start..start + N].try_into().unwrap();
+                for offset in 0..F {
+                    for lane in 0..8 {
+                        sums[lane] += values[lane * F + offset];
+                    }
                 }
             }
-            *v = sum / ((x1 - x0) * rows.len()) as f32;
+            for lane in 0..8 {
+                target[lane] = sums[lane] / (F * F) as f32;
+            }
+        }
+        for (x, value) in dst.iter_mut().enumerate().skip(full) {
+            let x0 = x * F;
+            let x1 = (x0 + F).min(sw);
+            let mut sum = 0.0;
+            for row in rows {
+                for &v in &row[channel * sw + x0..channel * sw + x1] {
+                    sum += v;
+                }
+            }
+            *value = sum / ((x1 - x0) * rows.len()) as f32;
         }
     }
 }
+
 #[archmage::autoversion]
 #[allow(clippy::too_many_arguments)]
 fn expand_row(
@@ -475,14 +506,24 @@ pub(super) fn compute(
     let (w, h) = (a.width, a.height);
     let scale = |factor| {
         let (sw, sh) = (w.div_ceil(factor), h.div_ceil(factor));
+        let pool = image::BufferPool::with_capacity(if sh > rows { 32 } else { 0 });
+        // A single scoring strip has no overlap to reuse. Keep that case on
+        // the shared planar schedule to avoid constructing row caches.
+        if sh <= rows {
+            return strips::single_scale_encoded(a, b, factor, [0, 0, sw, sh], params, &pool);
+        }
         let mut a = Graph::new(a, factor, params.intensity_target());
         let mut b = Graph::new(b, factor, params.intensity_target());
-        let pool = image::BufferPool::with_capacity(if sh > rows { 32 } else { 0 });
+        let mut previous_height = 0;
         let mut result = image::ImageF::new(sw, sh);
         for start in (0..sh).step_by(rows) {
             let end = (start + rows).min(sh);
             let y0 = start.saturating_sub(local_halo()) / 4 * 4;
             let y1 = (end + local_halo()).div_ceil(4).saturating_mul(4).min(sh);
+            if y1 - y0 != previous_height {
+                pool.clear();
+                previous_height = y1 - y0;
+            }
             let (pa, pb) =
                 diff::maybe_join(|| a.prepare(y0, y1, &pool), || b.prepare(y0, y1, &pool));
             let map = strips::finish_scale(pa, pb, params, &pool);
