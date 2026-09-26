@@ -1317,12 +1317,13 @@ fn malta_compute_scaled_diffs(
     norm2_0gt1: f32,
     norm2_0lt1: f32,
     norm1_f32: f32,
-    diffs: &mut ImageF,
+    padded: &mut ImageF,
+    pad: usize,
 ) {
     for y in 0..lum0.height() {
         let row0 = lum0.row(y);
         let row1 = lum1.row(y);
-        let out = diffs.row_mut(y);
+        let out = &mut padded.row_full_mut(y + pad)[pad..pad + lum0.width()];
 
         for (o, (&v0, &v1)) in out.iter_mut().zip(row0.iter().zip(row1.iter())) {
             let absval = 0.5 * (v0.abs() + v1.abs());
@@ -1384,13 +1385,11 @@ where
     let norm2_0lt1 = (w_pre0lt1 * norm1) as f32;
     let norm1_f32 = norm1 as f32;
 
-    // First pass: compute scaled differences (branch-free, SIMD-vectorized)
-    let mut diffs = ImageF::from_pool_dirty(width, height, pool);
-    malta_compute_scaled_diffs(lum0, lum1, norm2_0gt1, norm2_0lt1, norm1_f32, &mut diffs);
-
+    // First pass: write scaled differences directly into the padded image.
+    // This avoids allocating and copying a separate full-size diff image.
     // Second pass: apply Malta filter with zero-padded borders.
     //
-    // Create a padded copy of diffs with 4 pixels of zeros on each side.
+    // Reserve 4 pixels of zeros on each side.
     // This eliminates all boundary handling — every pixel becomes "interior"
     // and can use the fast SIMD path. The zero padding means border pixels
     // see zeros outside the image, matching the C++ behavior where
@@ -1401,8 +1400,7 @@ where
     let mut padded = ImageF::from_pool_dirty(pad_w, pad_h, pool);
     let pad_stride = padded.stride();
 
-    // Zero only the border strips (top/bottom rows + left/right columns).
-    // Interior will be overwritten by the copy below.
+    // Zero only the border strips. The interior is overwritten below.
     // Top border: first PAD full rows
     for y in 0..PAD {
         padded.row_full_mut(y)[..pad_stride].fill(0.0);
@@ -1411,18 +1409,21 @@ where
     for y in PAD + height..pad_h {
         padded.row_full_mut(y)[..pad_stride].fill(0.0);
     }
-    // Copy diffs rows into the center, zero left/right padding columns
+    // Zero left/right padding columns in each interior row.
     for y in 0..height {
-        let src = diffs.row(y);
         let dst = padded.row_full_mut(y + PAD);
-        // Zero left padding
         dst[..PAD].fill(0.0);
-        // Copy interior
-        dst[PAD..PAD + width].copy_from_slice(src);
-        // Zero right padding (from PAD+width to end of stride)
         dst[PAD + width..pad_stride].fill(0.0);
     }
-    diffs.recycle(pool);
+    malta_compute_scaled_diffs(
+        lum0,
+        lum1,
+        norm2_0gt1,
+        norm2_0lt1,
+        norm1_f32,
+        &mut padded,
+        PAD,
+    );
 
     let mut block_diff_ac = ImageF::from_pool_dirty(width, height, pool);
     let pad_data = padded.data();
