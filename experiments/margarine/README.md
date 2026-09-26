@@ -34,6 +34,15 @@ extractor output, named by the original 228-layout indices. RGB8 uses the native
 path; RGB16 and opaque RGBA retain precision through the shared linear ingress.
 It refuses to overwrite a result and does not assign a quality score.
 
+`score_manifest.py --teacher-features` runs serial local extraction without
+human labels or fitting. Its input columns are `dataset source codec pair
+reference distorted encoded bpp setting` (tab-separated); `encoded` retains
+the original bitstream even when `distorted` names a decoded PNG. Teacher norms
+and map hashes go into `cells.jsonl`; the separate `features.jsonl` sidecar joins
+by reference/encoded SHA-256. Both input artifacts remain in their original
+stores. The scorer and exporter detect file formats by signature, so encoded
+blobs need no extension. Existing quality-evaluation mode remains available.
+
 `prepare_dense.py` prepares references from every full-image representative in
 the existing train-only K500 selection, resolving URLs through the canonical
 training catalog and verifying each rendered source against its pinned LFS

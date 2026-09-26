@@ -13,8 +13,8 @@ pub(super) fn export_edges(args: &[String]) -> Result<(), Box<dyn Error>> {
     if args.len() != 4 {
         return Err("usage: --export-edges REF DIST NEW.tsv".into());
     }
-    let a = ImageReader::open(&args[1])?.decode()?;
-    let b = ImageReader::open(&args[2])?.decode()?;
+    let a = ImageReader::open(&args[1])?.with_guessed_format()?.decode()?;
+    let b = ImageReader::open(&args[2])?.with_guessed_format()?.decode()?;
     if (a.width(), a.height()) != (b.width(), b.height()) {
         return Err("feature pair dimensions differ".into());
     }

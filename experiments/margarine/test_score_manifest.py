@@ -6,10 +6,27 @@ import zlib
 from cid22_manifest import audit
 from pathlib import Path
 
-from score_manifest import audit_png, parse_score
+from score_manifest import EDGE_COLUMNS, audit_png, parse_features, parse_score
 
 
 class ScoringContract(unittest.TestCase):
+    def test_feature_order_and_nonfinite_values_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "features.tsv"
+            header = "\t".join(["width", "height"] + EDGE_COLUMNS)
+            values = ["1", "1"] + ["0"] * 168
+            path.write_text(header + "\n" + "\t".join(values) + "\n")
+            self.assertEqual(parse_features(path, (1, 1)), [0.0] * 168)
+            with self.assertRaisesRegex(ValueError, "dimensions"):
+                parse_features(path, (2, 1))
+            values[-1] = "nan"
+            path.write_text(header + "\n" + "\t".join(values) + "\n")
+            with self.assertRaisesRegex(ValueError, "nonfinite"):
+                parse_features(path, (1, 1))
+            path.write_text(header.replace("feature_003", "feature_004") + "\n")
+            with self.assertRaisesRegex(ValueError, "ordering"):
+                parse_features(path, (1, 1))
+
     def test_color_tags_are_not_silently_ignored(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "tagged.png"

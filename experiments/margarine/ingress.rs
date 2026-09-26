@@ -46,7 +46,7 @@ pub(crate) fn convert(input: DynamicImage) -> Result<(Vec<f32>, usize, usize)> {
 }
 
 pub(crate) fn load(path: impl AsRef<Path>) -> Result<(Vec<f32>, usize, usize)> {
-    convert(ImageReader::open(path)?.decode()?)
+    convert(ImageReader::open(path)?.with_guessed_format()?.decode()?)
 }
 
 #[cfg(test)]
