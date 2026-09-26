@@ -14,7 +14,8 @@ pub(super) fn compute(
     let scale = |factor: usize| {
         let (sw, sh) = (w.div_ceil(factor), h.div_ceil(factor));
         let mut output = image::ImageF::new(sw, sh);
-        let pool = image::BufferPool::with_capacity(32);
+        let pool =
+            image::BufferPool::with_capacity(if sh <= rows && sw <= COLUMNS { 0 } else { 32 });
         let halo = strips::halo();
         let mut previous_shape = (0, 0);
         for y in (0..sh).step_by(rows) {

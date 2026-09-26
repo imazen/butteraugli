@@ -200,7 +200,7 @@ fn compose_scaled(
         let sh = h.div_ceil(factor);
         let mut map = image::ImageF::new(sw, sh);
         let pool = image::BufferPool::with_capacity(
-            if cfg!(any(feature = "reuse", feature = "bounded")) {
+            if cfg!(any(feature = "reuse", feature = "bounded")) && sh > rows {
                 32
             } else {
                 0

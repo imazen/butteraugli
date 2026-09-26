@@ -566,6 +566,12 @@ from its scalar tails. Strided/tiny/odd tests bound the difference at 1e-6 on
 unit-range inputs, and the unchanged full-pipeline tests pass. This is an
 experimental scheduling change; corpus and resource measurements are required.
 
+The strip/tile walkers disable buffer retention when a scale has only one
+interior region. Such a scale has no later strip to reuse the retained buffers.
+Multi-region scales keep the existing bounded pool. The unchanged streaming
+candidate tests pass after this allocation-lifetime change; process RSS and
+time remain measurement requirements, including on tiny inputs.
+
 ### Reference-only region selection
 
 The `reference-regions` experiment uses the same paired-RGB proxy and original
