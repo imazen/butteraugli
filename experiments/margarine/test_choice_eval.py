@@ -15,6 +15,17 @@ class ChoiceTests(unittest.TestCase):
         self.assertEqual([r["relative_regret"] for r in result], [0, 0.5, 0])
         self.assertEqual([r["eligible"] for r in result], [1, 2, 3])
 
+    def test_fixed_teacher_pooling_is_explicit_and_used_for_selection_and_regret(self):
+        rows = [row("a", 1, 1, 1), row("b", 1, 2, 2)]
+        rows[0]["scores"]["teacher"]["max"] = 4
+        rows[1]["scores"]["teacher"]["max"] = 2
+        matching = list(choices(rows, "box3", "p3"))[0]
+        fixed = list(choices(rows, "box3", "p3", teacher_norm="max"))[0]
+        self.assertEqual(matching["teacher_pair"], "a")
+        self.assertEqual(fixed["teacher_pair"], "b")
+        self.assertEqual(fixed["candidate_pair"], "a")
+        self.assertEqual(fixed["relative_regret"], 1)
+
     def test_ties_do_not_select_using_teacher_scores(self):
         result = list(choices([row("b", 1, 1, 2), row("a", 1, 3, 2)], "box3", "p3"))[0]
         self.assertEqual(result["candidate_pair"], "a")

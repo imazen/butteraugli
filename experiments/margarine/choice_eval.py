@@ -17,7 +17,10 @@ from pathlib import Path
 NORMS = ("max", "p1", "p2", "p3", "p6")
 
 
-def choices(rows, candidate, norm, human=False):
+def choices(rows, candidate, norm, human=False, teacher_norm=None):
+    teacher_norm = teacher_norm or norm
+    def score(row, arm):
+        return row["scores"][arm][teacher_norm if arm == "teacher" else norm]
     if human:
         directions = {row["direction"] for row in rows}
         if len(directions) != 1 or not directions <= {"quality", "distortion"}:
@@ -26,17 +29,17 @@ def choices(rows, candidate, norm, human=False):
             raise ValueError("non-finite human label")
     for row in rows:
         rate = float(row["bpp"])
-        values = (row["scores"][arm][norm] for arm in ("teacher", candidate))
+        values = (score(row, arm) for arm in ("teacher", candidate))
         if not math.isfinite(rate) or rate <= 0 or any(not math.isfinite(v) or v < 0 for v in values):
             raise ValueError("invalid rate or metric value")
     for budget in sorted({float(row["bpp"]) for row in rows}):
         eligible = [row for row in rows if float(row["bpp"]) <= budget]
         # Stable score ties prefer fewer bytes, then the declared pair ID.
         def pick(arm):
-            return min(eligible, key=lambda row: (row["scores"][arm][norm], float(row["bpp"]), row["pair"]))
+            return min(eligible, key=lambda row: (score(row, arm), float(row["bpp"]), row["pair"]))
         teacher, student = pick("teacher"), pick(candidate)
-        optimum = teacher["scores"]["teacher"][norm]
-        achieved = student["scores"]["teacher"][norm]
+        optimum = score(teacher, "teacher")
+        achieved = score(student, "teacher")
         absolute = achieved - optimum
         relative = absolute / optimum if optimum else (0.0 if absolute == 0 else math.inf)
         result = dict(budget_bpp=budget, eligible=len(eligible), teacher_pair=teacher["pair"],
@@ -57,6 +60,7 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--candidate", default="box3")
     parser.add_argument("--build-commit", required=True)
+    parser.add_argument("--teacher-norm", choices=NORMS, help="explicit fixed teacher pooling; default matches each candidate norm")
     parser.add_argument("--human-loss-threshold", type=float, action="append", default=[],
                         help="diagnostic loss in native label units; requires complete human labels")
     parser.add_argument("--participant-panels", type=Path,
@@ -88,8 +92,8 @@ def main():
         for norm in NORMS:
             records = []
             for (dataset, source), rows in sorted(groups.items()):
-                records.extend(dict(dataset=dataset, source=source, norm=norm, **r)
-                               for r in choices(rows, args.candidate, norm, bool(args.human_loss_threshold or args.participant_panels)))
+                records.extend(dict(dataset=dataset, source=source, norm=norm, teacher_norm=args.teacher_norm or norm, **r)
+                               for r in choices(rows, args.candidate, norm, bool(args.human_loss_threshold or args.participant_panels), args.teacher_norm))
                 print(f"{norm} {dataset} {source}: choices persisted below", file=log, flush=True)
             if participant_panels:
                 for row in records:
@@ -150,6 +154,7 @@ def main():
                 writer.writerows(uncertainty_summaries)
         provenance = dict(build_commit=args.build_commit, ledger=str(args.ledger.resolve()),
             ledger_sha256=hashlib.sha256(args.ledger.read_bytes()).hexdigest(), candidate=args.candidate,
+            teacher_norm=args.teacher_norm or "matches candidate norm",
             budget_policy="all distinct observed bpp values per source, no interpolation",
             tie_policy="minimum score, then minimum bpp, then lexicographic pair ID",
             human_loss_thresholds=args.human_loss_threshold,
