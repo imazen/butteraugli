@@ -862,3 +862,15 @@ Full profile data remain in r5900xt `row-cache-profile-2026-09-26/` with input
 hashes and build commit; resources and compact AIC replay metadata also exist
 on the Mac. Guard peak RSS was 1.60 GiB, minimum available RAM 56,799 MiB,
 peak load 1.49.
+
+Vectorized row reduction, single-region bypass and strip-shape recycling
+(`288b3fd7`) [preserve all AIC4 maps and norms](benchmarks/margarine_row_reduce_aic4_parity_2026-09-26.json).
+The [resource sweep](benchmarks/margarine_row_reduce_resources_2026-09-26.tsv)
+reaches 3.006×/2.648× metric speed at 1 MP/8.44 MP, with largest-of-three
+fresh-process RSS fractions 24.62%/13.25%. Decode-inclusive speedups are
+2.644×/2.452×. Tiny and small measurements remain below teacher for both
+resources. This passes memory on these crops, but still fails 4× speed and
+has no broader content or matched-rate human-choice qualification. Full maps
+remain in r5900xt `row-reduce-aic4-2026-09-26/`; compact results and resources
+also exist on the Mac. Guard peak RSS was 1.65 GiB, minimum available RAM
+56,350 MiB, peak load 4.96.
