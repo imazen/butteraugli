@@ -45,7 +45,7 @@ def main():
     parser.add_argument("binary", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--build-commit", required=True)
-    parser.add_argument("--direct", choices=["box3", "multirate", "compact", "compact4", "sparse", "pooled", "perceptual", "physical", "refined", "refined1", "refined2", "stratified", "bounded", "lattice", "tiles", "reference-regions"], help="native-strip direct candidate")
+    parser.add_argument("--direct", choices=["box3", "multirate", "compact", "compact4", "sparse", "pooled", "perceptual", "physical", "refined", "refined1", "refined2", "stratified", "bounded", "lattice", "tiles", "reference-regions", "stable-peak"], help="native-strip direct candidate")
     parser.add_argument("--strip-rows", type=int, default=256)
     parser.add_argument("--model", type=Path, help="measure fitted student scores instead of feature probes")
     args = parser.parse_args()

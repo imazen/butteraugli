@@ -75,6 +75,18 @@ fn select(map: &image::ImageF) -> Vec<(Region, f64)> {
         .collect()
 }
 
+#[cfg(feature = "stable-peak")]
+fn centered_region(x: usize, y: usize, side: usize, width: usize, height: usize) -> Region {
+    let w = side.min(width);
+    let h = side.min(height);
+    Region {
+        x: x.saturating_sub(w / 2).min(width - w),
+        y: y.saturating_sub(h / 2).min(height - h),
+        w,
+        h,
+    }
+}
+
 fn exact_region(
     a: &ingress::EncodedRows<'_>,
     b: &ingress::EncodedRows<'_>,
@@ -127,6 +139,31 @@ pub(super) fn compute(
     let mut map = paired_pool::compute_map(a, b, rows, params)?;
     #[cfg(feature = "reference-regions")]
     let regions = reference_regions::select(a);
+    #[cfg(feature = "stable-peak")]
+    let regions: Vec<_> = regions
+        .into_iter()
+        .map(|(r, weight)| {
+            let interior = centered_region(r.x + r.w / 2, r.y + r.h / 2, 96, a.width, a.height);
+            (
+                interior,
+                weight * (r.w * r.h) as f64 / (interior.w * interior.h) as f64,
+            )
+        })
+        .collect();
+    #[cfg(feature = "stable-peak")]
+    let peak_region = {
+        let (mut peak, mut px, mut py) = (f32::NEG_INFINITY, 0, 0);
+        for y in 0..map.height() {
+            for (x, &value) in map.row(y).iter().enumerate() {
+                if value > peak {
+                    peak = value;
+                    px = x;
+                    py = y;
+                }
+            }
+        }
+        centered_region(px, py, 32, a.width, a.height)
+    };
     #[cfg(not(feature = "reference-regions"))]
     let regions = select(&map);
     let mut patches = Vec::new();
@@ -151,6 +188,8 @@ pub(super) fn compute(
             *value *= ratio;
         }
     }
+    #[cfg(feature = "stable-peak")]
+    patches.push((peak_region, exact_region(a, b, peak_region, params)?));
     for (r, exact) in patches {
         for y in 0..r.h {
             map.row_mut(r.y + y)[r.x..r.x + r.w].copy_from_slice(&exact[y * r.w..(y + 1) * r.w]);

@@ -26,6 +26,7 @@ refined1 = ["refined"]
 refined2 = ["refined"]
 stratified = ["refined2"]
 reference-regions = ["refined2"]
+stable-peak = ["reference-regions"]
 
 [dependencies]
 butteraugli = { path = "../../butteraugli", features = ["internals"] }

@@ -531,3 +531,10 @@ and beneficial point-label tails. Optional hash-verified native-map probes
 compare the candidate at Butteraugli's peak pixel, before and after normalizing
 by the p1 score ratio. This distinguishes a global scale shift from a spatial
 peak discrepancy. It does not infer participant significance from point labels.
+
+The `stable-peak` experiment separates reference-only global calibration from
+peak localization. It uses 96-pixel interiors around both reference-stratum
+representatives and a 32-pixel interior around the proxy's maximum. All three
+regions use original Butteraugli with its finite halo. Only reference-stable
+regions determine the global cubic correction; the peak patch is inserted
+afterwards. These are experimental sampling dimensions, not calibrated defaults.
