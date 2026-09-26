@@ -111,7 +111,7 @@ def main():
                 report(f'{dataset}: {included} pairs, {observations} retained opinions; {lossless} lossless controls')
                 offset += length
         if len(rows) != 344:
-            raise ValueError('expected 169 JPEG and 175 JPEG2000 compressed stimuli')
+            raise ValueError('expected 344 compressed Release 1 stimuli')
         pairs = args.output / 'pairs.tsv'
         with pairs.open('x') as f:
             writer = csv.DictWriter(f, fieldnames=FIELDS + ['bpp', 'setting'], delimiter='\t')
