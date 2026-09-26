@@ -674,3 +674,10 @@ index mask instead of division. The stored-row assertion remains active and
 exact row/strip tests retain their original expectations. Additional retained
 rows can increase memory, so this scheduling change requires a fresh process
 RSS measurement before acceptance.
+
+Corpus scoring now explicitly passes `--native-strip` to the candidate, using
+`--strip-rows` (default 128), and validates the corresponding reported mode.
+Earlier scorer invocations used full-height execution, even when the matching
+resource run used 128 rows. Those ledgers remain valid full-height quality
+results, but do not independently validate the streamed row cache. New runs
+record rows and columns in the manifest and must match the resource geometry.

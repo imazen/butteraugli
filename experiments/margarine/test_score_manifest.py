@@ -7,10 +7,22 @@ import zlib
 from cid22_manifest import audit
 from pathlib import Path
 
-from score_manifest import EDGE_COLUMNS, FIELDS, NORMS, aligned_teacher, audit_png, digest, frozen_teacher, parse_features, parse_prediction, parse_score, read_pairs, verify_input_audit
+from score_manifest import scorer_command, EDGE_COLUMNS, FIELDS, NORMS, aligned_teacher, audit_png, digest, frozen_teacher, parse_features, parse_prediction, parse_score, read_pairs, verify_input_audit
 
 
 class ScoringContract(unittest.TestCase):
+    def test_candidate_command_pins_geometry_and_rejects_whole_image_response(self):
+        binaries = {"margarine-score": Path("teacher"), "margarine-box3": Path("candidate")}
+        command, mode = scorer_command(binaries, "simd-full-malta", 96)
+        self.assertEqual(command, ["candidate", "--native-strip", "96"])
+        self.assertEqual(scorer_command(binaries, "teacher", 96), (["teacher", "teacher"], "teacher"))
+        text = "mode\twidth\theight\tmax\tp1\tp2\tp3\tp6\nsimd-full-malta\t2\t3\t1\t1\t1\t1\t1\n"
+        with self.assertRaisesRegex(ValueError, "wrong scorer mode"):
+            parse_prediction(text, mode, (2, 3))
+        parse_prediction(text.replace("simd-full-malta\t", mode + "\t"), mode, (2, 3))
+        with self.assertRaisesRegex(ValueError, "positive"):
+            scorer_command(binaries, "simd-full-malta", 0)
+
     def test_scored_teacher_is_reusable_before_panels_but_not_while_running(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

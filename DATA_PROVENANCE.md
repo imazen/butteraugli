@@ -1237,3 +1237,14 @@ measures 3.631065×/3.686722× at 1 MP/8.44 MP and 18.2964%/8.0060% RSS.
 Tiny and small cases remain below teacher time and RSS in this run. The
 remaining shortfall is the large-image speed target. This does not qualify
 content diversity or the remaining human-rated corpora.
+
+### Corpus execution geometry audit
+
+The scorer previously invoked the candidate without `--native-strip`; in the
+CLI that selects `rows = image.height`. Consequently the older LIVE replay
+ledgers above did not exercise `Graph::prepare` or the borrowed row cache.
+Their map-identity statements describe full-height execution only. Exact seam
+tests cover streaming equivalence, but the corpus-level streamed checks remain
+required. `score_manifest.py` now passes and records explicit strip rows
+(default 128), alongside tile columns (default 512), and rejects the wrong
+reported execution mode. Resource and quality runs must use identical geometry.
