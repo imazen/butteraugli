@@ -6,6 +6,88 @@ use image_io::{DynamicImage, ImageReader};
 use std::{error::Error, hint::black_box, path::Path, time::Duration};
 use zensim::{PixelFormat, StridedBytes, Zensim};
 
+/// Direct Butteraugli-lineage candidate: separate metric and decode timing.
+pub(super) fn bench_direct(args: &[String]) -> Result<(), Box<dyn Error>> {
+    if args.len() != 5 {
+        return Err("usage: --bench-direct ROWS REF DIST NEW.json".into());
+    }
+    let rows = args[1].parse::<usize>()?;
+    if rows == 0 || Path::new(&args[4]).exists() {
+        return Err("invalid rows or existing results".into());
+    }
+    let a = decode(&args[2])?;
+    let b = decode(&args[3])?;
+    if a.dimensions() != b.dimensions() || a == b {
+        return Err("benchmark requires a distinct matched pair".into());
+    }
+    let (w, h) = a.dimensions();
+    let (ta, tb) = (rgb(&a), rgb(&b));
+    let (a, b) = (DynamicImage::ImageRgb8(a), DynamicImage::ImageRgb8(b));
+    let params = ButteraugliParams::default().with_compute_diffmap(true);
+    let teacher_params = params.clone();
+    let candidate = super::CANDIDATE;
+    let result = zenbench::run(|suite| {
+        suite.compare(format!("direct_native_{w}x{h}_rows{rows}"), |group| {
+            group
+                .config()
+                .min_rounds(20)
+                .max_rounds(40)
+                .warmup_time(Duration::from_millis(200));
+            group.bench("teacher_metric", move |bench| {
+                bench.iter(|| {
+                    butteraugli::butteraugli(
+                        black_box(ta.as_ref()),
+                        black_box(tb.as_ref()),
+                        &teacher_params,
+                    )
+                    .unwrap()
+                })
+            });
+            group.bench(format!("{candidate}_metric"), move |bench| {
+                bench.iter(|| {
+                    super::strips::compute_encoded(
+                        &super::ingress::EncodedRows::from_image(black_box(&a)).unwrap(),
+                        &super::ingress::EncodedRows::from_image(black_box(&b)).unwrap(),
+                        rows,
+                        &params,
+                    )
+                    .unwrap()
+                })
+            });
+            let (rp, dp) = (args[2].clone(), args[3].clone());
+            group.bench("teacher_decode", move |bench| {
+                bench.iter(|| {
+                    let (a, b) = (rgb(&decode(&rp).unwrap()), rgb(&decode(&dp).unwrap()));
+                    butteraugli::butteraugli(
+                        a.as_ref(),
+                        b.as_ref(),
+                        &ButteraugliParams::default().with_compute_diffmap(true),
+                    )
+                    .unwrap()
+                })
+            });
+            let (rp, dp) = (args[2].clone(), args[3].clone());
+            group.bench(format!("{candidate}_decode"), move |bench| {
+                bench.iter(|| {
+                    let (a, b) = (
+                        super::ingress::decode(&rp).unwrap(),
+                        super::ingress::decode(&dp).unwrap(),
+                    );
+                    super::strips::compute_encoded(
+                        &super::ingress::EncodedRows::from_image(&a).unwrap(),
+                        &super::ingress::EncodedRows::from_image(&b).unwrap(),
+                        rows,
+                        &ButteraugliParams::default(),
+                    )
+                    .unwrap()
+                })
+            });
+        });
+    });
+    result.save(&args[4])?;
+    Ok(())
+}
+
 /// RGB8 takes the measured native path; higher precision uses the shared ingress.
 pub(super) fn edge_features(
     reference: &str,

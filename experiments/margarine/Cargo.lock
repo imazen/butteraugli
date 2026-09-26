@@ -711,8 +711,7 @@ dependencies = [
 [[package]]
 name = "zenbench"
 version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4f7f6d55a1c1121b07981a891b2ca311ebec953ccc9be2f87586224fb2eb0e0"
+source = "git+https://github.com/imazen/zenbench?rev=1bf8a6509fce2ff4baddf1e2252639acd78d576c#1bf8a6509fce2ff4baddf1e2252639acd78d576c"
 dependencies = [
  "fs4",
  "serde",

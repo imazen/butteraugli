@@ -87,6 +87,9 @@ mod student;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--bench-direct") {
+        return resources_rgb8::bench_direct(&args);
+    }
     if args.first().is_some_and(|arg| arg == "--memory-native") {
         if args.len() != 4 {
             return Err("usage: --memory-native ROWS REF DIST".into());

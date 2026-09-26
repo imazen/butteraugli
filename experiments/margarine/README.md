@@ -415,3 +415,9 @@ measures the same path without map serialization. Inputs retain their native
 precision; non-opaque alpha is rejected. The borrowed row view supports sample
 strides, and tests compare native strips to linear strips exactly, including
 RGB16 one-bit differences at seams. The output map remains full resolution.
+
+`--bench-direct ROWS REF DIST NEW.json` measures teacher and native-strip
+candidate with interleaved metric-only and decode-included arms. The resource
+sweep accepts `--direct multirate --strip-rows ROWS` and marks runs with fewer
+than twenty samples unreliable. Zenbench is pinned to its committed Linux
+self-thread detection fix (`1bf8a650`); no gate thresholds are relaxed.

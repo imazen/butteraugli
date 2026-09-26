@@ -45,8 +45,12 @@ def main():
     parser.add_argument("binary", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--build-commit", required=True)
+    parser.add_argument("--direct", choices=["box3", "multirate"], help="native-strip direct candidate")
+    parser.add_argument("--strip-rows", type=int, default=256)
     parser.add_argument("--model", type=Path, help="measure fitted student scores instead of feature probes")
     args = parser.parse_args()
+    if args.model and args.direct: parser.error("choose a fitted model or direct candidate")
+    if args.strip_rows <= 0: parser.error("strip rows must be positive")
     system = platform.system()
     time_flag = {"Darwin": "-l", "Linux": "-v"}[system]
     if int(os.environ.get("RAYON_NUM_THREADS", "0")) <= 0:
@@ -60,6 +64,9 @@ def main():
     if not rows: raise ValueError("empty crop manifest")
     args.output.mkdir(parents=True, exist_ok=False)
     environment = dict(os.environ, ZENBENCH_NO_SAVE="1", LC_ALL="C")
+    if args.direct:
+        arms = ("teacher", args.direct)
+        bench_names = {arm: f"{arm}_metric" for arm in arms}
     records = []
     provenance = dict(build_commit=args.build_commit, binary=str(args.binary), binary_sha256=sha(args.binary),
         host=platform.node(), system=system, threads=int(environment["RAYON_NUM_THREADS"]),
@@ -71,6 +78,10 @@ def main():
         provenance.update(model=str(args.model), model_sha256=sha(args.model),
                           timing="interleaved metric-only and file-open/decode/metric arms; model preloaded; warm OS file cache",
                           limitation="same-image crops, fitted scalar scores; no independent content coverage")
+    if args.direct:
+        provenance.update(candidate=args.direct, strip_rows=args.strip_rows,
+                          timing="interleaved metric-only and file-open/decode/metric arms; warm OS file cache",
+                          limitation="same-image crops; no independent content coverage")
     with (args.output / "progress.log").open("x", buffering=1) as progress:
         def report(message):
             print(message, file=progress, flush=True)
@@ -85,6 +96,8 @@ def main():
                 report(f"{name}: measuring process peak {arm}")
                 log = args.output / f"{name}-{arm}-memory.log"
                 command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-rgb8", arm, *pair]
+                if args.direct and arm == args.direct:
+                    command = ["/usr/bin/time", time_flag, str(args.binary), "--memory-native", str(args.strip_rows), *pair]
                 if arm == "student":
                     command = ["/usr/bin/time", time_flag, str(args.binary), "--student", str(args.model), *pair]
                 with log.open("x") as out: subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=environment, check=True)
@@ -94,6 +107,8 @@ def main():
             with (args.output / f"{name}-bench.log").open("x") as out:
                 command = ([str(args.binary), "--bench-student", str(args.model)] if args.model
                            else [str(args.binary), "--bench-rgb8"])
+                if args.direct:
+                    command = [str(args.binary), "--bench-direct", str(args.strip_rows)]
                 with subprocess.Popen(command + [*pair, str(result_path)],
                         stdout=out, stderr=subprocess.STDOUT, env=environment) as process:
                     while True:
@@ -114,11 +129,13 @@ def main():
                 records.append(dict(width=w, height=h, pixels=w*h, arm=arm, mean_ns=ns,
                     ns_per_pixel=ns/(w*h), rounds=measured["summary"]["n"],
                     peak_rss_bytes=peaks[arm], rss_fraction_of_teacher=peaks[arm]/peaks["teacher"],
-                    mean_speedup=teacher_ns/ns, timing_unreliable=result["unreliable"]))
-                if args.model:
-                    decoded_ns = bench[f"{arm}_decode_rgb8"]["summary"]["mean"]
+                    mean_speedup=teacher_ns/ns, timing_unreliable=result["unreliable"] or measured["summary"]["n"] < 20))
+                if args.model or args.direct:
+                    decoded_name = f"{arm}_decode" if args.direct else f"{arm}_decode_rgb8"
+                    teacher_decoded = "teacher_decode" if args.direct else "teacher_decode_rgb8"
+                    decoded_ns = bench[decoded_name]["summary"]["mean"]
                     records[-1].update(decode_included_mean_ns=decoded_ns,
-                        decode_included_mean_speedup=bench["teacher_decode_rgb8"]["summary"]["mean"]/decoded_ns)
+                        decode_included_mean_speedup=bench[teacher_decoded]["summary"]["mean"]/decoded_ns)
             report(f"{name}: saved timing and process peaks")
             # Persist each completed size so a later failed arm loses no results.
             with (args.output / "summary.tsv").open("w") as out:
@@ -128,7 +145,7 @@ def main():
         fits = []
         for arm in arms:
             data = [r for r in records if r["arm"] == arm]
-            timings = ("mean_ns", "decode_included_mean_ns") if args.model else ("mean_ns",)
+            timings = ("mean_ns", "decode_included_mean_ns") if args.model or args.direct else ("mean_ns",)
             for timing in timings:
                 xs, ys = [r["pixels"] for r in data], [r[timing] for r in data]
                 xm, ym = sum(xs)/len(xs), sum(ys)/len(ys)
