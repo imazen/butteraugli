@@ -1,0 +1,10 @@
+{
+  "build_commit": "b6c1e6b152f33d02277d214068f05caa39b0322c",
+  "frozen_build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+  "candidate": "simd-row-malta",
+  "frozen_cells_sha256": "c1a3b5e330f2704530596cee0cb61d407db07188f1e4dcf265343e9dc8378716",
+  "binary_sha256": "7aec399ee40ca0d1ef5ed82acca42945229eccfcf962a636cd8fbcb4efb0bc51",
+  "pairs": 4292,
+  "verified": 4292,
+  "status": "complete"
+}

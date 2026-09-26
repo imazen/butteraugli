@@ -1410,10 +1410,19 @@ the formula to avoid table construction. Exhaustive bit equality tests cover
 every input value. Both the common-ingress teacher harness and candidate use
 this conversion; performance after the change remains to be measured.
 
-[Five equal-count quality bands](benchmarks/margarine_vector_row_quality_bands_2026-09-26.tsv)
+[Five human-rank quality bands](benchmarks/margarine_vector_row_quality_bands_2026-09-26.tsv)
 expose differences hidden by pooled ranks. For example, AIC4's bands 1, 4 and 5
 have primary SROCC deltas −0.020395, −0.016393 and −0.013726; AIC3's directly
 rated band 4 has −0.040597. Several small LIVE session bands also exceed
 0.01 loss (only 17–18 samples per band). Corpus-level point screening therefore
 does not establish uniform quality-band agreement. These are diagnostics,
 not separately agreed acceptance thresholds or uncertainty estimates.
+
+Build `b6c1e6b1` now has a [complete exact CID22 command replay](benchmarks/margarine_native16_lut_cid22_replay_2026-09-26.json):
+all 4,292 pairs, all five scalars, and every native map byte match frozen
+`6bb371fb`. Its [native-precision resource curve](benchmarks/margarine_native16_lut_resources_2026-09-26.tsv)
+measures 1.280794×/2.312701×/3.721443× scoring speedups at
+64²/256²/512², with process RSS fractions 0.720915/0.609819/0.392281.
+Both timing arms use the exact table where applicable, and fresh-process
+memory includes its construction. Baseline and new runs are separate
+measurements, not paired confidence bounds on the optimization itself.
