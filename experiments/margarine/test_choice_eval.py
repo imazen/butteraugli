@@ -26,6 +26,20 @@ class ChoiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             list(choices([row("a", float("nan"), 1, 1)], "box3", "p3"))
 
+    def test_human_harm_uses_declared_label_orientation(self):
+        rows = [row("a", 1, 1, 2), row("b", 1, 2, 1)]
+        for r, target in zip(rows, [70, 65]):
+            r.update(target=target, direction="quality")
+        self.assertEqual(list(choices(rows, "box3", "p3", True))[0]["human_quality_loss"], 5)
+        for r in rows:
+            r["direction"] = "distortion"
+        self.assertEqual(list(choices(rows, "box3", "p3", True))[0]["human_quality_loss"], -5)
+        rows[0]["direction"] = "quality"
+        with self.assertRaises(ValueError):
+            list(choices(rows, "box3", "p3", True))
+        with self.assertRaises(KeyError):
+            list(choices([row("a", 1, 1, 1)], "box3", "p3", True))
+
 
 if __name__ == "__main__":
     unittest.main()

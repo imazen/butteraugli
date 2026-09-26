@@ -462,3 +462,10 @@ cell. Selection uses the existing MF channel weights. The resulting XYB
 planes feed the shared decomposition, complete Malta bank and masking;
 the additional scale averages these XYB planes. This changes scale semantics
 and is a separate approximation, with no inherited quality qualification.
+
+`choice_eval.py --human-loss-threshold VALUE` additionally compares the native
+human labels of the teacher-selected and candidate-selected encodes. Repeat
+the flag to record an explicit diagnostic curve. Positive loss means worse
+human quality, accounting for each dataset's declared label direction. Labels
+must be complete and finite. These are observed-label differences, without
+a confidence/significance claim or an agreed material-reversal threshold.
