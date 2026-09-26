@@ -47,8 +47,11 @@ Audits: Mac `aic4-sample-audit-2026-09-25/`; r5900xt
 `cid22-audit-2026-09-26/`. The latter used build `f1c52826dc24`.
 Source-cluster AIC uncertainty lives in Mac `cluster-aic4-2026-09-26/`;
 its compact results and provenance are checked into `benchmarks/`.
-The CID22 clustered run is in progress at r5900xt
-`cluster-cid22-2026-09-26/`; do not treat partial output as complete.
+The CID22 clustered run is complete in `cluster-cid22-2026-09-26/` on
+r5900xt and Mac: all five norms × 2,000 source-cluster draws, with no undefined
+draws across the ten reported statistics. The combined table and hashes
+are tracked under `benchmarks/margarine_cluster_cid22_2026-09-26*`. These are
+per-statistic intervals for box3, not simultaneous bounds or learned-model results.
 
 ## Evaluation and resource results
 
