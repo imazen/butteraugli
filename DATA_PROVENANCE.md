@@ -84,6 +84,12 @@ fractions of 20.1% and 16.2%. At 64² and 256² its RSS fractions are 94.1% and
 quality result or confidence-bound pass is implied. Tracked summaries and
 artifact hashes use the `margarine_resource_edges_mac_2026-09-26` prefix.
 
+`resource-edge-strips64-2026-09-26/` measures parallel 256-row edge-feature
+strips with the corrected 64-row halo. Native-size mean speedup is 4.40× and
+RSS is 10.1% of the matched teacher; at 1024² these are 4.67× and 18.4%.
+Small-image process-memory limits remain unmet. The extractor still has no
+trained score, so these are resource findings, not Margarine acceptance.
+
 Heaptrack captures and reports live at `heap-2026-09-26/` on Mac and r5900xt;
 [their pointer](benchmarks/margarine_heap_2026-09-26.pointer.json) carries hashes.
 Heaptrack RSS includes instrumentation overhead. Use fresh-process platform
