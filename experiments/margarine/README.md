@@ -421,3 +421,10 @@ candidate with interleaved metric-only and decode-included arms. The resource
 sweep accepts `--direct multirate --strip-rows ROWS` and marks runs with fewer
 than twenty samples unreliable. Zenbench is pinned to its committed Linux
 self-thread detection fix (`1bf8a650`); no gate thresholds are relaxed.
+
+`--features compact` selects an experimental LF/MF decomposition on a 2×
+coarser lattice. HF/UHF residuals still include every native XYB sample,
+and Butteraugli's nonlinear transforms, directional scoring and masking remain
+shared. This first version reconstructs LF/MF before scoring; it does not yet
+reduce their retained plane storage. Its constants are analytical, with no
+human-label fitting. Quality and resource qualification are separate gates.

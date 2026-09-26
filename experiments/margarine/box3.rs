@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "multirate") {
+const CANDIDATE: &str = if cfg!(feature = "compact") {
+    "compact"
+} else if cfg!(feature = "multirate") {
     "multirate"
 } else {
     "box3"
@@ -47,6 +49,11 @@ mod mask;
 mod opsin;
 #[path = "../../butteraugli/src/psycho.rs"]
 #[allow(clippy::excessive_precision, clippy::needless_range_loop)]
+mod shared_psycho;
+#[cfg(not(feature = "compact"))]
+use shared_psycho as psycho;
+#[cfg(feature = "compact")]
+#[path = "compact_psycho.rs"]
 mod psycho;
 
 use butteraugli::{ButteraugliError, ButteraugliParams};

@@ -162,7 +162,7 @@ fn maximum_clamp(v: f32, max_val: f32) -> f32 {
 ///
 /// Vals space can be converted to L2-norm space through visual masking.
 #[archmage::autoversion]
-fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
+pub(crate) fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
     let height = lf.height();
     let (p0, p1, p2) = lf.planes_mut();
     let y_to_b = Y_TO_B_MUL_LF_TO_VALS as f32;
@@ -189,7 +189,7 @@ fn xyb_low_freq_to_vals(_token: archmage::SimdToken, lf: &mut Image3F) {
 ///
 /// High Y (luminance) values reduce sensitivity to X (chroma) differences.
 #[archmage::autoversion]
-fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut ImageF) {
+pub(crate) fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut ImageF) {
     let height = in_y.height();
     let s = SUPPRESS_S as f32;
     let one_minus_s = 1.0 - s;
@@ -210,7 +210,12 @@ fn suppress_x_by_y(_token: archmage::SimdToken, in_y: &ImageF, inout_x: &mut Ima
 ///
 /// Branch-free formulation for SIMD vectorization.
 #[archmage::autoversion]
-fn apply_remove_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
+pub(crate) fn apply_remove_range(
+    _token: archmage::SimdToken,
+    src: &ImageF,
+    range: f32,
+    dst: &mut ImageF,
+) {
     for y in 0..src.height() {
         let row_in = src.row(y);
         let row_out = dst.row_mut(y);
@@ -228,7 +233,12 @@ fn apply_remove_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst
 ///
 /// Branch-free formulation for SIMD vectorization.
 #[archmage::autoversion]
-fn apply_amplify_range(_token: archmage::SimdToken, src: &ImageF, range: f32, dst: &mut ImageF) {
+pub(crate) fn apply_amplify_range(
+    _token: archmage::SimdToken,
+    src: &ImageF,
+    range: f32,
+    dst: &mut ImageF,
+) {
     for y in 0..src.height() {
         let row_in = src.row(y);
         let row_out = dst.row_mut(y);
@@ -243,7 +253,12 @@ fn apply_amplify_range(_token: archmage::SimdToken, src: &ImageF, range: f32, ds
 
 /// Subtracts two images: dst[x] = a[x] - b[x].
 #[archmage::autoversion]
-fn subtract_images(_token: archmage::SimdToken, a: &ImageF, b: &ImageF, dst: &mut ImageF) {
+pub(crate) fn subtract_images(
+    _token: archmage::SimdToken,
+    a: &ImageF,
+    b: &ImageF,
+    dst: &mut ImageF,
+) {
     for y in 0..a.height() {
         let ra = a.row(y);
         let rb = b.row(y);
@@ -475,7 +490,7 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
 }
 
 /// Separates HF (high frequency) and UHF (ultra high frequency) components.
-fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &BufferPool) {
+pub(crate) fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &BufferPool) {
     let sigma = SIGMA_UHF as f32;
 
     if hf[0].width() * hf[0].height() >= MIN_PIXELS_FOR_BLUR_PARALLEL {

@@ -20,7 +20,7 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--build-commit", required=True)
     parser.add_argument("--diffmaps", action="store_true", help="compare box3 scalar scores and persisted native maps")
-    parser.add_argument("--candidate", default="box3", choices=["box3", "multirate"])
+    parser.add_argument("--candidate", default="box3", choices=["box3", "multirate", "compact"])
     parser.add_argument("--after-strip-rows", type=int)
     args = parser.parse_args()
     if args.after_strip_rows is not None and (not args.diffmaps or args.after_strip_rows <= 0):

@@ -39,3 +39,8 @@ margarine-multirate-check:
     cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
     nice -n 19 cargo test --manifest-path experiments/margarine/Cargo.toml --features multirate -j 2
     nice -n 19 cargo clippy --manifest-path experiments/margarine/Cargo.toml --features multirate --all-targets -j 2 -- -D warnings
+
+margarine-compact-check:
+    cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
+    nice -n 19 cargo test --manifest-path experiments/margarine/Cargo.toml --features compact -j 2
+    nice -n 19 cargo clippy --manifest-path experiments/margarine/Cargo.toml --features compact --all-targets -j 2 -- -D warnings

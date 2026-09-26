@@ -122,7 +122,12 @@ fn reduce_fixed<const F: usize>(input: &ImageF, pool: &BufferPool) -> ImageF {
 }
 
 #[archmage::autoversion]
-fn reduce(_token: archmage::SimdToken, input: &ImageF, factor: usize, pool: &BufferPool) -> ImageF {
+pub(crate) fn reduce(
+    _token: archmage::SimdToken,
+    input: &ImageF,
+    factor: usize,
+    pool: &BufferPool,
+) -> ImageF {
     match factor {
         2 => reduce_fixed::<2>(input, pool),
         4 => reduce_fixed::<4>(input, pool),
@@ -160,7 +165,7 @@ fn expand_row<const F: usize>(a: &[f32], b: &[f32], fy: f32, out: &mut [f32]) {
 }
 
 #[archmage::autoversion]
-fn expand(
+pub(crate) fn expand(
     _token: archmage::SimdToken,
     input: &ImageF,
     w: usize,
