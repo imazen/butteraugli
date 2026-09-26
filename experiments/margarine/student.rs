@@ -10,6 +10,42 @@ static WEIGHTS_228: [f64; 228] = [1.0; 228];
 static WEIGHTS_372: [f64; 372] = [1.0; 372];
 static PARAMS_228: OnceLock<ProfileParams> = OnceLock::new();
 static PARAMS_372: OnceLock<ProfileParams> = OnceLock::new();
+static PARAMS_EDGES: OnceLock<ProfileParams> = OnceLock::new();
+static WEIGHTS_EDGES: [f64; 228] = {
+    let mut weights = [1.0; 228];
+    let mut i = 0;
+    while i < 228 {
+        if !edge_feature(i) {
+            weights[i] = 0.0;
+        }
+        i += 1;
+    }
+    weights
+};
+
+// Pinned zensim layout: 156 basic values (13/channel/scale), then 72
+// peaks (6/channel/scale). Remove the 3 basic + 2 peak SSIM values per channel.
+pub(crate) const fn edge_feature(i: usize) -> bool {
+    if i < 156 {
+        i % 13 >= 3
+    } else {
+        !matches!((i - 156) % 6, 0 | 3)
+    }
+}
+
+pub(crate) fn edge_extractor() -> Zensim {
+    let params = PARAMS_EDGES.get_or_init(|| {
+        ProfileParams::builder()
+            .weights(&WEIGHTS_EDGES)
+            .extended_features(false)
+            .compute_iw_features(false)
+            .build()
+    });
+    Zensim::new(ZensimProfile::Custom {
+        name: "margarine-edge-feature-probe",
+        params,
+    })
+}
 
 pub(crate) fn extractor(count: usize) -> Zensim {
     let (slot, weights): (&OnceLock<ProfileParams>, &'static [f64]) = match count {

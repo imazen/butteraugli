@@ -73,9 +73,12 @@ fn extract(
     a: StridedBytes<'_>,
     b: StridedBytes<'_>,
     strips: bool,
+    edges: bool,
 ) -> Result<Vec<f64>, Box<dyn Error>> {
     let result = if strips {
         scorer.compute_streaming_strips(&a, &b, 256, 128)?
+    } else if edges {
+        scorer.compute(&a, &b)?
     } else {
         scorer.compute_all_features(&a, &b)?
     };
@@ -83,7 +86,15 @@ fn extract(
     if features.len() != 228 || !features.iter().all(|v| v.is_finite()) {
         return Err("unexpected or nonfinite feature vector".into());
     }
-    Ok(features)
+    if edges {
+        Ok(features
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, v)| student::edge_feature(i).then_some(v))
+            .collect())
+    } else {
+        Ok(features)
+    }
 }
 
 pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -118,16 +129,17 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     let bv = StridedBytes::try_new(b.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb)?;
     if memory {
         let strips = match args[1].as_str() {
-            "features228" => false,
+            "features228" | "features168" => false,
             "features228-strips" => true,
             _ => return Err("unsupported RGB8 memory arm".into()),
         };
-        let features = extract(
-            &student::extractor(228).with_parallel(!strips),
-            av,
-            bv,
-            strips,
-        )?;
+        let edges = args[1] == "features168";
+        let scorer = if edges {
+            student::edge_extractor()
+        } else {
+            student::extractor(228)
+        };
+        let features = extract(&scorer.with_parallel(!strips), av, bv, strips, edges)?;
         println!(
             "rgb8_{}\t{w}\t{h}\t{} features; no trained score",
             args[1],
@@ -141,8 +153,10 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     }
     let (ra, rb) = (rgb(&a), rgb(&b));
     let (as_strip, bs_strip) = (a.clone(), b.clone());
+    let (as_edge, bs_edge) = (a.clone(), b.clone());
     let scorer = student::extractor(228);
     let strip_scorer = student::extractor(228).with_parallel(false);
+    let edge_scorer = student::edge_extractor();
     let result = zenbench::run(|suite| {
         suite.compare(format!("cold_rgb8_pair_{w}x{h}"), |group| {
             group
@@ -165,7 +179,7 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                     StridedBytes::try_new(a.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb).unwrap();
                 let bv =
                     StridedBytes::try_new(b.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb).unwrap();
-                bench.iter(|| extract(&scorer, black_box(av), black_box(bv), false).unwrap())
+                bench.iter(|| extract(&scorer, black_box(av), black_box(bv), false, false).unwrap())
             });
             group.bench("features228_rgb8_strips_only", move |bench| {
                 let av =
@@ -174,7 +188,20 @@ pub(super) fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 let bv =
                     StridedBytes::try_new(bs_strip.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb)
                         .unwrap();
-                bench.iter(|| extract(&strip_scorer, black_box(av), black_box(bv), true).unwrap())
+                bench.iter(|| {
+                    extract(&strip_scorer, black_box(av), black_box(bv), true, false).unwrap()
+                })
+            });
+            group.bench("features168_rgb8_only", move |bench| {
+                let av =
+                    StridedBytes::try_new(as_edge.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb)
+                        .unwrap();
+                let bv =
+                    StridedBytes::try_new(bs_edge.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb)
+                        .unwrap();
+                bench.iter(|| {
+                    extract(&edge_scorer, black_box(av), black_box(bv), false, true).unwrap()
+                })
             });
         });
     });
@@ -205,8 +232,18 @@ mod tests {
             |v, stride| StridedBytes::try_new(v, w, h, stride, PixelFormat::Srgb8Rgb).unwrap();
         let scorer = student::extractor(228);
         assert_eq!(
-            extract(&scorer, view(&a, w * 3), view(&b, w * 3), false).unwrap(),
-            extract(&scorer, view(&ap, stride), view(&bp, stride), false).unwrap()
+            extract(&scorer, view(&a, w * 3), view(&b, w * 3), false, false).unwrap(),
+            extract(&scorer, view(&ap, stride), view(&bp, stride), false, false).unwrap()
         );
+        let full = extract(&scorer, view(&a, w * 3), view(&b, w * 3), false, false).unwrap();
+        let edge = student::edge_extractor();
+        let reduced = extract(&edge, view(&ap, stride), view(&bp, stride), false, true).unwrap();
+        let selected: Vec<_> = full
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, v)| student::edge_feature(i).then_some(v))
+            .collect();
+        assert_eq!(reduced.len(), 168);
+        assert_eq!(reduced, selected);
     }
 }

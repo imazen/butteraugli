@@ -14,6 +14,11 @@ teacher|features228|features228-strips REF DIST` compare native RGB8 ingress.
 They reject other sample formats. Timing excludes decoding and includes each
 metric's sRGB conversion; fresh-process memory includes decoding and inputs.
 These remain extractor cost probes with no trained score or quality claim.
+The `features168` native probe removes SSIM features and their moment blurs,
+retaining the 168 edge, high-frequency energy, XYB MSE and non-SSIM peak
+features from the pinned 228 layout. Its active values are tested against the
+full extractor, including strided input. This is a feature-cost ablation, not
+a fitted model or an accuracy result. The RGB8 benchmark includes it.
 `--resource-crops REF DIST NEW_DIRECTORY` persists exact 64²/256²/1024² center
 crops plus the native pair, recording crop coordinates. It does not resample
 or upscale. These crops diagnose resource scaling on actual distorted pixels;
