@@ -482,7 +482,10 @@ fn combine_channels_to_diffmap_fused(
 /// so computing the 3-norm is essentially free relative to the existing max
 /// reduction (memory-bound load is already paid).
 #[archmage::autoversion]
-fn compute_score_from_diffmap(_token: archmage::SimdToken, diffmap: &ImageF) -> (f64, f64) {
+pub(crate) fn compute_score_from_diffmap(
+    _token: archmage::SimdToken,
+    diffmap: &ImageF,
+) -> (f64, f64) {
     let width = diffmap.width();
     let height = diffmap.height();
 

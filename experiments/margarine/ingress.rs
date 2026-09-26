@@ -79,23 +79,32 @@ impl<'a> EncodedRows<'a> {
 
     pub(crate) fn linear_strip(&self, start: usize, end: usize) -> Vec<f32> {
         assert!(start <= end && end <= self.height);
-        let mut result = Vec::with_capacity((end - start) * self.width * 3);
-        for y in start..end {
+        static LUT: std::sync::LazyLock<[f32; 256]> = std::sync::LazyLock::new(|| {
+            std::array::from_fn(|v| butteraugli::opsin::srgb_to_linear(v as u8))
+        });
+        let mut result = vec![0.0; (end - start) * self.width * 3];
+        for (y, out) in (start..end).zip(result.chunks_exact_mut(self.width * 3)) {
             let range = y * self.stride..y * self.stride + self.width * self.channels;
             match self.samples {
                 Samples::U8(v) => {
-                    for p in v[range].chunks_exact(self.channels) {
-                        result.extend(
-                            p[..3]
-                                .iter()
-                                .copied()
-                                .map(butteraugli::opsin::srgb_to_linear),
-                        );
+                    let lut = &*LUT;
+                    for (p, dst) in v[range]
+                        .chunks_exact(self.channels)
+                        .zip(out.as_chunks_mut::<3>().0.iter_mut())
+                    {
+                        dst.copy_from_slice(&[
+                            lut[p[0] as usize],
+                            lut[p[1] as usize],
+                            lut[p[2] as usize],
+                        ]);
                     }
                 }
                 Samples::U16(v) => {
-                    for p in v[range].chunks_exact(self.channels) {
-                        result.extend(p[..3].iter().copied().map(linear16));
+                    for (p, dst) in v[range]
+                        .chunks_exact(self.channels)
+                        .zip(out.as_chunks_mut::<3>().0.iter_mut())
+                    {
+                        dst.copy_from_slice(&[linear16(p[0]), linear16(p[1]), linear16(p[2])]);
                     }
                 }
             }

@@ -99,26 +99,17 @@ fn compose<'a>(
             .saturating_mul(lattice)
             .min(h);
         let (a, b) = load(y0, y1);
-        let strip = diff::compute_butteraugli_linear_impl(
-            &a,
-            &b,
-            w,
-            y1 - y0,
-            params,
-            &enough::Unstoppable,
-        )?;
-        let strip_map = strip.diffmap.as_ref().ok_or("missing strip map")?;
+        // Intermediate-strip scalar reductions are discarded. Compute only
+        // the map here, then use Butteraugli's reducer on the assembled map.
+        let strip_map = diff::compute_diffmap_multiresolution_linear(&a, &b, w, y1 - y0, params);
         for y in start..end {
             map.row_mut(y).copy_from_slice(strip_map.row(y - y0));
         }
     }
-    let score = (0..h)
-        .flat_map(|y| map.row(y))
-        .copied()
-        .fold(0.0f32, f32::max);
+    let (score, pnorm_3) = diff::compute_score_from_diffmap(&map);
     Ok(diff::InternalResult {
-        score: f64::from(score),
-        pnorm_3: pnorm(&map, 3.0),
+        score,
+        pnorm_3,
         diffmap: Some(map),
     })
 }
