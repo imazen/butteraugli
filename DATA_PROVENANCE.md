@@ -1358,3 +1358,31 @@ retain complete size curves and process peaks. At 1440×900, row-Malta with
 128×768 measures 3.688001×. None meets 4× on this case; larger tiles or strips
 do not establish a general speed improvement. Defaults remain unchanged.
 The x86 debug/release tests for the opsin-plus-row combination also pass.
+
+## Named command and extended validation (2026-09-26)
+
+The named command at `0dceefe0` reproduces all five scalar scores and every
+native map byte for 300 AIC4 and 344 LIVE1 pairs against frozen `6bb371fb`.
+[Replay manifests](benchmarks/margarine_named_cli_replay_2026-09-26.json)
+record both binary identities. The command is experimental, not a released library.
+
+[Complete AIC3 and LIVE2 corpus panels](benchmarks/margarine_vector_row_aic3_live2_quality_2026-09-26.tsv)
+retain all five norms. AIC3 separates 479 directly rated pairs from 121 estimated
+labels; primary SROCC changes are −0.003759690 and −0.002971740 respectively.
+LIVE2 has 779 nonidentity pairs and primary SROCC change −0.000356932.
+The primary comparison table includes these corpora against teacher max.
+PIPAL remains in progress; partial scores do not establish its quality gate.
+
+[CID22 point-label choices](benchmarks/margarine_vector_row_cid22_point_choices_2026-09-26.tsv)
+show 323 decreases among 4,285 observed budgets for primary max. These are
+point estimates, not statistically distinguishable harm: participant uncertainty
+is unavailable. Mean signed loss is −0.0102013 native units. This does not pass
+a conservative gate counting every point decrease, and cannot decide the
+agreed uncertainty-based gate.
+
+The frozen five-corpus maps and ledgers are now mirrored on Tower's array,
+verified through the canonical `/mnt/user/coefficient/output/margarine` path.
+[Verification](benchmarks/margarine_vector_row_corpora_tower_2026-09-26.json)
+covers five complete ledgers and fifteen sampled map hashes.
+[Diagnostic verification](benchmarks/margarine_vector_row_diagnostics_tower_2026-09-26.json)
+also covers the KADID participant draws, AIC4 intervals, LIVE choices and crops.

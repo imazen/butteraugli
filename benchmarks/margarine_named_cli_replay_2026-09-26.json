@@ -1,0 +1,22 @@
+{
+  "aic4": {
+    "build_commit": "0dceefe0dddfce31798ea6c0c5fd7561bcd2c11f",
+    "frozen_build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+    "candidate": "simd-row-malta",
+    "frozen_cells_sha256": "ca86c80d7fe4b94e4f4037714ad1bbf5f2e98bb0698af87aff8da7dc1ff147c0",
+    "binary_sha256": "7386bf955aee9317cb90cfe7a7fbaf95a5ff316c3a9a43de9e4ef69f0fcb630c",
+    "pairs": 300,
+    "verified": 300,
+    "status": "complete"
+  },
+  "live1": {
+    "build_commit": "0dceefe0dddfce31798ea6c0c5fd7561bcd2c11f",
+    "frozen_build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
+    "candidate": "simd-row-malta",
+    "frozen_cells_sha256": "e852cad9e3c2099511bd855bd6d7fdb4867f865ab2af177c4b7b218a12b1b021",
+    "binary_sha256": "7386bf955aee9317cb90cfe7a7fbaf95a5ff316c3a9a43de9e4ef69f0fcb630c",
+    "pairs": 344,
+    "verified": 344,
+    "status": "complete"
+  }
+}

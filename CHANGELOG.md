@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   move `butteraugli-bench` onto a crate-private path or a `__bench` feature,
   then drop it. See `docs/MIGRATION_0.9.4.md` §1.1 and §6.
 
+### Added
+
+- Experimental `margarine` command with streamed scoring, all pooling norms, and optional native diffmaps (`0dceefe0`).
+
 ## [0.9.4] - unreleased
 
 ### Fixed
