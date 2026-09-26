@@ -230,50 +230,54 @@ fn main() -> Result<(), Box<dyn Error>> {
     if args.len() != 3 {
         return Err("usage: margarine-box3 REF DIST DIFFMAP.f32le".into());
     }
-    let (result, w, h) =
-        if native_rows.is_some() || cfg!(any(feature = "pooled", feature = "perceptual")) {
-            let a = ingress::decode(&args[0])?;
-            let b = ingress::decode(&args[1])?;
-            let a = ingress::EncodedRows::from_image(&a)?;
-            let b = ingress::EncodedRows::from_image(&b)?;
-            (
-                candidate_encoded(
-                    &a,
-                    &b,
-                    native_rows.unwrap_or(a.height),
-                    &ButteraugliParams::default(),
-                )?,
-                a.width,
-                a.height,
-            )
+    let (result, w, h) = if native_rows.is_some()
+        || cfg!(any(
+            feature = "pooled",
+            feature = "perceptual",
+            feature = "bounded"
+        )) {
+        let a = ingress::decode(&args[0])?;
+        let b = ingress::decode(&args[1])?;
+        let a = ingress::EncodedRows::from_image(&a)?;
+        let b = ingress::EncodedRows::from_image(&b)?;
+        (
+            candidate_encoded(
+                &a,
+                &b,
+                native_rows.unwrap_or(a.height),
+                &ButteraugliParams::default(),
+            )?,
+            a.width,
+            a.height,
+        )
+    } else {
+        let (reference, w, h) = load(&args[0])?;
+        let (distorted, dw, dh) = load(&args[1])?;
+        if (w, h) != (dw, dh) {
+            return Err("image dimensions differ".into());
+        }
+        let result = if strip {
+            strips::compute(
+                &reference,
+                &distorted,
+                w,
+                h,
+                3 * w,
+                32,
+                &ButteraugliParams::default(),
+            )?
         } else {
-            let (reference, w, h) = load(&args[0])?;
-            let (distorted, dw, dh) = load(&args[1])?;
-            if (w, h) != (dw, dh) {
-                return Err("image dimensions differ".into());
-            }
-            let result = if strip {
-                strips::compute(
-                    &reference,
-                    &distorted,
-                    w,
-                    h,
-                    3 * w,
-                    32,
-                    &ButteraugliParams::default(),
-                )?
-            } else {
-                diff::compute_butteraugli_linear_impl(
-                    &reference,
-                    &distorted,
-                    w,
-                    h,
-                    &ButteraugliParams::default(),
-                    &enough::Unstoppable,
-                )?
-            };
-            (result, w, h)
+            diff::compute_butteraugli_linear_impl(
+                &reference,
+                &distorted,
+                w,
+                h,
+                &ButteraugliParams::default(),
+                &enough::Unstoppable,
+            )?
         };
+        (result, w, h)
+    };
     let map = result.diffmap.as_ref().ok_or("missing diffmap")?;
     let mut out = BufWriter::new(std::fs::File::create_new(&args[2])?);
     for y in 0..map.height() {

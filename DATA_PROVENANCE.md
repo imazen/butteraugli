@@ -512,3 +512,10 @@ exceeds at 262 and 137. Five MCOS units is not an agreed materiality threshold.
 The observed mean human-label change can improve while harmful tails remain.
 These comparisons use raw point labels, not participant uncertainty; the
 CID22 CSV provides opinion counts but no per-stimulus standard errors.
+
+The initial `bounded-aic4-2026-09-26` run at `44f6051f` bypassed the new
+channel scheduler in its default CLI route and exercised the existing full
+multirate path. It must not establish corpus equivalence of the new schedule.
+Its `--memory-native` and `--bench-direct` resource arms did exercise the
+new schedule. The default route is corrected in the next commit; a separate
+corpus run must validate it. No raw artifacts from the initial run were removed.
