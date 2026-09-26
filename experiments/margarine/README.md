@@ -737,3 +737,10 @@ reduction was already available; these names keep its scores and resource
 results separate from the native fine-band SIMD candidates. The full-bank
 combination passes unchanged debug/release tests and clippy on ARM; no corpus
 or resource qualification is inherited from another candidate.
+
+`native-uhf` is a separate control (`native-uhf-row-malta`) that retains
+all UHF Malta output rows and interpolates only the four HF/MF banks. It
+shares the remaining streamed pipeline and has no fitted parameters. Exact
+bank-selection, channel-accumulation and strided map tests pass locally;
+human panels and resource measurements are required before selection. The
+named `margarine` command rejects this experimental feature.

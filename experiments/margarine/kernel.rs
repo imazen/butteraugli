@@ -8,7 +8,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(all(feature = "simd-malta", feature = "coarse-gaussian")) {
+const CANDIDATE: &str = if cfg!(feature = "native-uhf") {
+    "native-uhf-row-malta"
+} else if cfg!(all(feature = "simd-malta", feature = "coarse-gaussian")) {
     if cfg!(feature = "row-malta") {
         "simd-coarse-row-malta"
     } else {
@@ -149,6 +151,9 @@ mod half_malta_bank;
 use full_malta as malta;
 #[cfg(feature = "row-malta")]
 mod malta {
+    #[cfg(feature = "native-uhf")]
+    pub(crate) use crate::full_malta::native_uhf_diff_map as malta_diff_map;
+    #[cfg(not(feature = "native-uhf"))]
     pub(crate) use crate::full_malta::sampled_rows_diff_map as malta_diff_map;
 }
 #[cfg(all(

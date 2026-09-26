@@ -134,6 +134,25 @@ fn evaluate_simd(token: Token, padded: &ImageF, lf: bool, step: usize, out: &mut
     }
 }
 
+/// Retain native UHF responses; interpolate only the four smoother HF/MF banks.
+#[cfg(feature = "native-uhf")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn native_uhf_diff_map(
+    a: &ImageF,
+    b: &ImageF,
+    greater: f64,
+    smaller: f64,
+    norm: f64,
+    lf: bool,
+    pool: &BufferPool,
+) -> ImageF {
+    if lf {
+        sampled_rows_diff_map(a, b, greater, smaller, norm, lf, pool)
+    } else {
+        malta_diff_map(a, b, greater, smaller, norm, lf, pool)
+    }
+}
+
 /// Sample every second output row, retaining every native input and column.
 #[cfg(feature = "row-malta")]
 #[allow(clippy::too_many_arguments)]
@@ -209,6 +228,38 @@ mod tests {
             }
         }
     }
+    #[cfg(feature = "native-uhf")]
+    #[test]
+    fn native_uhf_selects_complete_fast_band_and_sampled_smooth_banks() {
+        let pool = BufferPool::new();
+        for (w, h) in [(1, 1), (3, 5), (17, 18), (33, 37)] {
+            let mut a = ImageF::new(w, h);
+            let mut b = ImageF::new(w, h);
+            for y in 0..h {
+                for x in 0..w {
+                    a.row_mut(y)[x] = ((x * 31 + y * 97 + x * y) % 101) as f32 * 0.13 - 5.0;
+                    b.row_mut(y)[x] = a.row(y)[x] * 0.91 + ((x + y) % 3) as f32 * 0.1;
+                }
+            }
+            for lf in [false, true] {
+                let full = crate::shared_malta::malta_diff_map(&a, &b, 0.5, 1.7, 1.2, lf, &pool);
+                let actual = native_uhf_diff_map(&a, &b, 0.5, 1.7, 1.2, lf, &pool);
+                for y in 0..h {
+                    for x in 0..w {
+                        let expected = if lf && y % 2 == 1 {
+                            let prev = full.row(y - 1)[x];
+                            let next = full.row((y + 1).min(h - 1) / 2 * 2)[x];
+                            prev + 0.5 * (next - prev)
+                        } else {
+                            full.row(y)[x]
+                        };
+                        assert_eq!(actual.row(y)[x], expected, "{w}x{h} ({x},{y}) lf={lf}");
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn every_native_response_matches_shared_bank_at_borders_and_vector_tails() {
         let pool = BufferPool::new();
