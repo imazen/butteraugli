@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Compare two frozen edge exporters on explicit pairs; no fitting or thresholds."""
+"""Compare frozen edge exporters or direct-score maps; no fitting or thresholds."""
 import argparse
 import csv
 import json
+import io
 from pathlib import Path
+import struct
 import subprocess
 import time
 
-from score_manifest import digest, parse_features
+from score_manifest import NORMS, digest, parse_features, parse_score
 
 
 def main():
@@ -17,6 +19,7 @@ def main():
     parser.add_argument("after", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--build-commit", required=True)
+    parser.add_argument("--diffmaps", action="store_true", help="compare box3 scalar scores and persisted native maps")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     with args.pairs.open() as file:
@@ -27,21 +30,34 @@ def main():
                    binaries={name: digest(getattr(args, name)) for name in ("before", "after")},
                    pairs=len(pairs), changed_pairs=0, changed_values=0, max_absolute=0.0,
                    max_relative=0.0, status="running")
+    summary["mode"] = "diffmaps" if args.diffmaps else "features"
+    summary["changed_map_samples"] = 0
+    summary["changed_map_pairs"] = 0
+    summary["max_map_absolute"] = 0.0
     with (args.output / "progress.log").open("x", buffering=1) as progress, \
             (args.output / "comparisons.jsonl").open("x", buffering=1) as results:
         for i, row in enumerate(pairs):
             values = []
+            maps = []
             for name in ("before", "after"):
-                output = args.output / f"{i}-{name}.tsv"
-                run = subprocess.run([str(getattr(args, name)), "--export-edges",
-                                      row["reference"], row["distorted"], str(output)],
+                output = args.output / f"{i}-{name}.{'f32le' if args.diffmaps else 'tsv'}"
+                command = [str(getattr(args, name))] + ([] if args.diffmaps else ["--export-edges"])
+                run = subprocess.run(command + [row["reference"], row["distorted"], str(output)],
                                      capture_output=True, text=True, check=False)
                 (args.output / f"{i}-{name}.log").write_text(run.stdout + run.stderr)
                 run.check_returncode()
-                with output.open() as file:
-                    extracted = next(csv.DictReader(file, delimiter="\t"))
+                if args.diffmaps:
+                    extracted = next(csv.DictReader(io.StringIO(run.stdout), delimiter="\t"))
+                else:
+                    with output.open() as file:
+                        extracted = next(csv.DictReader(file, delimiter="\t"))
                 dimensions = int(extracted["width"]), int(extracted["height"])
-                values.append(parse_features(output, dimensions))
+                if args.diffmaps:
+                    scores = parse_score(run.stdout, "box3", dimensions, output)
+                    values.append([scores[n] for n in NORMS])
+                    maps.append(output)
+                else:
+                    values.append(parse_features(output, dimensions))
                 if name == "before":
                     before_dimensions = dimensions
                 elif dimensions != before_dimensions:
@@ -55,6 +71,20 @@ def main():
                           max_relative=max(relative),
                           reference_sha256=digest(Path(row["reference"])),
                           distorted_sha256=digest(Path(row["distorted"])))
+            if args.diffmaps:
+                result["map_sha256"] = [digest(p) for p in maps]
+                result["changed_map_samples"] = 0
+                result["max_map_absolute"] = 0.0
+                if result["map_sha256"][0] != result["map_sha256"][1]:
+                    summary["changed_map_pairs"] += 1
+                    with maps[0].open("rb") as a, maps[1].open("rb") as b:
+                        for block in iter(lambda: a.read(65536), b""):
+                            for (x,), (y,) in zip(struct.iter_unpack("<f", block),
+                                                  struct.iter_unpack("<f", b.read(len(block)))):
+                                result["changed_map_samples"] += x != y
+                                result["max_map_absolute"] = max(result["max_map_absolute"], abs(x-y))
+                summary["changed_map_samples"] += result["changed_map_samples"]
+                summary["max_map_absolute"] = max(summary["max_map_absolute"], result["max_map_absolute"])
             results.write(json.dumps(result) + "\n")
             summary["changed_pairs"] += bool(changed)
             summary["changed_values"] += changed

@@ -29,7 +29,13 @@ pub(crate) fn support(sigma: f32) -> usize {
     radii(sigma).iter().sum()
 }
 
-fn box_pass(input: &ImageF, radius: usize, pool: &BufferPool) -> ImageF {
+#[archmage::autoversion]
+fn box_pass(
+    _token: archmage::SimdToken,
+    input: &ImageF,
+    radius: usize,
+    pool: &BufferPool,
+) -> ImageF {
     let (w, h) = (input.width(), input.height());
     if radius == 0 {
         return input.clone();
@@ -42,15 +48,39 @@ fn box_pass(input: &ImageF, radius: usize, pool: &BufferPool) -> ImageF {
             .iter()
             .map(|&v| f64::from(v))
             .sum();
-        for (x, out) in dst.iter_mut().enumerate() {
-            let lo = x.saturating_sub(radius);
-            let hi = (x + radius + 1).min(w);
-            *out = (sum / (hi - lo) as f64) as f32;
-            if x >= radius {
-                sum -= f64::from(src[x - radius]);
-            }
-            if x + radius + 1 < w {
+        if w > 2 * radius + 1 {
+            let middle_len = w - 2 * radius - 1;
+            let (left, rest) = dst.split_at_mut(radius);
+            let (middle, right) = rest.split_at_mut(middle_len);
+            for (x, out) in left.iter_mut().enumerate() {
+                *out = (sum / (x + radius + 1) as f64) as f32;
                 sum += f64::from(src[x + radius + 1]);
+            }
+            let count = (2 * radius + 1) as f64;
+            for ((out, &remove), &add) in middle
+                .iter_mut()
+                .zip(&src[..middle_len])
+                .zip(&src[2 * radius + 1..])
+            {
+                *out = (sum / count) as f32;
+                sum -= f64::from(remove);
+                sum += f64::from(add);
+            }
+            for (i, out) in right.iter_mut().enumerate() {
+                *out = (sum / (w - middle_len - i) as f64) as f32;
+                sum -= f64::from(src[middle_len + i]);
+            }
+        } else {
+            for (x, out) in dst.iter_mut().enumerate() {
+                let lo = x.saturating_sub(radius);
+                let hi = (x + radius + 1).min(w);
+                *out = (sum / (hi - lo) as f64) as f32;
+                if x >= radius {
+                    sum -= f64::from(src[x - radius]);
+                }
+                if x + radius + 1 < w {
+                    sum += f64::from(src[x + radius + 1]);
+                }
             }
         }
     }
@@ -83,10 +113,13 @@ fn box_pass(input: &ImageF, radius: usize, pool: &BufferPool) -> ImageF {
 
 pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
     assert!(sigma.is_finite() && (0.0..=64.0).contains(&sigma));
-    let r = radii(sigma);
-    let mut output = box_pass(input, r[0], pool);
-    for radius in &r[1..] {
-        let next = box_pass(&output, *radius, pool);
+    let mut radii = radii(sigma).into_iter().filter(|&radius| radius != 0);
+    let Some(first) = radii.next() else {
+        return input.clone();
+    };
+    let mut output = box_pass(input, first, pool);
+    for radius in radii {
+        let next = box_pass(&output, radius, pool);
         output.recycle(pool);
         output = next;
     }

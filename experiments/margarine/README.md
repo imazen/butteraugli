@@ -381,3 +381,12 @@ Zensim strip entry (256-row interiors, 128-row margins, serial strips).
 `--memory features228-strips REF DIST` selects that memory probe. A 65×801
 seam/tail test compares all 228 strip features to the whole-image extractor.
 These remain feature-cost probes, not trained Margarine implementations.
+
+The 2026-09-26 box-blur optimization separates clipped borders from the
+constant-width interior, enables runtime SIMD dispatch, and omits identity
+box passes. On r5900xt, all 300 AIC4 maps and five scores are byte-/value-identical
+to the frozen preceding binary. A 620×800 callgrind comparison drops total
+instructions from 2,140,821,372 to 1,027,380,192, including decoding. This does
+not establish a wall-clock speedup or either resource gate. The
+[verification pointer](../../benchmarks/margarine_box3_optimization_2026-09-26.pointer.json)
+records the binaries, source hash and persisted comparison artifacts.

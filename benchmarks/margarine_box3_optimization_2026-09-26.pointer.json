@@ -1,0 +1,28 @@
+{
+  "build_commit": "31e79dfda28b",
+  "pairs_sha256": "88864ff78dc0790af363f955bd1fff980dc4a97a6d6b5ec9d10fbd53b6c0a7fe",
+  "binaries": {
+    "before": "8acf989936b0b3290800693befd3f95ec2619c8f62168e8584ffb19842d42a89",
+    "after": "0acf207d8983dc9dd6bf57b5e2fd481a7eb8bfb2945396a1b80945f8f92f2c60"
+  },
+  "pairs": 300,
+  "changed_pairs": 0,
+  "changed_values": 0,
+  "max_absolute": 0.0,
+  "max_relative": 0.0,
+  "status": "complete",
+  "mode": "diffmaps",
+  "changed_map_samples": 0,
+  "changed_map_pairs": 0,
+  "max_map_absolute": 0.0,
+  "comparisons_sha256": "9250947d3bdad64fc1601cbedbea5d371e74092dfdd191d6b1fff4c5ab9338cb",
+  "host": "r5900xt",
+  "cpu": "Ryzen 9 5900XT; AVX2",
+  "source_sha256": "b05a0eb2c8ef71aace22e6075f2fa5643b7174c06b191cb3dfbf2ff4718bf3d8",
+  "artifact_directory": "r5900xt:/home/lilith/work/codec-artifacts/margarine/box3-profile-2026-09-26/",
+  "callgrind_instructions": {
+    "before": 2140821372,
+    "after": 1027380192
+  },
+  "callgrind_scope": "one 620x800 AIC4 pair; --memory box3 includes decoding; not a wall-clock or size-scaling claim"
+}
