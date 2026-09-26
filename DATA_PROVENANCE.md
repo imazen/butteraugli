@@ -1520,3 +1520,13 @@ the saved simultaneous interval procedure, in every session. These are
 within-corpus results after examining earlier candidates, not independent
 holdout certification. The numeric kernel's release tests also pass on Zen 3.
 Full native maps remain on r5900xt; local metadata and hashes identify them.
+
+The [native-UHF resource curve](benchmarks/margarine_native_uhf_resources_2026-09-26.tsv)
+measures 4.019170×/4.171563× scoring speedup at 1 MP/8.44 MP, with
+process RSS fractions 0.189235/0.081399. These are means on the same
+photographic crop workload, not lower-confidence-bound or content-wide
+claims. Decode-inclusive speedups remain 3.295749×/3.393420×. Tiny/small
+speedups are 2.174286×/2.303864× and RAM fractions 0.904573/0.736138.
+Both arms use the research harness for these process peaks; this control is
+not the standalone named command. The full logs and exact binary/input hashes
+are in the adjacent metadata file. No default has changed.
