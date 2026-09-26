@@ -1,0 +1,26 @@
+{
+  "probe_commit": "4e25b7b89d721a844cb5303b676c2a84a1719d0f",
+  "binary_sha256": "5d8fc51cb39309a6b85e9798e90853086fd59cd4622d3fc2e09726af5e7d3502",
+  "host": {
+    "cpu_model": "Apple M4 Pro",
+    "arch": "aarch64",
+    "os": "macos",
+    "logical_cores": 12,
+    "physical_cores": 12
+  },
+  "threads": 2,
+  "input": [
+    620,
+    800
+  ],
+  "reference": "PTC_00002_0ref_00.png",
+  "distorted": "PTC_00002_AVIF_01.png",
+  "peak_rss_bytes": {
+    "teacher": 93863936,
+    "features228": 24379392,
+    "features228-strips": 26329088
+  },
+  "method": "fresh-process /usr/bin/time -l, including decoding and inputs; zenbench timing excludes decode and includes each metric sRGB conversion",
+  "limitation": "One pair, no trained student score; quarter total-process RAM gate fails",
+  "artifact_directory": "/Users/lilith/work/codec-artifacts/margarine/rgb8-resources-2026-09-26"
+}

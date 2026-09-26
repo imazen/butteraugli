@@ -1,0 +1,34 @@
+{
+  "build_commit": "c377add8e3b7f6c13d1b15f9df8d89d4b92df04c",
+  "host": "r5900xt Zen 3",
+  "profile": "release debug=1, runtime SIMD, two Rayon threads",
+  "input": [
+    620,
+    800
+  ],
+  "command": "run-heavy --mem 12G --jobs 2 -- heaptrack -o ARM margarine-box3 --memory ARM REF DIST",
+  "heaptrack_reported_peak_heap_MB": {
+    "teacher": 86.46,
+    "features228": 30.35,
+    "features228-strips": 28.48
+  },
+  "heaptrack_reported_peak_RSS_MB_with_instrumentation": {
+    "teacher": 113.21,
+    "features228": 39.44,
+    "features228-strips": 34.83
+  },
+  "allocation_finding": "The retained f32-RGBA byte vectors grow geometrically in student::rgba; input representation contributes to feature-probe peak. Native RGB8 probe avoids that conversion. Do not treat instrumented RSS as uninstrumented resource gate.",
+  "local_path": "/Users/lilith/work/codec-artifacts/margarine/heap-2026-09-26",
+  "remote_path": "r5900xt:/home/lilith/work/codec-artifacts/margarine/heap-2026-09-26",
+  "artifacts": {
+    "features228-report.txt": "3f3682b671ce28759d39a21e55d17a8af8686cb2c63d419efa06891599fbd2f0",
+    "features228-strips-report.txt": "885deae222e2fabb4289c6a945c76c672adb8598c911233df742c98d45f17f49",
+    "features228-strips.log": "977d47c13fa1c29c673e68ab093dbe5df154716afd2f63e7832c0e5b16c358c1",
+    "features228-strips.zst": "1b88bbf076594905863918e5be1cd4f81414f37897f18ca4faea51f25992fdf6",
+    "features228.log": "c1ec994d1cd8d849a683fd0a10aeff5328ef838fac0a08c0dc3871e5351dc0e0",
+    "features228.zst": "4a4f633747eaf7472a31df4cec5dca7cf2814d90311c11c66a24fd29f9741ecb",
+    "teacher-report.txt": "cc6e2941b6c952510748d4e255c987d025e43d6a095dad42b0601ad331129c82",
+    "teacher.log": "27a55fa4d4e70f6202e9b4d593b29dc65cb64e2260b21c48bd513a27715a42cf",
+    "teacher.zst": "4c3b6b718bbef2d9d0bc22ecd9b89b61f081379d67cdc17be60a2fb941a1c94c"
+  }
+}
