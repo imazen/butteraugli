@@ -1116,3 +1116,13 @@ range. The row transform's previous loop is restored; the separate Malta
 row-window kernel remains for its own measurement. Raw maps and resource
 records remain on r5900xt in `opsin-lanes-{live1,resources}-2026-09-26/`, with
 compact records on the Mac. No test expectation was relaxed.
+
+The LIVE Release 1 original JPEG/JPEG2000 ZIPs and extracted metadata now
+have a [verified Tower mirror](benchmarks/margarine_live1_originals_tower_2026-09-26.pointer.json)
+at `/mnt/user/coefficient/output/margarine/live-release1-metadata-2026-09-26/`.
+Tower's cache returned ENOSPC despite array space, so the completed copy was
+written through `/mnt/user0/` and verified through the canonical `/mnt/user/`
+share. Both complete ZIP hashes and both source-manifest hashes match the
+Mac. The failed partial cache copy was preserved on the array with the suffix
+`.failed-enospc`; no source data or share configuration was changed. Generated
+score-map backups remain separate and outstanding.
