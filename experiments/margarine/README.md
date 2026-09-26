@@ -596,6 +596,14 @@ regions use original Butteraugli with its finite halo. Only reference-stable
 regions determine the global cubic correction; the peak patch is inserted
 afterwards. These are experimental sampling dimensions, not calibrated defaults.
 
+The `anchored-pool` experiment retains stratified regional correction but changes
+the reduced reference representative to the linear RGB block average. It adds
+the selected native distortion delta to that fixed reference value. This tests
+whether moving the selected error between textured pixels destabilizes scores
+by also changing the reference content. No clamping or learned coefficients are
+introduced. Tests cover moving errors, odd cells, identity, checkerboards and
+isolated RGB16 low-bit changes. Quality and resource qualification are pending.
+
 ### Raw participant opinions
 
 `prepare_kadid_opinions.py` audits KADID crowd ratings against the published

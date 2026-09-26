@@ -43,10 +43,59 @@ pub(super) fn compute_map(
             &mut reference[y / 2 * pw * 3..(y / 2 + 1) * pw * 3],
             &mut distorted[y / 2 * pw * 3..(y / 2 + 1) * pw * 3],
         );
+        #[cfg(feature = "anchored-pool")]
+        anchor_rows(
+            &ar,
+            w,
+            end - y,
+            &mut reference[y / 2 * pw * 3..(y / 2 + 1) * pw * 3],
+            &mut distorted[y / 2 * pw * 3..(y / 2 + 1) * pw * 3],
+        );
     }
     let result = strips::compute(&reference, &distorted, pw, ph, pw * 3, rows, params)?;
     let coarse = result.diffmap.ok_or("missing pooled map")?;
     Ok(expand_map(&coarse, w, h))
+}
+
+// Keep the reference representative independent of the distortion. The selected
+// native delta survives, including alternating-sign and isolated errors, while
+// switching its location cannot substitute a different reference texture value.
+#[cfg(feature = "anchored-pool")]
+#[archmage::autoversion]
+fn anchor_rows(
+    _token: archmage::SimdToken,
+    input: &[f32],
+    width: usize,
+    height: usize,
+    reference: &mut [f32],
+    distorted: &mut [f32],
+) {
+    for (x, (a, b)) in reference
+        .as_chunks_mut::<3>()
+        .0
+        .iter_mut()
+        .zip(distorted.as_chunks_mut::<3>().0)
+        .enumerate()
+    {
+        let mut mean = [0.0; 3];
+        let end = (2 * x + 2).min(width);
+        for y in 0..height {
+            for xx in 2 * x..end {
+                let pixel: &[f32; 3] = input[(y * width + xx) * 3..(y * width + xx + 1) * 3]
+                    .try_into()
+                    .unwrap();
+                for c in 0..3 {
+                    mean[c] += pixel[c];
+                }
+            }
+        }
+        let count = (height * (end - 2 * x)) as f32;
+        for c in 0..3 {
+            mean[c] /= count;
+            b[c] = mean[c] + (b[c] - a[c]);
+            a[c] = mean[c];
+        }
+    }
 }
 
 pub(super) fn finish(coarse: &image::ImageF, w: usize, h: usize) -> diff::InternalResult {
@@ -112,6 +161,26 @@ fn pool_rows(
 mod tests {
     use super::*;
     use ingress::{EncodedRows, Samples};
+
+    #[cfg(feature = "anchored-pool")]
+    #[test]
+    fn reference_anchor_stays_fixed_when_selected_error_moves() {
+        let reference = [0., 8., 16., 24., 32., 40., 48., 56., 64., 72., 80., 88.];
+        for selected in 0..4 {
+            let mut distorted = reference;
+            distorted[3 * selected] += 1.;
+            let (mut a, mut b) = ([0.; 3], [0.; 3]);
+            pool_rows(&reference, &distorted, 2, 2, &mut a, &mut b);
+            anchor_rows(&reference, 2, 2, &mut a, &mut b);
+            assert_eq!(a, [36., 44., 52.]);
+            assert_eq!(b, [37., 44., 52.]);
+        }
+        let (mut a, mut b) = ([0.; 6], [0.; 6]);
+        pool_rows(&reference[..9], &reference[..9], 3, 1, &mut a, &mut b);
+        anchor_rows(&reference[..9], 3, 1, &mut a, &mut b);
+        assert_eq!(a, [12., 20., 28., 48., 56., 64.]);
+        assert_eq!(a, b);
+    }
 
     #[test]
     fn every_cell_can_preserve_an_isolated_rgb16_low_bit_error() {
