@@ -15,7 +15,7 @@ fn linear16(value: u16) -> f32 {
     }) as f32
 }
 
-fn convert(input: DynamicImage) -> Result<(Vec<f32>, usize, usize)> {
+pub(crate) fn convert(input: DynamicImage) -> Result<(Vec<f32>, usize, usize)> {
     let (w, h) = (input.width() as usize, input.height() as usize);
     let linear = match input {
         DynamicImage::ImageRgb8(rgb) => rgb

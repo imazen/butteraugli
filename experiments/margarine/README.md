@@ -29,6 +29,11 @@ unpadded. A 40-row halo panicked on height 769; the 64-row halo covers that
 minimum as well as the blur support. Tests retain the tight feature agreement
 check on seams and odd bottom tails. This geometry is specific to this profile.
 
+`--export-edges REF DIST NEW.tsv` persists the measured 168-feature strip
+extractor output, named by the original 228-layout indices. RGB8 uses the native
+path; RGB16 and opaque RGBA retain precision through the shared linear ingress.
+It refuses to overwrite a result and does not assign a quality score.
+
 `prepare_dense.py` prepares references from every full-image representative in
 the existing train-only K500 selection, resolving URLs through the canonical
 training catalog and verifying each rendered source against its pinned LFS

@@ -6,6 +6,59 @@ use image_io::{DynamicImage, ImageReader};
 use std::{error::Error, hint::black_box, path::Path, time::Duration};
 use zensim::{PixelFormat, StridedBytes, Zensim};
 
+/// Persist the measured extractor's features without assigning a quality score.
+/// RGB8 takes the measured native path; higher precision uses the shared ingress.
+pub(super) fn export_edges(args: &[String]) -> Result<(), Box<dyn Error>> {
+    use std::io::Write;
+    if args.len() != 4 {
+        return Err("usage: --export-edges REF DIST NEW.tsv".into());
+    }
+    let a = ImageReader::open(&args[1])?.decode()?;
+    let b = ImageReader::open(&args[2])?.decode()?;
+    if (a.width(), a.height()) != (b.width(), b.height()) {
+        return Err("feature pair dimensions differ".into());
+    }
+    let (w, h) = (a.width() as usize, a.height() as usize);
+    let features = match (a, b) {
+        (DynamicImage::ImageRgb8(a), DynamicImage::ImageRgb8(b)) => extract(
+            &student::edge_extractor(),
+            StridedBytes::try_new(a.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb)?,
+            StridedBytes::try_new(b.as_raw(), w, h, w * 3, PixelFormat::Srgb8Rgb)?,
+            true,
+            true,
+        )?,
+        (a, b) => {
+            let (a, _, _) = super::ingress::convert(a)?;
+            let (b, _, _) = super::ingress::convert(b)?;
+            let (a, b) = (student::rgba(&a), student::rgba(&b));
+            extract(
+                &student::edge_extractor(),
+                StridedBytes::try_new(&a, w, h, w * 16, PixelFormat::LinearF32Rgba)?,
+                StridedBytes::try_new(&b, w, h, w * 16, PixelFormat::LinearF32Rgba)?,
+                true,
+                true,
+            )?
+        }
+    };
+    let mut out = std::io::BufWriter::new(std::fs::File::create_new(&args[3])?);
+    write!(out, "width\theight")?;
+    for i in (0..228).filter(|&i| student::edge_feature(i)) {
+        write!(out, "\tfeature_{i:03}")?;
+    }
+    writeln!(out)?;
+    write!(out, "{w}\t{h}")?;
+    for value in &features {
+        write!(out, "\t{value:.17e}")?;
+    }
+    writeln!(out)?;
+    out.flush()?;
+    println!(
+        "Persisted {} finite edge features for {w}x{h}",
+        features.len()
+    );
+    Ok(())
+}
+
 /// Prepare twenty log-spaced reference sizes, capped at native size/4096.
 /// The caller records source lineage and hashes and registers the variant set.
 pub(super) fn render_dense(args: &[String]) -> Result<(), Box<dyn Error>> {
