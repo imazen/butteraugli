@@ -147,8 +147,8 @@ pins source/render commits and records class counts. Original URLs, source hashe
 cluster IDs/sizes and per-render hashes remain in `_MANIFEST.json`. Resampling is
 Lanczos3 in encoded sRGB, with no upscaling and a 4096-pixel maximum dimension.
 
-This is preparation only. No encodes, teacher targets or trained score exist for
-this pilot yet. Per-class coverage, cross-corpus near-duplicate checks and
+The reference preparation feeds the JPEG feasibility run below. No trained
+score exists yet. Per-class coverage, cross-corpus near-duplicate checks and
 held-out representatives remain outstanding. These are project-local Margarine
 artifacts; the image store remains unchanged. The original manifest’s pending
 registration note is superseded by this disposition. The pilot
@@ -165,3 +165,27 @@ was checked; this is pipeline validation, not fitting or quality evidence.
 pins the image digest, controller hash and extraction build. Local worker output
 is `ledger.chunk-*.parquet`; the controller's local `pairs` command still
 requires an endpoint argument (an unused localhost URL sufficed).
+
+## Dense JPEG feasibility run
+
+`dense-jpeg-pilot-2026-09-26/` on dev and Mac contains 51,000 completed Zenfleet
+encode jobs: 1,000 references × q0–100 step2, JPEG mode `jp3_t0_small_420`.
+Every encoded blob and staged reference hash was verified by the input adapter.
+`dense-jpeg-fit-input-2026-09-26/` freezes 28 fit / 11 tune / 11 test sources.
+The broad class counts are 25 photo-like (including generated products),
+10 screen, 7 line-art and 8 mixed; these do not meet final per-class quotas.
+
+The Mac `dense-jpeg-teacher-features-2026-09-26/` extraction is running with
+copied, hash-pinned binaries from `teacher-feature-binaries-8fe68ff7/`. Their
+Rust entry sources and the runner match commit `8fe68ff79563`. Its native maps
+require exactly 95,322,589,380 bytes for the declared cells; disk capacity was
+checked with a separate 24 GiB reserve. This is storage admission, not an RSS
+measurement. The [run pointer](benchmarks/margarine_dense_jpeg_2026-09-26.pointer.json)
+pins inputs, partitions and encoder image. Encodes/maps remain Margarine data.
+
+The local worker supports `ZEN_PERSISTENT_EXEC=1` with
+`ZEN_PERSISTENT_KINDS=encode`; the JPEG run used a 1 GiB child recycle watermark
+and 100-job recycle limit inside a 12 GiB container. A three-cell smoke produced
+byte-identical encoded outputs with warm and fresh executors. It auto-folds
+existing sidecars beside `--ledger-out`, so isolated comparison runs need
+separate ledger directories. Completed cells were reused when enabling warmth.
