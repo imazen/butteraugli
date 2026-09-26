@@ -31,6 +31,10 @@ pub(super) fn compute(
     }
     let result = strips::compute(&reference, &distorted, pw, ph, pw * 3, rows, params)?;
     let coarse = result.diffmap.ok_or("missing pooled map")?;
+    Ok(finish(&coarse, w, h))
+}
+
+pub(super) fn finish(coarse: &image::ImageF, w: usize, h: usize) -> diff::InternalResult {
     let mut map = image::ImageF::new(w, h);
     for y in 0..h {
         for (x, value) in map.row_mut(y).iter_mut().enumerate() {
@@ -38,11 +42,11 @@ pub(super) fn compute(
         }
     }
     let (score, pnorm_3) = diff::compute_score_from_diffmap(&map);
-    Ok(diff::InternalResult {
+    diff::InternalResult {
         score,
         pnorm_3,
         diffmap: Some(map),
-    })
+    }
 }
 
 #[archmage::autoversion]

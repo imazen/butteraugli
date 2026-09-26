@@ -18,7 +18,9 @@ mod blur;
 #[cfg(feature = "multirate")]
 mod blur;
 
-const CANDIDATE: &str = if cfg!(feature = "pooled") {
+const CANDIDATE: &str = if cfg!(feature = "perceptual") {
+    "perceptual"
+} else if cfg!(feature = "pooled") {
     "pooled"
 } else if cfg!(feature = "sparse") {
     "sparse"
@@ -100,8 +102,10 @@ fn pnorm(map: &image::ImageF, p: f64) -> f64 {
 }
 
 mod learned;
-#[cfg(feature = "pooled")]
+#[cfg(any(feature = "pooled", feature = "perceptual"))]
 mod paired_pool;
+#[cfg(feature = "perceptual")]
+mod perceptual_pool;
 #[path = "resources.rs"]
 mod resources;
 mod resources_rgb8;
@@ -113,11 +117,15 @@ fn candidate_encoded(
     rows: usize,
     params: &ButteraugliParams,
 ) -> Result<diff::InternalResult, Box<dyn Error>> {
-    #[cfg(feature = "pooled")]
+    #[cfg(feature = "perceptual")]
+    {
+        perceptual_pool::compute(a, b, rows, params)
+    }
+    #[cfg(all(feature = "pooled", not(feature = "perceptual")))]
     {
         paired_pool::compute(a, b, rows, params)
     }
-    #[cfg(not(feature = "pooled"))]
+    #[cfg(not(any(feature = "pooled", feature = "perceptual")))]
     {
         strips::compute_encoded(a, b, rows, params)
     }
@@ -189,49 +197,50 @@ fn main() -> Result<(), Box<dyn Error>> {
     if args.len() != 3 {
         return Err("usage: margarine-box3 REF DIST DIFFMAP.f32le".into());
     }
-    let (result, w, h) = if native_rows.is_some() || cfg!(feature = "pooled") {
-        let a = ingress::decode(&args[0])?;
-        let b = ingress::decode(&args[1])?;
-        let a = ingress::EncodedRows::from_image(&a)?;
-        let b = ingress::EncodedRows::from_image(&b)?;
-        (
-            candidate_encoded(
-                &a,
-                &b,
-                native_rows.unwrap_or(a.height),
-                &ButteraugliParams::default(),
-            )?,
-            a.width,
-            a.height,
-        )
-    } else {
-        let (reference, w, h) = load(&args[0])?;
-        let (distorted, dw, dh) = load(&args[1])?;
-        if (w, h) != (dw, dh) {
-            return Err("image dimensions differ".into());
-        }
-        let result = if strip {
-            strips::compute(
-                &reference,
-                &distorted,
-                w,
-                h,
-                3 * w,
-                32,
-                &ButteraugliParams::default(),
-            )?
+    let (result, w, h) =
+        if native_rows.is_some() || cfg!(any(feature = "pooled", feature = "perceptual")) {
+            let a = ingress::decode(&args[0])?;
+            let b = ingress::decode(&args[1])?;
+            let a = ingress::EncodedRows::from_image(&a)?;
+            let b = ingress::EncodedRows::from_image(&b)?;
+            (
+                candidate_encoded(
+                    &a,
+                    &b,
+                    native_rows.unwrap_or(a.height),
+                    &ButteraugliParams::default(),
+                )?,
+                a.width,
+                a.height,
+            )
         } else {
-            diff::compute_butteraugli_linear_impl(
-                &reference,
-                &distorted,
-                w,
-                h,
-                &ButteraugliParams::default(),
-                &enough::Unstoppable,
-            )?
+            let (reference, w, h) = load(&args[0])?;
+            let (distorted, dw, dh) = load(&args[1])?;
+            if (w, h) != (dw, dh) {
+                return Err("image dimensions differ".into());
+            }
+            let result = if strip {
+                strips::compute(
+                    &reference,
+                    &distorted,
+                    w,
+                    h,
+                    3 * w,
+                    32,
+                    &ButteraugliParams::default(),
+                )?
+            } else {
+                diff::compute_butteraugli_linear_impl(
+                    &reference,
+                    &distorted,
+                    w,
+                    h,
+                    &ButteraugliParams::default(),
+                    &enough::Unstoppable,
+                )?
+            };
+            (result, w, h)
         };
-        (result, w, h)
-    };
     let map = result.diffmap.as_ref().ok_or("missing diffmap")?;
     let mut out = BufWriter::new(std::fs::File::create_new(&args[2])?);
     for y in 0..map.height() {

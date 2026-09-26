@@ -455,3 +455,10 @@ coarse map over the original geometry. Odd edge samples are included once
 during selection. Tests cover every position of a one-bit RGB16 change,
 checkerboard distortion, strided inputs and odd strip boundaries. This is
 an uncalibrated pair-dependent approximation, not an image resampler.
+
+`--features perceptual` runs native-resolution Butteraugli opsin adaptation
+in bounded-height strips before jointly selecting a sample from each 2×2
+cell. Selection uses the existing MF channel weights. The resulting XYB
+planes feed the shared decomposition, complete Malta bank and masking;
+the additional scale averages these XYB planes. This changes scale semantics
+and is a separate approximation, with no inherited quality qualification.

@@ -2,7 +2,7 @@
 //! spatial support; it is not a new perceptual approximation or a speed claim.
 use super::*;
 
-fn halo() -> usize {
+pub(super) fn halo() -> usize {
     // RGB opsin preprocessing has radius 2. The longest band path traverses
     // LF, HF and UHF filters. Masking adds its blur plus fuzzy erosion's
     // 3-pixel offsets; Malta needs at most 4 pixels. Each scale now walks
