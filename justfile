@@ -90,3 +90,7 @@ margarine-aic-intervals scored labels output candidate commit:
 
 margarine-participant-pairs scored opinions evaluator output candidate commit draws="2000" seed="20260926":
     nice -n 19 python3 experiments/margarine/participant_pairs.py "{{scored}}" "{{opinions}}" "{{evaluator}}" "{{output}}" --candidate "{{candidate}}" --build-commit "{{commit}}" --draws "{{draws}}" --seed "{{seed}}"
+
+# Published Release 1 cohorts retain their separate rating normalizations.
+margarine-live1-inputs root output destination commit:
+    nice -n 19 python3 experiments/margarine/prepare_live1.py "{{root}}" "{{output}}" --destination-root "{{destination}}" --build-commit "{{commit}}"
