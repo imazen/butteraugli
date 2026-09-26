@@ -14,6 +14,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import os
 import time
 
 FIELDS = "dataset source codec pair target direction reference distorted".split()
@@ -211,11 +212,15 @@ def main():
                         help="refresh the separate training feature sidecar without recomputing teacher maps")
     parser.add_argument("--feature-source", help="required extractor dependency commit for training feature runs")
     parser.add_argument("--candidate", default="box3", choices=["box3", "multirate", "compact", "compact4", "sparse", "pooled", "perceptual", "physical", "refined", "refined1", "refined2", "stratified", "peak-stratified", "anchored-pool", "bounded", "lattice", "tiles", "planar", "planar-tiles", "stream-blur", "coarse-gaussian", "row-psycho", "row-tiles", "phase-rows", "phase-tiles", "native-gaussian", "native-mask", "full-malta", "coarse-full-malta", "row-malta", "simd-full-malta", "simd-row-malta", "simd-wide-full-malta", "simd-wide-row-malta", "wide-full-malta", "wide-row-malta", "reference-regions", "stable-peak"], help="direct approximation identity")
+    parser.add_argument("--tile-columns", type=int, default=512)
     parser.add_argument("--model", type=Path, help="frozen fit directory, with model.tsv and provenance")
     parser.add_argument("--teacher", type=Path, help="existing human-evaluation score directory")
     parser.add_argument("--input-audit", type=Path, help="source-audited prepare_human manifest; verify staged hashes before scoring")
     parser.add_argument("--defer-panels", action="store_true", help="persist scores/maps for separate panel evaluation")
     args = parser.parse_args()
+    if args.tile_columns <= 0 or args.tile_columns % 4:
+        parser.error("tile columns must be a positive multiple of four")
+    environment = dict(os.environ, MARGARINE_TILE_COLUMNS=str(args.tile_columns))
     if args.defer_panels and (args.teacher_features or args.features_only):
         parser.error("defer-panels applies only to human-quality scoring")
     if args.teacher_features and args.features_only:
@@ -248,6 +253,7 @@ def main():
                           "teacher-features" if training else "quality-evaluation")
     candidate = "student" if args.model else args.candidate
     provenance["candidate"] = candidate
+    provenance["tile_columns"] = args.tile_columns
     if args.model:
         model = args.model / "model.tsv"
         fitted = json.loads((args.model / "_MANIFEST.json").read_text())
@@ -313,7 +319,7 @@ def main():
             if args.model:
                 run = subprocess.run([str(binaries["margarine-box3"]), "--student", str(model),
                                       row["reference"], row["distorted"]],
-                                     capture_output=True, text=True, check=False)
+                                     capture_output=True, text=True, check=False, env=environment)
                 (args.output / f"cell-{i}-student.log").write_text(run.stdout + run.stderr)
                 run.check_returncode()
                 _, scores = parse_prediction(run.stdout, "margarine-probe", dimensions[row["reference"]])
@@ -325,7 +331,7 @@ def main():
                 cmd = ([str(binaries["margarine-score"]), "teacher"] if mode == "teacher"
                        else [str(binaries["margarine-box3"])])
                 run = subprocess.run(cmd + [row["reference"], row["distorted"], str(path)],
-                                     capture_output=True, text=True, check=False)
+                                     capture_output=True, text=True, check=False, env=environment)
                 (args.output / f"cell-{i}-{mode}.log").write_text(run.stdout + run.stderr)
                 if run.returncode:
                     raise RuntimeError(f"scorer failed: {i} {mode}, see cell log")
@@ -345,7 +351,7 @@ def main():
                 path = args.output / f"features-{i}.tsv"
                 run = subprocess.run([str(binaries["margarine-box3"]), "--export-edges",
                                       row["reference"], row["distorted"], str(path)],
-                                     capture_output=True, text=True, check=False)
+                                     capture_output=True, text=True, check=False, env=environment)
                 (args.output / f"cell-{i}-features.log").write_text(run.stdout + run.stderr)
                 if run.returncode:
                     raise RuntimeError(f"feature extraction failed: {i}, see cell log")
@@ -360,6 +366,7 @@ def main():
     provenance["status"] = "scores-complete"
     provenance["cells_sha256"] = digest(args.output / "cells.jsonl")
     provenance["candidate"] = candidate
+    provenance["tile_columns"] = args.tile_columns
     manifest_path.write_text(json.dumps(provenance, indent=2) + "\n")
     if args.defer_panels:
         report("Scores and maps complete; statistical panels explicitly deferred")

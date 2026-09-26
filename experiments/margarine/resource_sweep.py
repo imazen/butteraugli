@@ -47,11 +47,13 @@ def main():
     parser.add_argument("--build-commit", required=True)
     parser.add_argument("--direct", choices=["box3", "multirate", "compact", "compact4", "sparse", "pooled", "perceptual", "physical", "refined", "refined1", "refined2", "stratified", "peak-stratified", "anchored-pool", "bounded", "lattice", "tiles", "planar", "planar-tiles", "stream-blur", "coarse-gaussian", "row-psycho", "row-tiles", "phase-rows", "phase-tiles", "native-gaussian", "native-mask", "full-malta", "coarse-full-malta", "row-malta", "simd-full-malta", "simd-row-malta", "simd-wide-full-malta", "simd-wide-row-malta", "wide-full-malta", "wide-row-malta", "reference-regions", "stable-peak"], help="native-strip direct candidate")
     parser.add_argument("--strip-rows", type=int, default=256)
+    parser.add_argument("--tile-columns", type=int, default=512)
     parser.add_argument("--memory-trials", type=int, default=3, help="fresh processes per arm; report largest measured peak")
     parser.add_argument("--model", type=Path, help="measure fitted student scores instead of feature probes")
     args = parser.parse_args()
     if args.model and args.direct: parser.error("choose a fitted model or direct candidate")
     if args.memory_trials < 1: parser.error("memory trials must be positive")
+    if args.tile_columns <= 0 or args.tile_columns % 4: parser.error("tile columns must be a positive multiple of four")
     if args.strip_rows <= 0: parser.error("strip rows must be positive")
     system = platform.system()
     time_flag = {"Darwin": "-l", "Linux": "-v"}[system]
@@ -65,7 +67,7 @@ def main():
     rows = list(csv.DictReader(args.crops.open(), delimiter="\t"))
     if not rows: raise ValueError("empty crop manifest")
     args.output.mkdir(parents=True, exist_ok=False)
-    environment = dict(os.environ, ZENBENCH_NO_SAVE="1", LC_ALL="C")
+    environment = dict(os.environ, ZENBENCH_NO_SAVE="1", LC_ALL="C", MARGARINE_TILE_COLUMNS=str(args.tile_columns))
     if args.direct:
         arms = ("teacher", args.direct)
         bench_names = {arm: f"{arm}_metric" for arm in arms}
@@ -83,7 +85,7 @@ def main():
                           timing="interleaved metric-only and file-open/decode/metric arms; model preloaded; warm OS file cache",
                           limitation="same-image crops, fitted scalar scores; no independent content coverage")
     if args.direct:
-        provenance.update(candidate=args.direct, strip_rows=args.strip_rows,
+        provenance.update(candidate=args.direct, strip_rows=args.strip_rows, tile_columns=args.tile_columns,
                           timing="interleaved metric-only and file-open/decode/metric arms; warm OS file cache",
                           limitation="same-image crops; no independent content coverage")
     with (args.output / "progress.log").open("x", buffering=1) as progress:

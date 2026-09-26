@@ -56,8 +56,8 @@ margarine-candidate-check features:
 margarine-direct-eval pairs binaries output candidate teacher commit ingress="aic-rgb8":
     nice -n 19 python3 experiments/margarine/score_manifest.py "{{pairs}}" "{{binaries}}" "{{output}}" --candidate "{{candidate}}" --teacher "{{teacher}}" --build-commit "{{commit}}" --ingress "{{ingress}}"
 
-margarine-direct-resources crops binary output candidate commit rows="128":
-    nice -n 19 python3 experiments/margarine/resource_sweep.py "{{crops}}" "{{binary}}" "{{output}}" --direct "{{candidate}}" --strip-rows "{{rows}}" --build-commit "{{commit}}"
+margarine-direct-resources crops binary output candidate commit rows="128" columns="512":
+    nice -n 19 python3 experiments/margarine/resource_sweep.py "{{crops}}" "{{binary}}" "{{output}}" --direct "{{candidate}}" --strip-rows "{{rows}}" --tile-columns "{{columns}}" --build-commit "{{commit}}"
 
 # A single-size diagnostic cannot fit fixed overhead or qualify the size curve.
 margarine-direct-timing binary reference distorted output rows="128":

@@ -647,3 +647,11 @@ from one kernel; `wide-malta` selects sixteen lanes, and `row-malta` independent
 selects alternate-row sampling. Exact border/tail tests pass in debug and release
 on ARM and x86 for the eight-lane full bank. No speed gain is implied by those
 tests; corpus replay and resource measurements remain separate.
+
+The row-tile experiments accept `MARGARINE_TILE_COLUMNS` (default 512) as a
+positive multiple of four. The scoring and resource wrappers set it explicitly
+from `--tile-columns` and record the value in their manifests. The resource
+recipe accepts columns after rows. The geometry test compares 256, 512, 768 and
+1024 columns against the same full-map reference, including strided RGB16 and
+odd edges. This exposes a scheduling experiment; it does not select a new
+default or change the quality/resource gates.

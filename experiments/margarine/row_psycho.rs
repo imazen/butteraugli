@@ -503,11 +503,33 @@ pub(super) fn compute(
     rows: usize,
     params: &ButteraugliParams,
 ) -> Result<diff::InternalResult, Box<dyn Error>> {
+    let columns = match std::env::var("MARGARINE_TILE_COLUMNS") {
+        Ok(value) => value.parse::<usize>()?,
+        Err(std::env::VarError::NotPresent) => 512,
+        Err(error) => return Err(error.into()),
+    };
+    compute_geometry(a, b, rows, columns, params)
+}
+
+fn compute_geometry(
+    a: &ingress::EncodedRows<'_>,
+    b: &ingress::EncodedRows<'_>,
+    rows: usize,
+    columns: usize,
+    params: &ButteraugliParams,
+) -> Result<diff::InternalResult, Box<dyn Error>> {
+    if columns == 0 || !columns.is_multiple_of(4) {
+        return Err("tile columns must be a positive multiple of four".into());
+    }
     let (w, h) = (a.width, a.height);
     let scale = |factor| {
         let (sw, sh) = (w.div_ceil(factor), h.div_ceil(factor));
         let mut result = image::ImageF::new(sw, sh);
-        let columns = if cfg!(feature = "row-tiles") { 512 } else { sw };
+        let columns = if cfg!(feature = "row-tiles") {
+            columns
+        } else {
+            sw
+        };
         for left in (0..sw).step_by(columns) {
             let right = (left + columns).min(sw);
             let x0 = left.saturating_sub(strips::halo()) / 4 * 4;
@@ -601,13 +623,18 @@ mod tests {
             &params,
         )
         .unwrap();
-        let actual = compute(&a, &b, 64, &params).unwrap();
-        for y in 0..h {
-            assert_eq!(
-                actual.diffmap.as_ref().unwrap().row(y),
-                expected.diffmap.as_ref().unwrap().row(y),
-                "row {y}"
-            );
+        for columns in [256, 512, 768, 1024] {
+            let actual = compute_geometry(&a, &b, 64, columns, &params).unwrap();
+            for y in 0..h {
+                assert_eq!(
+                    actual.diffmap.as_ref().unwrap().row(y),
+                    expected.diffmap.as_ref().unwrap().row(y),
+                    "columns {columns}, row {y}"
+                );
+            }
+        }
+        for columns in [0, 1, 3, 513] {
+            assert!(compute_geometry(&a, &b, 64, columns, &params).is_err());
         }
     }
     #[test]
