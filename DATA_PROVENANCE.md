@@ -1001,3 +1001,12 @@ quality problem. All five norms and all ordinary panel differences remain
 reported. [Input hashes and scope](benchmarks/margarine_fixed_max_diagnostics_2026-09-26.meta.json)
 preserve the alternative comparison explicitly; these results are not
 replacement matching-norm acceptance measurements.
+
+Peak-stratified selection (`e3e402a6`) is rejected by the [LIVE rank
+screen](benchmarks/margarine_peak_stratified_live1_rejected_2026-09-26.tsv).
+JPEG2000 session-1 max SROCC/KROCC losses are 0.02735669/0.05346879,
+worse than the frozen stratified candidate on that cohort. All 344 maps
+remain in r5900xt `peak-stratified-live1-2026-09-26/`; compact panels and
+participant outputs also exist on the Mac. [Measurement metadata](benchmarks/margarine_peak_stratified_live1_rejected_2026-09-26.meta.json)
+pins the score ledger and binary. No resource qualification was run for this
+rejected variant. Isolating peak selection did not repair the quality loss.
