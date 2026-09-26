@@ -519,3 +519,12 @@ multirate path. It must not establish corpus equivalence of the new schedule.
 Its `--memory-native` and `--bench-direct` resource arms did exercise the
 new schedule. The default route is corrected in the next commit; a separate
 corpus run must validate it. No raw artifacts from the initial run were removed.
+
+The [bounded scheduler resource sweep](benchmarks/margarine_bounded_resources_2026-09-26.tsv)
+at `44f6051f` fails the speed goal: 1.775× at 1 MP and 1.337× at 8.44 MP.
+RSS fractions are 32.29% and 16.94%, respectively, so the 1 MP memory
+condition also fails. Tiny/small time and RSS remain below the matched
+teacher; tiny RSS is close (5,632,000 versus 5,693,440 bytes). The 8.44 MP
+run completed twenty rounds; zenbench reports nineteen noisy rounds while
+the JSON unreliable flag is false. Guard peak RSS 1.57 GiB, minimum available
+56,635 MiB, peak load 1.96. These observations do not qualify this candidate.
