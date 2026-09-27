@@ -8,9 +8,9 @@ use crate::consts::{
     W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X, WMUL,
 };
 use crate::image::{BufferPool, Image3F, ImageF};
-use crate::malta::malta_diff_map;
-use crate::mask::compute_mask_from_hf_uhf;
-use crate::opsin::linear_rgb_to_xyb_butteraugli;
+use crate::malta::malta_diff_map_stop;
+use crate::mask::compute_mask_from_hf_uhf_stop;
+use crate::opsin::linear_rgb_to_xyb_butteraugli_stop;
 use crate::psycho::{PsychoImage, separate_frequencies_owned};
 use crate::{ButteraugliError, ButteraugliParams};
 use enough::Stop;
@@ -53,14 +53,15 @@ pub(crate) struct InternalResult {
 pub(crate) const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
 
 /// Converts linear RGB f32 buffer to XYB Image3F using butteraugli's OpsinDynamicsImage.
-fn linear_rgb_to_xyb_image(
+fn linear_rgb_to_xyb_image_stop(
     rgb: &[f32],
     width: usize,
     height: usize,
     intensity_target: f32,
     pool: &BufferPool,
-) -> Image3F {
-    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool)
+    stop: &dyn Stop,
+) -> Result<Image3F, enough::StopReason> {
+    linear_rgb_to_xyb_butteraugli_stop(rgb, width, height, intensity_target, pool, stop)
 }
 
 /// Converts sRGB u8 buffer to linear f32.
@@ -257,18 +258,20 @@ pub(crate) fn compute_psycho_diff_malta(
     hf_asymmetry: f32,
     _xmul: f32,
     pool: &BufferPool,
-) -> Image3F {
+    stop: &dyn Stop,
+) -> Result<Image3F, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = ps0.width();
     let height = ps0.height();
 
     let sqrt_hf_asym = hf_asymmetry.sqrt();
 
     // Parallel: compute all 6 independent Malta diff maps
-    let ((uhf_y_diff, uhf_x_diff), ((hf_y_diff, hf_x_diff), (mf_y_diff, mf_x_diff))) = maybe_join(
+    let ((ruhf_y, ruhf_x), ((rhf_y, rhf_x), (rmf_y, rmf_x))) = maybe_join(
         || {
             maybe_join(
                 || {
-                    malta_diff_map(
+                    malta_diff_map_stop(
                         &ps0.uhf[1],
                         &ps1.uhf[1],
                         W_UHF_MALTA * hf_asymmetry as f64,
@@ -276,10 +279,11 @@ pub(crate) fn compute_psycho_diff_malta(
                         NORM1_UHF,
                         false,
                         pool,
+                        &stop,
                     )
                 },
                 || {
-                    malta_diff_map(
+                    malta_diff_map_stop(
                         &ps0.uhf[0],
                         &ps1.uhf[0],
                         W_UHF_MALTA_X * hf_asymmetry as f64,
@@ -287,6 +291,7 @@ pub(crate) fn compute_psycho_diff_malta(
                         NORM1_UHF_X,
                         false,
                         pool,
+                        &stop,
                     )
                 },
             )
@@ -296,7 +301,7 @@ pub(crate) fn compute_psycho_diff_malta(
                 || {
                     maybe_join(
                         || {
-                            malta_diff_map(
+                            malta_diff_map_stop(
                                 &ps0.hf[1],
                                 &ps1.hf[1],
                                 W_HF_MALTA * sqrt_hf_asym as f64,
@@ -304,10 +309,11 @@ pub(crate) fn compute_psycho_diff_malta(
                                 NORM1_HF,
                                 true,
                                 pool,
+                                &stop,
                             )
                         },
                         || {
-                            malta_diff_map(
+                            malta_diff_map_stop(
                                 &ps0.hf[0],
                                 &ps1.hf[0],
                                 W_HF_MALTA_X * sqrt_hf_asym as f64,
@@ -315,6 +321,7 @@ pub(crate) fn compute_psycho_diff_malta(
                                 NORM1_HF_X,
                                 true,
                                 pool,
+                                &stop,
                             )
                         },
                     )
@@ -322,7 +329,7 @@ pub(crate) fn compute_psycho_diff_malta(
                 || {
                     maybe_join(
                         || {
-                            malta_diff_map(
+                            malta_diff_map_stop(
                                 ps0.mf.plane(1),
                                 ps1.mf.plane(1),
                                 W_MF_MALTA,
@@ -330,10 +337,11 @@ pub(crate) fn compute_psycho_diff_malta(
                                 NORM1_MF,
                                 true,
                                 pool,
+                                &stop,
                             )
                         },
                         || {
-                            malta_diff_map(
+                            malta_diff_map_stop(
                                 ps0.mf.plane(0),
                                 ps1.mf.plane(0),
                                 W_MF_MALTA_X,
@@ -341,6 +349,7 @@ pub(crate) fn compute_psycho_diff_malta(
                                 NORM1_MF_X,
                                 true,
                                 pool,
+                                &stop,
                             )
                         },
                     )
@@ -349,6 +358,13 @@ pub(crate) fn compute_psycho_diff_malta(
         },
     );
 
+    let uhf_y_diff = ruhf_y?;
+    let uhf_x_diff = ruhf_x?;
+    let hf_y_diff = rhf_y?;
+    let hf_x_diff = rhf_x?;
+    let mf_y_diff = rmf_y?;
+    let mf_x_diff = rmf_x?;
+
     // Use UHF Malta results directly as accumulators (no zero-init + add_to needed)
     let mut plane_x = uhf_x_diff;
     let mut plane_y = uhf_y_diff;
@@ -356,6 +372,7 @@ pub(crate) fn compute_psycho_diff_malta(
     // Fuse HF + MF Malta into single accumulation pass per channel
     accumulate_two(&hf_y_diff, &mf_y_diff, &mut plane_y);
     accumulate_two(&hf_x_diff, &mf_x_diff, &mut plane_x);
+    stop.check()?;
 
     // Add L2DiffAsymmetric for HF channels (X and Y, no blue)
     l2_diff_asymmetric(
@@ -372,6 +389,7 @@ pub(crate) fn compute_psycho_diff_malta(
         WMUL[1] as f32 / hf_asymmetry,
         &mut plane_y,
     );
+    stop.check()?;
 
     // Add L2Diff for MF channels (all three)
     l2_diff(
@@ -396,7 +414,7 @@ pub(crate) fn compute_psycho_diff_malta(
         &mut plane_b,
     );
 
-    Image3F::from_planes(plane_x, plane_y, plane_b)
+    Ok(Image3F::from_planes(plane_x, plane_y, plane_b))
 }
 
 /// Computes the mask from two PsychoImages.
@@ -408,9 +426,10 @@ pub(crate) fn mask_psycho_image(
     ps1: &PsychoImage,
     diff_ac: Option<&mut ImageF>,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn Stop,
+) -> Result<ImageF, enough::StopReason> {
     // Fused combine_channels + diff_precompute eliminates intermediate buffers
-    compute_mask_from_hf_uhf(&ps0.hf, &ps0.uhf, &ps1.hf, &ps1.uhf, diff_ac, pool)
+    compute_mask_from_hf_uhf_stop(&ps0.hf, &ps0.uhf, &ps1.hf, &ps1.uhf, diff_ac, pool, stop)
 }
 
 /// Combines AC channels with inline DC diff computation from LF planes.
@@ -425,7 +444,8 @@ pub(crate) fn combine_channels_to_diffmap_fused(
     lf2: &Image3F,
     block_diff_ac: &Image3F,
     xmul: f32,
-) -> ImageF {
+    stop: Option<&dyn Stop>,
+) -> Result<ImageF, enough::StopReason> {
     let width = mask.width();
     let height = mask.height();
     let mut diffmap = ImageF::new_uninit(width, height);
@@ -443,6 +463,9 @@ pub(crate) fn combine_channels_to_diffmap_fused(
     let mdc_offset = crate::consts::MASK_DC_Y_OFFSET as f32;
 
     for y in 0..height {
+        if y.is_multiple_of(64) {
+            stop.check()?;
+        }
         let mask_row = mask.row(y);
         let lf1_0 = lf1.plane(0).row(y);
         let lf1_1 = lf1.plane(1).row(y);
@@ -484,7 +507,7 @@ pub(crate) fn combine_channels_to_diffmap_fused(
         }
     }
 
-    diffmap
+    Ok(diffmap)
 }
 
 /// Computes the global max-norm score AND the libjxl 3-norm aggregation
@@ -653,31 +676,43 @@ pub(crate) fn compute_diffmap_single_resolution_linear(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
-) -> ImageF {
+    stop: &dyn Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let intensity_target = params.intensity_target();
 
     // Parallel: XYB conversion + frequency decomposition for both images
-    let (ps1, ps2) = maybe_join(
+    let (rps1, rps2) = maybe_join(
         || {
             let pool = BufferPool::new();
-            let xyb = linear_rgb_to_xyb_image(rgb1, width, height, intensity_target, &pool);
-            separate_frequencies_owned(xyb, &pool)
+            let xyb =
+                linear_rgb_to_xyb_image_stop(rgb1, width, height, intensity_target, &pool, &stop)?;
+            separate_frequencies_owned(xyb, &pool, &stop)
         },
         || {
             let pool = BufferPool::new();
-            let xyb = linear_rgb_to_xyb_image(rgb2, width, height, intensity_target, &pool);
-            separate_frequencies_owned(xyb, &pool)
+            let xyb =
+                linear_rgb_to_xyb_image_stop(rgb2, width, height, intensity_target, &pool, &stop)?;
+            separate_frequencies_owned(xyb, &pool, &stop)
         },
     );
+    let ps1 = rps1?;
+    let ps2 = rps2?;
 
     // Compute AC differences using Malta filter (internally parallelized)
     let pool = BufferPool::new();
-    let mut block_diff_ac =
-        compute_psycho_diff_malta(&ps1, &ps2, params.hf_asymmetry(), params.xmul(), &pool);
-    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), &pool);
+    let mut block_diff_ac = compute_psycho_diff_malta(
+        &ps1,
+        &ps2,
+        params.hf_asymmetry(),
+        params.xmul(),
+        &pool,
+        &stop,
+    )?;
+    let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), &pool, &stop)?;
 
     // Combine channels to final diffmap (DC diff computed inline from LF planes)
-    combine_channels_to_diffmap_fused(&mask, &ps1.lf, &ps2.lf, &block_diff_ac, params.xmul())
+    combine_channels_to_diffmap_fused(&mask, &ps1.lf, &ps2.lf, &block_diff_ac, params.xmul(), stop)
 }
 
 /// Computes butteraugli diffmap with single-level multiresolution (linear RGB input).
@@ -692,7 +727,9 @@ pub(crate) fn compute_diffmap_multiresolution_linear(
     width: usize,
     height: usize,
     params: &ButteraugliParams,
-) -> ImageF {
+    stop: &dyn Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 
     let need_sub = !params.single_resolution()
@@ -701,19 +738,24 @@ pub(crate) fn compute_diffmap_multiresolution_linear(
 
     if need_sub {
         // Parallel: compute full-res and half-res diffmaps simultaneously
-        let (sub_diffmap, mut diffmap) = maybe_join(
+        let (rsub, rfull) = maybe_join(
             || {
                 let (sub_rgb1, sw, sh) = subsample_linear_rgb_2x(rgb1, width, height);
+                stop.check()?;
                 let (sub_rgb2, _, _) = subsample_linear_rgb_2x(rgb2, width, height);
-                compute_diffmap_single_resolution_linear(&sub_rgb1, &sub_rgb2, sw, sh, params)
+                compute_diffmap_single_resolution_linear(
+                    &sub_rgb1, &sub_rgb2, sw, sh, params, &stop,
+                )
             },
-            || compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params),
+            || compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params, &stop),
         );
+        let sub_diffmap = rsub?;
+        let mut diffmap = rfull?;
 
         add_supersampled_2x(&sub_diffmap, 0.5, &mut diffmap);
-        diffmap
+        Ok(diffmap)
     } else {
-        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params)
+        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params, &stop)
     }
 }
 
@@ -770,6 +812,10 @@ pub fn compute_butteraugli_impl(
 /// block — so a `cancel()` between strips / before a one-shot compare is
 /// honoured without ever entering the per-pixel kernels in
 /// `psycho`/`blur`/`malta`/`mask`/`opsin`. Those inner loops carry no check.
+///
+/// # Errors
+///
+/// Returns [`ButteraugliError::Cancelled`] if `stop` signals cancellation.
 pub fn compute_butteraugli_linear_impl(
     rgb1: &[f32],
     rgb2: &[f32],
@@ -795,11 +841,13 @@ pub fn compute_butteraugli_linear_impl(
     }
 
     // Handle very small images without multi-resolution
-    let diffmap = if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
-        compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params)
-    } else {
-        compute_diffmap_multiresolution_linear(rgb1, rgb2, width, height, params)
-    };
+    let diffmap =
+        if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
+            compute_diffmap_single_resolution_linear(rgb1, rgb2, width, height, params, stop)
+        } else {
+            compute_diffmap_multiresolution_linear(rgb1, rgb2, width, height, params, stop)
+        }
+        .map_err(ButteraugliError::Cancelled)?;
 
     // Single-pass reduction: max-norm score AND libjxl 3-norm
     let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);

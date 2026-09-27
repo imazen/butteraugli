@@ -25,12 +25,19 @@
 //! }
 //! ```
 
+// Module-level because #[autoversion] clones the functions per SIMD tier and
+// the generated variants don't inherit item-level allows.
+#![allow(clippy::too_many_arguments)]
+
 use enough::Stop;
 
 use crate::diff::maybe_join;
 use crate::image::{BufferPool, Image3F, ImageF};
 use crate::mask::PrecomputedMask;
-use crate::opsin::{linear_planar_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli};
+use crate::opsin::{
+    linear_planar_to_xyb_butteraugli, linear_planar_to_xyb_butteraugli_stop,
+    linear_rgb_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli_stop,
+};
 use crate::psycho::{PsychoImage, separate_frequencies_owned};
 use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite_f32};
 
@@ -297,7 +304,8 @@ impl ButteraugliReference {
                 let pool = BufferPool::new();
                 let xyb =
                     linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
-                let psycho = separate_frequencies_owned(xyb, &pool);
+                let psycho = separate_frequencies_owned(xyb, &pool, &enough::Unstoppable)
+                    .expect("Unstoppable never stops");
                 let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
                 (ScaleData { psycho, mask }, pool)
             },
@@ -308,7 +316,9 @@ impl ButteraugliReference {
                     let sub_xyb =
                         linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
                     pool.put(sub_rgb); // B7b: return subsample buffer to pool
-                    let sub_psycho = separate_frequencies_owned(sub_xyb, &pool);
+                    let sub_psycho =
+                        separate_frequencies_owned(sub_xyb, &pool, &enough::Unstoppable)
+                            .expect("Unstoppable never stops");
                     let sub_mask = crate::mask::precompute_reference_mask(
                         &sub_psycho.hf,
                         &sub_psycho.uhf,
@@ -403,7 +413,8 @@ impl ButteraugliReference {
                     intensity_target,
                     &pool,
                 );
-                let psycho = separate_frequencies_owned(xyb, &pool);
+                let psycho = separate_frequencies_owned(xyb, &pool, &enough::Unstoppable)
+                    .expect("Unstoppable never stops");
                 let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
                 (ScaleData { psycho, mask }, pool)
             },
@@ -426,7 +437,9 @@ impl ButteraugliReference {
                     pool.put(sub_r);
                     pool.put(sub_g);
                     pool.put(sub_b);
-                    let sub_psycho = separate_frequencies_owned(sub_xyb, &pool);
+                    let sub_psycho =
+                        separate_frequencies_owned(sub_xyb, &pool, &enough::Unstoppable)
+                            .expect("Unstoppable never stops");
                     let sub_mask = crate::mask::precompute_reference_mask(
                         &sub_psycho.hf,
                         &sub_psycho.uhf,
@@ -1079,36 +1092,62 @@ impl ButteraugliReference {
         let half_ref = self.half.as_ref();
         let pool = &self.pool;
 
+        let stop = stop.may_stop().then_some(stop);
+
         // Run full-res and half-res in parallel (shared pool via Mutex)
-        let (mut diffmap, sub_diffmap) = maybe_join(
-            || {
-                let xyb2 =
-                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, pool);
-                let ps2 = separate_frequencies_owned(xyb2, pool);
-                let dm =
-                    compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
+        let (rdiffmap, rsub) = maybe_join(
+            || -> Result<ImageF, enough::StopReason> {
+                let xyb2 = linear_rgb_to_xyb_butteraugli_stop(
+                    rgb,
+                    width,
+                    height,
+                    intensity_target,
+                    pool,
+                    &stop,
+                )?;
+                let ps2 = separate_frequencies_owned(xyb2, pool, &stop)?;
+                let dm = compute_diffmap_with_precomputed(
+                    full_psycho,
+                    &ps2,
+                    full_mask,
+                    params,
+                    pool,
+                    &stop,
+                )?;
                 ps2.recycle(pool);
-                dm
+                Ok(dm)
             },
-            || {
-                half_ref.map(|half| {
-                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, pool);
-                    let sub_xyb =
-                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, pool);
-                    pool.put(sub_rgb); // B7b: return subsample buffer to pool
-                    let sub_ps = separate_frequencies_owned(sub_xyb, pool);
-                    let dm = compute_diffmap_with_precomputed(
-                        &half.psycho,
-                        &sub_ps,
-                        &half.mask,
-                        params,
-                        pool,
-                    );
-                    sub_ps.recycle(pool);
-                    dm
-                })
+            || -> Result<Option<ImageF>, enough::StopReason> {
+                match half_ref {
+                    Some(half) => {
+                        let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, pool);
+                        let sub_xyb = linear_rgb_to_xyb_butteraugli_stop(
+                            &sub_rgb,
+                            sw,
+                            sh,
+                            intensity_target,
+                            pool,
+                            &stop,
+                        )?;
+                        pool.put(sub_rgb); // B7b: return subsample buffer to pool
+                        let sub_ps = separate_frequencies_owned(sub_xyb, pool, &stop)?;
+                        let dm = compute_diffmap_with_precomputed(
+                            &half.psycho,
+                            &sub_ps,
+                            &half.mask,
+                            params,
+                            pool,
+                            &stop,
+                        )?;
+                        sub_ps.recycle(pool);
+                        Ok(Some(dm))
+                    }
+                    None => Ok(None),
+                }
             },
         );
+        let mut diffmap = rdiffmap.map_err(ButteraugliError::Cancelled)?;
+        let sub_diffmap = rsub.map_err(ButteraugliError::Cancelled)?;
 
         if let Some(sub) = sub_diffmap {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
@@ -1158,9 +1197,11 @@ impl ButteraugliReference {
         let half_ref = self.half.as_ref();
         let pool = &self.pool;
 
-        let (mut diffmap, sub_diffmap) = maybe_join(
-            || {
-                let xyb2 = linear_planar_to_xyb_butteraugli(
+        let stop = stop.may_stop().then_some(stop);
+
+        let (rdiffmap, rsub) = maybe_join(
+            || -> Result<ImageF, enough::StopReason> {
+                let xyb2 = linear_planar_to_xyb_butteraugli_stop(
                     r,
                     g,
                     b,
@@ -1169,43 +1210,57 @@ impl ButteraugliReference {
                     stride,
                     intensity_target,
                     pool,
-                );
-                let ps2 = separate_frequencies_owned(xyb2, pool);
-                let dm =
-                    compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
+                    &stop,
+                )?;
+                let ps2 = separate_frequencies_owned(xyb2, pool, &stop)?;
+                let dm = compute_diffmap_with_precomputed(
+                    full_psycho,
+                    &ps2,
+                    full_mask,
+                    params,
+                    pool,
+                    &stop,
+                )?;
                 ps2.recycle(pool);
-                dm
+                Ok(dm)
             },
-            || {
-                half_ref.map(|half| {
-                    let (sub_r, sub_g, sub_b, sw, sh) =
-                        subsample_planar_rgb_2x(r, g, b, width, height, stride, pool);
-                    let sub_xyb = linear_planar_to_xyb_butteraugli(
-                        &sub_r,
-                        &sub_g,
-                        &sub_b,
-                        sw,
-                        sh,
-                        sw,
-                        intensity_target,
-                        pool,
-                    );
-                    pool.put(sub_r);
-                    pool.put(sub_g);
-                    pool.put(sub_b);
-                    let sub_ps = separate_frequencies_owned(sub_xyb, pool);
-                    let dm = compute_diffmap_with_precomputed(
-                        &half.psycho,
-                        &sub_ps,
-                        &half.mask,
-                        params,
-                        pool,
-                    );
-                    sub_ps.recycle(pool);
-                    dm
-                })
+            || -> Result<Option<ImageF>, enough::StopReason> {
+                match half_ref {
+                    Some(half) => {
+                        let (sub_r, sub_g, sub_b, sw, sh) =
+                            subsample_planar_rgb_2x(r, g, b, width, height, stride, pool);
+                        let sub_xyb = linear_planar_to_xyb_butteraugli_stop(
+                            &sub_r,
+                            &sub_g,
+                            &sub_b,
+                            sw,
+                            sh,
+                            sw,
+                            intensity_target,
+                            pool,
+                            &stop,
+                        )?;
+                        pool.put(sub_r);
+                        pool.put(sub_g);
+                        pool.put(sub_b);
+                        let sub_ps = separate_frequencies_owned(sub_xyb, pool, &stop)?;
+                        let dm = compute_diffmap_with_precomputed(
+                            &half.psycho,
+                            &sub_ps,
+                            &half.mask,
+                            params,
+                            pool,
+                            &stop,
+                        )?;
+                        sub_ps.recycle(pool);
+                        Ok(Some(dm))
+                    }
+                    None => Ok(None),
+                }
             },
         );
+        let mut diffmap = rdiffmap.map_err(ButteraugliError::Cancelled)?;
+        let sub_diffmap = rsub.map_err(ButteraugliError::Cancelled)?;
 
         if let Some(sub) = sub_diffmap {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
@@ -1264,10 +1319,12 @@ impl ButteraugliReference {
         let half_ref = self.half.as_ref();
         let pool = &self.pool;
 
+        let stop = stop.may_stop().then_some(stop);
+
         // Run full-res and half-res in parallel (shared pool via Mutex)
-        let (mut diffmap, sub_diffmap) = maybe_join(
-            || {
-                let xyb2 = linear_planar_to_xyb_butteraugli(
+        let (rdiffmap, rsub) = maybe_join(
+            || -> Result<ImageF, enough::StopReason> {
+                let xyb2 = linear_planar_to_xyb_butteraugli_stop(
                     r,
                     g,
                     b,
@@ -1276,44 +1333,59 @@ impl ButteraugliReference {
                     stride,
                     intensity_target,
                     pool,
-                );
-                let ps2 = separate_frequencies_owned(xyb2, pool);
-                let dm =
-                    compute_diffmap_with_precomputed(full_psycho, &ps2, full_mask, params, pool);
+                    &stop,
+                )?;
+                let ps2 = separate_frequencies_owned(xyb2, pool, &stop)?;
+                let dm = compute_diffmap_with_precomputed(
+                    full_psycho,
+                    &ps2,
+                    full_mask,
+                    params,
+                    pool,
+                    &stop,
+                )?;
                 ps2.recycle(pool);
-                dm
+                Ok(dm)
             },
-            || {
-                half_ref.map(|half| {
-                    let (sub_r, sub_g, sub_b, sw, sh) =
-                        subsample_planar_rgb_2x(r, g, b, width, height, stride, pool);
-                    let sub_xyb = linear_planar_to_xyb_butteraugli(
-                        &sub_r,
-                        &sub_g,
-                        &sub_b,
-                        sw,
-                        sh,
-                        sw,
-                        intensity_target,
-                        pool,
-                    );
-                    // B7b: return subsample buffers to pool for reuse
-                    pool.put(sub_r);
-                    pool.put(sub_g);
-                    pool.put(sub_b);
-                    let sub_ps = separate_frequencies_owned(sub_xyb, pool);
-                    let dm = compute_diffmap_with_precomputed(
-                        &half.psycho,
-                        &sub_ps,
-                        &half.mask,
-                        params,
-                        pool,
-                    );
-                    sub_ps.recycle(pool);
-                    dm
-                })
+            || -> Result<Option<ImageF>, enough::StopReason> {
+                match half_ref {
+                    Some(half) => {
+                        let (sub_r, sub_g, sub_b, sw, sh) =
+                            subsample_planar_rgb_2x(r, g, b, width, height, stride, pool);
+                        let sub_xyb = linear_planar_to_xyb_butteraugli_stop(
+                            &sub_r,
+                            &sub_g,
+                            &sub_b,
+                            sw,
+                            sh,
+                            sw,
+                            intensity_target,
+                            pool,
+                            &stop,
+                        )?;
+                        // B7b: return subsample buffers to pool for reuse
+                        pool.put(sub_r);
+                        pool.put(sub_g);
+                        pool.put(sub_b);
+                        let sub_ps = separate_frequencies_owned(sub_xyb, pool, &stop)?;
+                        let dm = compute_diffmap_with_precomputed(
+                            &half.psycho,
+                            &sub_ps,
+                            &half.mask,
+                            params,
+                            pool,
+                            &stop,
+                        )?;
+                        sub_ps.recycle(pool);
+                        Ok(Some(dm))
+                    }
+                    None => Ok(None),
+                }
             },
         );
+
+        let mut diffmap = rdiffmap.map_err(ButteraugliError::Cancelled)?;
+        let sub_diffmap = rsub.map_err(ButteraugliError::Cancelled)?;
 
         if let Some(sub) = sub_diffmap {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
@@ -1338,7 +1410,7 @@ use crate::consts::{
     NORM1_HF, NORM1_HF_X, NORM1_MF, NORM1_MF_X, NORM1_UHF, NORM1_UHF_X, W_HF_MALTA, W_HF_MALTA_X,
     W_MF_MALTA, W_MF_MALTA_X, W_UHF_MALTA, W_UHF_MALTA_X, WMUL,
 };
-use crate::malta::malta_diff_map;
+use crate::malta::malta_diff_map_stop;
 
 /// Computes diffmap using precomputed reference PsychoImage and precomputed mask.
 fn compute_diffmap_with_precomputed(
@@ -1347,19 +1419,22 @@ fn compute_diffmap_with_precomputed(
     precomputed_mask: &PrecomputedMask,
     params: &ButteraugliParams,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     // Compute AC differences using Malta filter
     let mut block_diff_ac =
-        compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul(), pool);
+        compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul(), pool, &stop)?;
 
     // Apply distorted-side mask correction (blur + mask-to-error accumulation)
-    crate::mask::apply_mask_correction_precomputed(
+    crate::mask::apply_mask_correction_precomputed_stop(
         precomputed_mask,
         &ps2.hf,
         &ps2.uhf,
         Some(block_diff_ac.plane_mut(1)),
         pool,
-    );
+        &stop,
+    )?;
 
     // Use precomputed mask directly (no copy needed — read-only reference).
     // B7a (2026-05-23): diffmap output now sourced from BufferPool so the
@@ -1371,12 +1446,13 @@ fn compute_diffmap_with_precomputed(
         &block_diff_ac,
         params.xmul(),
         pool,
-    );
+        stop,
+    )?;
 
     // Recycle temporaries back to pool
     block_diff_ac.recycle(pool);
 
-    diffmap
+    Ok(diffmap)
 }
 
 /// Computes difference between two PsychoImages using Malta filter.
@@ -1386,18 +1462,20 @@ fn compute_psycho_diff_malta(
     hf_asymmetry: f32,
     _xmul: f32,
     pool: &BufferPool,
-) -> Image3F {
+    stop: &dyn Stop,
+) -> Result<Image3F, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = ps0.width();
     let height = ps0.height();
     let sqrt_hf_asym = hf_asymmetry.sqrt();
 
     // Run Y-channel and X-channel Malta computations in parallel
-    let (plane_y, plane_x) = maybe_join(
+    let (rplane_y, rplane_x) = maybe_join(
         || {
             // Y channel: UHF_Y + HF_Y + MF_Y Malta + L2 diffs
-            let (uhf_y, (hf_y, mf_y)) = maybe_join(
+            let ry = maybe_join(
                 || {
-                    malta_diff_map(
+                    malta_diff_map_stop(
                         &ps0.uhf[1],
                         &ps1.uhf[1],
                         W_UHF_MALTA * hf_asymmetry as f64,
@@ -1405,12 +1483,13 @@ fn compute_psycho_diff_malta(
                         NORM1_UHF,
                         false,
                         pool,
+                        &stop,
                     )
                 },
                 || {
                     maybe_join(
                         || {
-                            malta_diff_map(
+                            malta_diff_map_stop(
                                 &ps0.hf[1],
                                 &ps1.hf[1],
                                 W_HF_MALTA * sqrt_hf_asym as f64,
@@ -1418,10 +1497,11 @@ fn compute_psycho_diff_malta(
                                 NORM1_HF,
                                 true,
                                 pool,
+                                &stop,
                             )
                         },
                         || {
-                            malta_diff_map(
+                            malta_diff_map_stop(
                                 ps0.mf.plane(1),
                                 ps1.mf.plane(1),
                                 W_MF_MALTA,
@@ -1429,11 +1509,17 @@ fn compute_psycho_diff_malta(
                                 NORM1_MF,
                                 true,
                                 pool,
+                                &stop,
                             )
                         },
                     )
                 },
             );
+
+            let (ruhf_y, (rhf_y, rmf_y)) = ry;
+            let uhf_y = ruhf_y?;
+            let hf_y = rhf_y?;
+            let mf_y = rmf_y?;
 
             // Use uhf_y directly as accumulator (no zero-init + add_to needed)
             let mut ac_y = uhf_y;
@@ -1451,13 +1537,13 @@ fn compute_psycho_diff_malta(
             );
             l2_diff(ps0.mf.plane(1), ps1.mf.plane(1), WMUL[4] as f32, &mut ac_y);
 
-            ac_y
+            Ok(ac_y)
         },
         || {
             // X channel: UHF_X + HF_X + MF_X Malta + L2 diffs
-            let (uhf_x, (hf_x, mf_x)) = maybe_join(
+            let rx = maybe_join(
                 || {
-                    malta_diff_map(
+                    malta_diff_map_stop(
                         &ps0.uhf[0],
                         &ps1.uhf[0],
                         W_UHF_MALTA_X * hf_asymmetry as f64,
@@ -1465,12 +1551,13 @@ fn compute_psycho_diff_malta(
                         NORM1_UHF_X,
                         false,
                         pool,
+                        &stop,
                     )
                 },
                 || {
                     maybe_join(
                         || {
-                            malta_diff_map(
+                            malta_diff_map_stop(
                                 &ps0.hf[0],
                                 &ps1.hf[0],
                                 W_HF_MALTA_X * sqrt_hf_asym as f64,
@@ -1478,10 +1565,11 @@ fn compute_psycho_diff_malta(
                                 NORM1_HF_X,
                                 true,
                                 pool,
+                                &stop,
                             )
                         },
                         || {
-                            malta_diff_map(
+                            malta_diff_map_stop(
                                 ps0.mf.plane(0),
                                 ps1.mf.plane(0),
                                 W_MF_MALTA_X,
@@ -1489,11 +1577,17 @@ fn compute_psycho_diff_malta(
                                 NORM1_MF_X,
                                 true,
                                 pool,
+                                &stop,
                             )
                         },
                     )
                 },
             );
+
+            let (ruhf_x, (rhf_x, rmf_x)) = rx;
+            let uhf_x = ruhf_x?;
+            let hf_x = rhf_x?;
+            let mf_x = rmf_x?;
 
             // Use uhf_x directly as accumulator
             let mut ac_x = uhf_x;
@@ -1511,9 +1605,12 @@ fn compute_psycho_diff_malta(
             );
             l2_diff(ps0.mf.plane(0), ps1.mf.plane(0), WMUL[3] as f32, &mut ac_x);
 
-            ac_x
+            Ok(ac_x)
         },
     );
+    let plane_y = rplane_y?;
+    let plane_x = rplane_x?;
+    stop.check()?;
 
     // B channel L2Diff — write-only variant (no zero-init needed)
     let mut plane_b = ImageF::from_pool_dirty(width, height, pool);
@@ -1524,7 +1621,7 @@ fn compute_psycho_diff_malta(
         &mut plane_b,
     );
 
-    Image3F::from_planes(plane_x, plane_y, plane_b)
+    Ok(Image3F::from_planes(plane_x, plane_y, plane_b))
 }
 
 /// Combines AC channels with inline DC diff computation from LF planes.
@@ -1532,6 +1629,7 @@ fn compute_psycho_diff_malta(
 /// Fuses compute_lf_diff + combine_channels_to_diffmap into a single pass,
 /// eliminating 3 intermediate DC diff plane allocations and 6MB memory traffic.
 #[archmage::autoversion]
+#[allow(clippy::too_many_arguments)]
 fn combine_channels_to_diffmap_fused(
     _token: archmage::SimdToken,
     mask: &ImageF,
@@ -1540,7 +1638,8 @@ fn combine_channels_to_diffmap_fused(
     block_diff_ac: &Image3F,
     xmul: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: Option<&dyn Stop>,
+) -> Result<ImageF, enough::StopReason> {
     use crate::consts::{
         MASK_DC_Y_MUL, MASK_DC_Y_OFFSET, MASK_DC_Y_SCALER, MASK_Y_MUL, MASK_Y_OFFSET, MASK_Y_SCALER,
     };
@@ -1564,6 +1663,9 @@ fn combine_channels_to_diffmap_fused(
     let mdc_offset = MASK_DC_Y_OFFSET as f32;
 
     for y in 0..height {
+        if y.is_multiple_of(64) {
+            stop.check()?;
+        }
         let mask_row = mask.row(y);
         let lf1_0 = lf1.plane(0).row(y);
         let lf1_1 = lf1.plane(1).row(y);
@@ -1605,7 +1707,7 @@ fn combine_channels_to_diffmap_fused(
         }
     }
 
-    diffmap
+    Ok(diffmap)
 }
 
 /// Accumulates two source images into a destination: dst[x] += a[x] + b[x].

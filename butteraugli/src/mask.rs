@@ -11,13 +11,14 @@
 //! - `mask_y`: Converts mask value to AC masking factor
 //! - `mask_dc_y`: Converts mask value to DC masking factor
 
-use crate::blur::gaussian_blur;
+use crate::blur::{gaussian_blur, gaussian_blur_stop};
 use crate::consts::{
     COMBINE_CHANNELS_MULS, GLOBAL_SCALE, MASK_BIAS, MASK_DC_Y_MUL, MASK_DC_Y_OFFSET,
     MASK_DC_Y_SCALER, MASK_MUL, MASK_RADIUS, MASK_TO_ERROR_MUL, MASK_Y_MUL, MASK_Y_OFFSET,
     MASK_Y_SCALER,
 };
 use crate::image::{BufferPool, ImageF};
+use enough::Stop;
 
 /// Combines HF and UHF channels for masking computation.
 ///
@@ -353,6 +354,28 @@ pub fn compute_mask_from_hf_uhf(
     diff_ac: Option<&mut ImageF>,
     pool: &BufferPool,
 ) -> ImageF {
+    match compute_mask_from_hf_uhf_stop(hf0, uhf0, hf1, uhf1, diff_ac, pool, &enough::Unstoppable) {
+        Ok(m) => m,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`compute_mask_from_hf_uhf`] with cooperative cancellation — `stop` is
+/// checked between the combine/blur/erosion stages and inside the blurs.
+///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+pub(crate) fn compute_mask_from_hf_uhf_stop(
+    hf0: &[ImageF; 2],
+    uhf0: &[ImageF; 2],
+    hf1: &[ImageF; 2],
+    uhf1: &[ImageF; 2],
+    diff_ac: Option<&mut ImageF>,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = hf0[0].width();
     let height = hf0[0].height();
 
@@ -363,16 +386,18 @@ pub fn compute_mask_from_hf_uhf(
     // Fused combine + precompute for image 1
     let mut diff1 = ImageF::from_pool_dirty(width, height, pool);
     combine_and_precompute(hf1, uhf1, &mut diff1);
+    stop.check()?;
 
     // Blur diff0 and diff1
-    let blurred0 = gaussian_blur(&diff0, MASK_RADIUS, pool);
-    let blurred1 = gaussian_blur(&diff1, MASK_RADIUS, pool);
+    let blurred0 = gaussian_blur_stop(&diff0, MASK_RADIUS, pool, &stop)?;
+    let blurred1 = gaussian_blur_stop(&diff1, MASK_RADIUS, pool, &stop)?;
     diff0.recycle(pool);
     diff1.recycle(pool);
 
     // FuzzyErosion on blurred0 — result IS the mask (no copy needed)
     let mut mask = ImageF::from_pool_dirty(width, height, pool);
     fuzzy_erosion(&blurred0, &mut mask);
+    stop.check()?;
 
     // Accumulate mask-to-error difference into diff_ac if requested
     if let Some(ac) = diff_ac {
@@ -381,7 +406,7 @@ pub fn compute_mask_from_hf_uhf(
 
     blurred0.recycle(pool);
     blurred1.recycle(pool);
-    mask
+    Ok(mask)
 }
 
 /// Autoversioned mask-to-error accumulation: ac[x] += MUL * (b0[x] - b1[x])^2.
@@ -435,19 +460,39 @@ pub fn precompute_reference_mask(
     uhf: &[ImageF; 2],
     pool: &BufferPool,
 ) -> PrecomputedMask {
+    match precompute_reference_mask_stop(hf, uhf, pool, &enough::Unstoppable) {
+        Ok(m) => m,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`precompute_reference_mask`] with cooperative cancellation — `stop` is
+/// checked between the combine/blur/erosion stages and inside the blur.
+///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+pub(crate) fn precompute_reference_mask_stop(
+    hf: &[ImageF; 2],
+    uhf: &[ImageF; 2],
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<PrecomputedMask, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = hf[0].width();
     let height = hf[0].height();
 
     let mut diff = ImageF::from_pool_dirty(width, height, pool);
     combine_and_precompute(hf, uhf, &mut diff);
+    stop.check()?;
 
-    let blurred = gaussian_blur(&diff, MASK_RADIUS, pool);
+    let blurred = gaussian_blur_stop(&diff, MASK_RADIUS, pool, &stop)?;
     diff.recycle(pool);
 
     let mut mask = ImageF::from_pool_dirty(width, height, pool);
     fuzzy_erosion(&blurred, &mut mask);
 
-    PrecomputedMask { mask, blurred }
+    Ok(PrecomputedMask { mask, blurred })
 }
 
 /// Applies the distorted-side mask correction using precomputed reference data.
@@ -463,14 +508,43 @@ pub fn apply_mask_correction_precomputed(
     diff_ac: Option<&mut ImageF>,
     pool: &BufferPool,
 ) {
+    match apply_mask_correction_precomputed_stop(
+        precomputed,
+        hf1,
+        uhf1,
+        diff_ac,
+        pool,
+        &enough::Unstoppable,
+    ) {
+        Ok(()) => (),
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`apply_mask_correction_precomputed`] with cooperative cancellation —
+/// `stop` is checked between stages and inside the blur.
+///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+pub(crate) fn apply_mask_correction_precomputed_stop(
+    precomputed: &PrecomputedMask,
+    hf1: &[ImageF; 2],
+    uhf1: &[ImageF; 2],
+    diff_ac: Option<&mut ImageF>,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = hf1[0].width();
     let height = hf1[0].height();
 
     // Only compute the distorted side
     let mut diff1 = ImageF::from_pool_dirty(width, height, pool);
     combine_and_precompute(hf1, uhf1, &mut diff1);
+    stop.check()?;
 
-    let blurred1 = gaussian_blur(&diff1, MASK_RADIUS, pool);
+    let blurred1 = gaussian_blur_stop(&diff1, MASK_RADIUS, pool, &stop)?;
     diff1.recycle(pool);
 
     // Accumulate mask-to-error using precomputed reference blur
@@ -479,6 +553,7 @@ pub fn apply_mask_correction_precomputed(
     }
 
     blurred1.recycle(pool);
+    Ok(())
 }
 
 /// Computes mask from both images' psychovisual representations.
