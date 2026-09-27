@@ -16,6 +16,7 @@
 //! checks for ~6% fewer instructions.
 
 use crate::image::{BufferPool, ImageF};
+use enough::Stop;
 
 /// Read a single f32 from a data slice.
 ///
@@ -1291,6 +1292,7 @@ pub fn malta_unit_lf(data: &ImageF, x: usize, y: usize) -> f32 {
 /// with asymmetric weighting to penalize artifacts differently than blur.
 ///
 /// Uses SIMD dispatch: on AVX2+ CPUs, processes 8 interior pixels simultaneously.
+#[cfg_attr(not(feature = "internals"), allow(dead_code))]
 pub fn malta_diff_map(
     lum0: &ImageF,
     lum1: &ImageF,
@@ -1300,8 +1302,41 @@ pub fn malta_diff_map(
     use_lf: bool,
     pool: &BufferPool,
 ) -> ImageF {
+    match malta_diff_map_stop(
+        lum0,
+        lum1,
+        w_0gt1,
+        w_0lt1,
+        norm1,
+        use_lf,
+        pool,
+        &enough::Unstoppable,
+    ) {
+        Ok(m) => m,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`malta_diff_map`] with cooperative cancellation — `stop` is checked at
+/// row-block granularity in the interior pass.
+///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+#[allow(clippy::too_many_arguments)]
+pub fn malta_diff_map_stop(
+    lum0: &ImageF,
+    lum1: &ImageF,
+    w_0gt1: f64,
+    w_0lt1: f64,
+    norm1: f64,
+    use_lf: bool,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     archmage::incant!(
-        malta_diff_map_dispatch(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool),
+        malta_diff_map_dispatch(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, stop),
         [v4, v3, neon, wasm128]
     )
 }
@@ -1431,7 +1466,8 @@ pub(crate) fn malta_diff_map_impl<F>(
     use_lf: bool,
     pool: &BufferPool,
     interior_row: F,
-) -> ImageF
+    stop: Option<&dyn Stop>,
+) -> Result<ImageF, enough::StopReason>
 where
     F: Fn(&[f32], usize, usize, usize, bool, &mut [f32]),
 {
@@ -1444,8 +1480,12 @@ where
     let mut block_diff_ac = ImageF::from_pool_dirty(width, height, pool);
     let pad_data = padded.data();
 
-    // All rows use the interior SIMD path — no border handling needed
+    // All rows use the interior SIMD path — no border handling needed.
+    // `stop` is checked between row blocks, never inside `interior_row`.
     for y in 0..height {
+        if y.is_multiple_of(64) {
+            stop.check()?;
+        }
         let out = block_diff_ac.row_mut(y);
         let center_base = (y + PAD) * pad_stride + PAD;
         interior_row(pad_data, center_base, pad_stride, width, use_lf, out);
@@ -1453,7 +1493,7 @@ where
 
     padded.recycle(pool);
 
-    block_diff_ac
+    Ok(block_diff_ac)
 }
 
 /// AVX2 dispatch variant: processes 8 interior pixels at a time.
@@ -1469,7 +1509,8 @@ fn malta_diff_map_dispatch_v3(
     norm1: f64,
     use_lf: bool,
     pool: &BufferPool,
-) -> ImageF {
+    stop: Option<&dyn Stop>,
+) -> Result<ImageF, enough::StopReason> {
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
@@ -1500,7 +1541,9 @@ fn malta_diff_map_dispatch_v3(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
+    malta_diff_map_impl(
+        lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior, stop,
+    )
 }
 
 /// SIMD HF Malta filter for 16 consecutive interior pixels (AVX-512).
@@ -1860,7 +1903,8 @@ fn malta_diff_map_dispatch_v4(
     norm1: f64,
     use_lf: bool,
     pool: &BufferPool,
-) -> ImageF {
+    stop: Option<&dyn Stop>,
+) -> Result<ImageF, enough::StopReason> {
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
@@ -1891,7 +1935,9 @@ fn malta_diff_map_dispatch_v4(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
+    malta_diff_map_impl(
+        lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior, stop,
+    )
 }
 
 /// NEON HF Malta filter for 8 consecutive interior pixels (polyfilled 2×f32x4).
@@ -2241,7 +2287,8 @@ fn malta_diff_map_dispatch_neon(
     norm1: f64,
     use_lf: bool,
     pool: &BufferPool,
-) -> ImageF {
+    stop: Option<&dyn Stop>,
+) -> Result<ImageF, enough::StopReason> {
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
@@ -2272,7 +2319,9 @@ fn malta_diff_map_dispatch_neon(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
+    malta_diff_map_impl(
+        lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior, stop,
+    )
 }
 
 /// WASM SIMD128 HF Malta filter for 8 consecutive interior pixels (polyfilled 2×v128).
@@ -2622,7 +2671,8 @@ fn malta_diff_map_dispatch_wasm128(
     norm1: f64,
     use_lf: bool,
     pool: &BufferPool,
-) -> ImageF {
+    stop: Option<&dyn Stop>,
+) -> Result<ImageF, enough::StopReason> {
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
@@ -2651,7 +2701,9 @@ fn malta_diff_map_dispatch_wasm128(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
+    malta_diff_map_impl(
+        lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior, stop,
+    )
 }
 
 /// Scalar fallback for Malta diff map.
@@ -2665,7 +2717,8 @@ fn malta_diff_map_dispatch_scalar(
     norm1: f64,
     use_lf: bool,
     pool: &BufferPool,
-) -> ImageF {
+    stop: Option<&dyn Stop>,
+) -> Result<ImageF, enough::StopReason> {
     let interior = |data: &[f32],
                     center_base: usize,
                     stride: usize,
@@ -2682,7 +2735,9 @@ fn malta_diff_map_dispatch_scalar(
         }
     };
 
-    malta_diff_map_impl(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior)
+    malta_diff_map_impl(
+        lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool, interior, stop,
+    )
 }
 
 #[cfg(test)]

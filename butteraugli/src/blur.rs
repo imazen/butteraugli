@@ -13,6 +13,11 @@
 //! - Explicit f32x8 SIMD for ~1.4x speedup
 
 use crate::image::{BufferPool, ImageF};
+use enough::Stop;
+
+/// Rows between `stop` polls inside the row loops below — checks stay
+/// out of every per-pixel loop.
+const BLUR_STOP_ROWS: usize = 64;
 
 /// Computes normalized separable 5x5 weights for a given sigma.
 ///
@@ -82,7 +87,9 @@ fn convolve_horizontal_borders(
     border_ratio: f32,
     output: &mut ImageF,
     include_interior: bool,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = input.width();
     let height = input.height();
     let half = kernel.len() / 2;
@@ -91,6 +98,9 @@ fn convolve_horizontal_borders(
     let border2 = if width > half { width - half } else { 0 };
 
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row_in = input.row(y);
         let row_out = output.row_mut(y);
 
@@ -142,11 +152,13 @@ fn convolve_horizontal_borders(
             row_out[x] = sum;
         }
     }
+    Ok(())
 }
 
 /// AVX2 non-transposing horizontal convolution interior.
 #[cfg(target_arch = "x86_64")]
 #[archmage::rite]
+#[allow(clippy::too_many_arguments)]
 fn convolve_horizontal_interior_v3(
     token: archmage::X64V3Token,
     input: &ImageF,
@@ -155,7 +167,9 @@ fn convolve_horizontal_interior_v3(
     border2: usize,
     half: usize,
     output: &mut ImageF,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::f32x8;
     let height = input.height();
     let kernel_len = scaled_kernel.len();
@@ -163,6 +177,9 @@ fn convolve_horizontal_interior_v3(
     let simd_end = border1 + simd_chunks * 8;
 
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row_in = input.row(y);
         let row_out = output.row_mut(y);
 
@@ -194,11 +211,13 @@ fn convolve_horizontal_interior_v3(
             row_out[x] = sum;
         }
     }
+    Ok(())
 }
 
 /// AVX-512 non-transposing horizontal convolution interior.
 #[cfg(target_arch = "x86_64")]
 #[archmage::rite]
+#[allow(clippy::too_many_arguments)]
 fn convolve_horizontal_interior_v4(
     token: archmage::X64V4Token,
     input: &ImageF,
@@ -207,7 +226,9 @@ fn convolve_horizontal_interior_v4(
     border2: usize,
     half: usize,
     output: &mut ImageF,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::v4::f32x16;
     let height = input.height();
     let kernel_len = scaled_kernel.len();
@@ -215,6 +236,9 @@ fn convolve_horizontal_interior_v4(
     let simd_end = border1 + simd_chunks * 16;
 
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row_in = input.row(y);
         let row_out = output.row_mut(y);
 
@@ -243,6 +267,7 @@ fn convolve_horizontal_interior_v4(
             row_out[x] = sum;
         }
     }
+    Ok(())
 }
 
 /// NEON non-transposing horizontal convolution interior.
@@ -256,7 +281,9 @@ fn convolve_horizontal_interior_neon(
     border2: usize,
     half: usize,
     output: &mut ImageF,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::f32x8;
     let height = input.height();
     let kernel_len = scaled_kernel.len();
@@ -264,6 +291,9 @@ fn convolve_horizontal_interior_neon(
     let simd_end = border1 + simd_chunks * 8;
 
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row_in = input.row(y);
         let row_out = output.row_mut(y);
 
@@ -291,6 +321,7 @@ fn convolve_horizontal_interior_neon(
             row_out[x] = sum;
         }
     }
+    Ok(())
 }
 
 /// WASM SIMD128 non-transposing horizontal convolution interior.
@@ -304,7 +335,9 @@ fn convolve_horizontal_interior_wasm128(
     border2: usize,
     half: usize,
     output: &mut ImageF,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::f32x8;
     let height = input.height();
     let kernel_len = scaled_kernel.len();
@@ -312,6 +345,9 @@ fn convolve_horizontal_interior_wasm128(
     let simd_end = border1 + simd_chunks * 8;
 
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row_in = input.row(y);
         let row_out = output.row_mut(y);
 
@@ -339,6 +375,7 @@ fn convolve_horizontal_interior_wasm128(
             row_out[x] = sum;
         }
     }
+    Ok(())
 }
 
 /// Vertical convolution with SIMD across x dimension.
@@ -355,7 +392,9 @@ fn convolve_vertical_v3(
     scaled_kernel: &[f32],
     border_ratio: f32,
     output: &mut ImageF,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::f32x8;
     let width = input.width();
     let height = input.height();
@@ -368,6 +407,9 @@ fn convolve_vertical_v3(
 
     // Top border rows
     for y in 0..border_top {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -407,6 +449,9 @@ fn convolve_vertical_v3(
     let in_data = input.data();
     let in_stride = input.stride();
     for y in border_top..border_bottom {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let start_y = y - half;
         let row_out = output.row_mut(y);
 
@@ -441,6 +486,9 @@ fn convolve_vertical_v3(
 
     // Bottom border rows
     for y in border_bottom..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -472,6 +520,7 @@ fn convolve_vertical_v3(
             x += 1;
         }
     }
+    Ok(())
 }
 
 /// AVX-512 vertical convolution.
@@ -484,7 +533,9 @@ fn convolve_vertical_v4(
     scaled_kernel: &[f32],
     border_ratio: f32,
     output: &mut ImageF,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::v4::f32x16;
     let width = input.width();
     let height = input.height();
@@ -522,6 +573,9 @@ fn convolve_vertical_v4(
         };
 
     for y in 0..border_top {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -539,6 +593,9 @@ fn convolve_vertical_v4(
     let in_data = input.data();
     let in_stride = input.stride();
     for y in border_top..border_bottom {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let start_y = y - half;
         let row_out = output.row_mut(y);
 
@@ -569,6 +626,9 @@ fn convolve_vertical_v4(
     }
 
     for y in border_bottom..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -580,6 +640,7 @@ fn convolve_vertical_v4(
         let row_out = output.row_mut(y);
         process_border_row(y, miny, ks, scale, row_out);
     }
+    Ok(())
 }
 
 /// NEON vertical convolution.
@@ -592,7 +653,9 @@ fn convolve_vertical_neon(
     scaled_kernel: &[f32],
     border_ratio: f32,
     output: &mut ImageF,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::f32x8;
     let width = input.width();
     let height = input.height();
@@ -627,6 +690,9 @@ fn convolve_vertical_neon(
     };
 
     for y in 0..border_top {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -642,6 +708,9 @@ fn convolve_vertical_neon(
     let in_data = input.data();
     let in_stride = input.stride();
     for y in border_top..border_bottom {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let start_y = y - half;
         let row_out = output.row_mut(y);
 
@@ -671,6 +740,9 @@ fn convolve_vertical_neon(
     }
 
     for y in border_bottom..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -681,6 +753,7 @@ fn convolve_vertical_neon(
         let scale = 1.0 / effective;
         process_border_row(miny, ks, scale, output.row_mut(y));
     }
+    Ok(())
 }
 
 /// WASM SIMD128 vertical convolution.
@@ -693,7 +766,9 @@ fn convolve_vertical_wasm128(
     scaled_kernel: &[f32],
     border_ratio: f32,
     output: &mut ImageF,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::f32x8;
     let width = input.width();
     let height = input.height();
@@ -727,6 +802,9 @@ fn convolve_vertical_wasm128(
     };
 
     for y in 0..border_top {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -742,6 +820,9 @@ fn convolve_vertical_wasm128(
     let in_data = input.data();
     let in_stride = input.stride();
     for y in border_top..border_bottom {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let start_y = y - half;
         let row_out = output.row_mut(y);
 
@@ -771,6 +852,9 @@ fn convolve_vertical_wasm128(
     }
 
     for y in border_bottom..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -781,6 +865,7 @@ fn convolve_vertical_wasm128(
         let scale = 1.0 / effective;
         process_border_row(miny, ks, scale, output.row_mut(y));
     }
+    Ok(())
 }
 
 /// Scalar vertical convolution fallback.
@@ -790,7 +875,9 @@ fn convolve_vertical_scalar(
     scaled_kernel: &[f32],
     border_ratio: f32,
     output: &mut ImageF,
-) {
+    stop: &dyn enough::Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = input.width();
     let height = input.height();
     let half = kernel.len() / 2;
@@ -811,6 +898,9 @@ fn convolve_vertical_scalar(
     };
 
     for y in 0..border_top {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -826,6 +916,9 @@ fn convolve_vertical_scalar(
     let in_data = input.data();
     let in_stride = input.stride();
     for y in border_top..border_bottom {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let start_y = y - half;
         let row_out = output.row_mut(y);
 
@@ -839,6 +932,9 @@ fn convolve_vertical_scalar(
     }
 
     for y in border_bottom..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let miny = y.saturating_sub(half);
         let maxy = (y + half).min(height - 1);
         let k_start = miny + half - y;
@@ -849,6 +945,7 @@ fn convolve_vertical_scalar(
         let scale = 1.0 / effective;
         process_border_row(miny, ks, scale, output.row_mut(y));
     }
+    Ok(())
 }
 
 /// Applies a 2D Gaussian blur to an image.
@@ -864,21 +961,34 @@ fn convolve_vertical_scalar(
 /// # Returns
 /// Blurred image
 pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
+    match gaussian_blur_stop(input, sigma, pool, &enough::Unstoppable) {
+        Ok(o) => o,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`gaussian_blur`] with cooperative cancellation — `stop` is checked
+/// between the H/V sub-passes and inside each convolve's row loops.///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+pub fn gaussian_blur_stop(
+    input: &ImageF,
+    sigma: f32,
+    pool: &BufferPool,
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
     if sigma <= 0.0 {
-        return input.clone();
+        return Ok(input.clone());
     }
     #[cfg(feature = "iir-blur")]
     {
-        // The explicit `return` is load-bearing: this cfg'd block sits in
-        // statement position, so without `return` its value would be
-        // discarded. clippy flags needless_return because it can't see the
-        // cfg(not(iir-blur)) tail expression below when the feature is on.
         #[allow(clippy::needless_return)]
-        return crate::blur_iir::gaussian_blur_iir(input, sigma, pool);
+        return crate::blur_iir::gaussian_blur_iir_stop(input, sigma, pool, stop);
     }
     #[cfg(not(feature = "iir-blur"))]
     archmage::incant!(
-        gaussian_blur_dispatch(input, sigma, pool),
+        gaussian_blur_dispatch(input, sigma, pool, stop),
         [v4, v3, neon, wasm128]
     )
 }
@@ -907,7 +1017,9 @@ fn gaussian_blur_dispatch_v4(
     input: &ImageF,
     sigma: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
@@ -920,16 +1032,21 @@ fn gaussian_blur_dispatch_v4(
 
     // H-pass: non-transposing
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false, &stop)?;
+    stop.check()?;
     if border2 > border1 {
-        convolve_horizontal_interior_v4(token, input, scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_v4(
+            token, input, scaled, border1, border2, half, &mut temp, &stop,
+        )?;
     }
+    stop.check()?;
 
     // V-pass: accumulate across rows
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_v4(token, &temp, kernel, scaled, 0.0, &mut output);
+    convolve_vertical_v4(token, &temp, kernel, scaled, 0.0, &mut output, &stop)?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -939,7 +1056,9 @@ fn gaussian_blur_dispatch_v3(
     input: &ImageF,
     sigma: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
@@ -952,16 +1071,21 @@ fn gaussian_blur_dispatch_v3(
 
     // H-pass: non-transposing
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false, &stop)?;
+    stop.check()?;
     if border2 > border1 {
-        convolve_horizontal_interior_v3(token, input, scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_v3(
+            token, input, scaled, border1, border2, half, &mut temp, &stop,
+        )?;
     }
+    stop.check()?;
 
     // V-pass: accumulate across rows
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_v3(token, &temp, kernel, scaled, 0.0, &mut output);
+    convolve_vertical_v3(token, &temp, kernel, scaled, 0.0, &mut output, &stop)?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -971,7 +1095,9 @@ fn gaussian_blur_dispatch_neon(
     input: &ImageF,
     sigma: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
@@ -983,15 +1109,20 @@ fn gaussian_blur_dispatch_neon(
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false, &stop)?;
+    stop.check()?;
     if border2 > border1 {
-        convolve_horizontal_interior_neon(token, input, scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_neon(
+            token, input, scaled, border1, border2, half, &mut temp, &stop,
+        )?;
     }
+    stop.check()?;
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_neon(token, &temp, kernel, scaled, 0.0, &mut output);
+    convolve_vertical_neon(token, &temp, kernel, scaled, 0.0, &mut output, &stop)?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1001,7 +1132,9 @@ fn gaussian_blur_dispatch_wasm128(
     input: &ImageF,
     sigma: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
@@ -1013,17 +1146,20 @@ fn gaussian_blur_dispatch_wasm128(
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false, &stop)?;
+    stop.check()?;
     if border2 > border1 {
         convolve_horizontal_interior_wasm128(
-            token, input, &scaled, border1, border2, half, &mut temp,
-        );
+            token, input, &scaled, border1, border2, half, &mut temp, &stop,
+        )?;
     }
+    stop.check()?;
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_wasm128(token, &temp, &kernel, &scaled, 0.0, &mut output);
+    convolve_vertical_wasm128(token, &temp, &kernel, &scaled, 0.0, &mut output, &stop)?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 // Reached via incant!'s implicit scalar fallback from gaussian_blur (FIR
@@ -1036,7 +1172,9 @@ fn gaussian_blur_dispatch_scalar(
     input: &ImageF,
     sigma: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
@@ -1045,12 +1183,14 @@ fn gaussian_blur_dispatch_scalar(
     let height = input.height();
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, true);
+    convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, true, &stop)?;
+    stop.check()?;
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_scalar(&temp, kernel, scaled, 0.0, &mut output);
+    convolve_vertical_scalar(&temp, kernel, scaled, 0.0, &mut output, &stop)?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 /// Blur with border ratio parameter (matches C++ Blur signature).
@@ -1060,11 +1200,29 @@ pub fn blur_with_border(
     border_ratio: f32,
     pool: &BufferPool,
 ) -> ImageF {
+    match blur_with_border_stop(input, sigma, border_ratio, pool, &enough::Unstoppable) {
+        Ok(o) => o,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`blur_with_border`] with cooperative cancellation — checked between
+/// sub-passes and inside each convolve's row loops.///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+pub fn blur_with_border_stop(
+    input: &ImageF,
+    sigma: f32,
+    border_ratio: f32,
+    pool: &BufferPool,
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
     if sigma <= 0.0 {
-        return input.clone();
+        return Ok(input.clone());
     }
     archmage::incant!(
-        blur_with_border_dispatch(input, sigma, border_ratio, pool),
+        blur_with_border_dispatch(input, sigma, border_ratio, pool, stop),
         [v4, v3, neon, wasm128]
     )
 }
@@ -1077,7 +1235,9 @@ fn blur_with_border_dispatch_v4(
     sigma: f32,
     border_ratio: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
@@ -1089,15 +1249,28 @@ fn blur_with_border_dispatch_v4(
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false, &stop)?;
+    stop.check()?;
     if border2 > border1 {
-        convolve_horizontal_interior_v4(token, input, scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_v4(
+            token, input, scaled, border1, border2, half, &mut temp, &stop,
+        )?;
     }
+    stop.check()?;
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_v4(token, &temp, kernel, scaled, border_ratio, &mut output);
+    convolve_vertical_v4(
+        token,
+        &temp,
+        kernel,
+        scaled,
+        border_ratio,
+        &mut output,
+        &stop,
+    )?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -1108,7 +1281,9 @@ fn blur_with_border_dispatch_v3(
     sigma: f32,
     border_ratio: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
@@ -1120,15 +1295,28 @@ fn blur_with_border_dispatch_v3(
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false, &stop)?;
+    stop.check()?;
     if border2 > border1 {
-        convolve_horizontal_interior_v3(token, input, scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_v3(
+            token, input, scaled, border1, border2, half, &mut temp, &stop,
+        )?;
     }
+    stop.check()?;
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_v3(token, &temp, kernel, scaled, border_ratio, &mut output);
+    convolve_vertical_v3(
+        token,
+        &temp,
+        kernel,
+        scaled,
+        border_ratio,
+        &mut output,
+        &stop,
+    )?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -1139,7 +1327,9 @@ fn blur_with_border_dispatch_neon(
     sigma: f32,
     border_ratio: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
@@ -1151,15 +1341,28 @@ fn blur_with_border_dispatch_neon(
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false, &stop)?;
+    stop.check()?;
     if border2 > border1 {
-        convolve_horizontal_interior_neon(token, input, scaled, border1, border2, half, &mut temp);
+        convolve_horizontal_interior_neon(
+            token, input, scaled, border1, border2, half, &mut temp, &stop,
+        )?;
     }
+    stop.check()?;
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_neon(token, &temp, kernel, scaled, border_ratio, &mut output);
+    convolve_vertical_neon(
+        token,
+        &temp,
+        kernel,
+        scaled,
+        border_ratio,
+        &mut output,
+        &stop,
+    )?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1170,7 +1373,9 @@ fn blur_with_border_dispatch_wasm128(
     sigma: f32,
     border_ratio: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let half = kernel.len() / 2;
@@ -1182,17 +1387,28 @@ fn blur_with_border_dispatch_wasm128(
     let border2 = if width > half { width - half } else { 0 };
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false, &stop)?;
+    stop.check()?;
     if border2 > border1 {
         convolve_horizontal_interior_wasm128(
-            token, input, &scaled, border1, border2, half, &mut temp,
-        );
+            token, input, &scaled, border1, border2, half, &mut temp, &stop,
+        )?;
     }
+    stop.check()?;
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_wasm128(token, &temp, &kernel, &scaled, border_ratio, &mut output);
+    convolve_vertical_wasm128(
+        token,
+        &temp,
+        &kernel,
+        &scaled,
+        border_ratio,
+        &mut output,
+        &stop,
+    )?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 fn blur_with_border_dispatch_scalar(
@@ -1201,7 +1417,9 @@ fn blur_with_border_dispatch_scalar(
     sigma: f32,
     border_ratio: f32,
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut kernel_buf = [0.0f32; MAX_KERNEL_SIZE];
     let kernel = compute_kernel_stack(sigma, &mut kernel_buf);
     let mut scaled_buf = [0.0f32; MAX_KERNEL_SIZE];
@@ -1210,12 +1428,14 @@ fn blur_with_border_dispatch_scalar(
     let height = input.height();
 
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, true);
+    convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, true, &stop)?;
+    stop.check()?;
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
-    convolve_vertical_scalar(&temp, kernel, scaled, border_ratio, &mut output);
+    convolve_vertical_scalar(&temp, kernel, scaled, border_ratio, &mut output, &stop)?;
+    stop.check()?;
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 /// Applies blur in-place (modifies the input image).
@@ -1258,8 +1478,25 @@ fn mirror(mut x: i32, size: i32) -> usize {
 /// This matches C++ Separable5 which is used when kernel size == 5.
 /// SIMD-optimized for interior pixels.
 pub fn blur_mirrored_5x5(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) -> ImageF {
+    match blur_mirrored_5x5_stop(input, weights, pool, &enough::Unstoppable) {
+        Ok(o) => o,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`blur_mirrored_5x5`] with cooperative cancellation — checked between
+/// the H/V passes and inside their row loops.///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+pub fn blur_mirrored_5x5_stop(
+    input: &ImageF,
+    weights: &[f32; 3],
+    pool: &BufferPool,
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
     archmage::incant!(
-        blur_mirrored_5x5(input, weights, pool),
+        blur_mirrored_5x5(input, weights, pool, stop),
         [v4, v3, neon, wasm128]
     )
 }
@@ -1271,7 +1508,9 @@ fn blur_mirrored_5x5_v4(
     input: &ImageF,
     weights: &[f32; 3],
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::v4::f32x16;
 
     let width = input.width();
@@ -1295,6 +1534,9 @@ fn blur_mirrored_5x5_v4(
     let border = 2.min(width);
     let interior_end = if width > 4 { width - 2 } else { 0 };
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row = input.row(y);
         let out_row = temp.row_mut(y);
 
@@ -1353,6 +1595,9 @@ fn blur_mirrored_5x5_v4(
 
     // Top border rows
     for y in 0..v_border {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let iy = y as i32;
         let rm2 = temp.row(mirror(iy - 2, iheight));
         let rm1 = temp.row(mirror(iy - 1, iheight));
@@ -1379,6 +1624,9 @@ fn blur_mirrored_5x5_v4(
 
     // Interior rows (no mirror needed)
     for y in v_border..v_interior_end {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let rm2 = temp.row(y - 2);
         let rm1 = temp.row(y - 1);
         let r0 = temp.row(y);
@@ -1404,6 +1652,9 @@ fn blur_mirrored_5x5_v4(
 
     // Bottom border rows
     for y in v_interior_end..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let iy = y as i32;
         let rm2 = temp.row(mirror(iy - 2, iheight));
         let rm1 = temp.row(mirror(iy - 1, iheight));
@@ -1429,7 +1680,7 @@ fn blur_mirrored_5x5_v4(
     }
 
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -1439,7 +1690,9 @@ fn blur_mirrored_5x5_v3(
     input: &ImageF,
     weights: &[f32; 3],
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::f32x8;
 
     let width = input.width();
@@ -1462,6 +1715,9 @@ fn blur_mirrored_5x5_v3(
     let interior_end = if width > 4 { width - 2 } else { 0 };
 
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row = input.row(y);
         let out_row = temp.row_mut(y);
 
@@ -1519,6 +1775,9 @@ fn blur_mirrored_5x5_v3(
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
     for y in 0..v_border {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let iy = y as i32;
         let rm2 = temp.row(mirror(iy - 2, iheight));
         let rm1 = temp.row(mirror(iy - 1, iheight));
@@ -1544,6 +1803,9 @@ fn blur_mirrored_5x5_v3(
     }
 
     for y in v_border..v_interior_end {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let rm2 = temp.row(y - 2);
         let rm1 = temp.row(y - 1);
         let r0 = temp.row(y);
@@ -1568,6 +1830,9 @@ fn blur_mirrored_5x5_v3(
     }
 
     for y in v_interior_end..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let iy = y as i32;
         let rm2 = temp.row(mirror(iy - 2, iheight));
         let rm1 = temp.row(mirror(iy - 1, iheight));
@@ -1593,7 +1858,7 @@ fn blur_mirrored_5x5_v3(
     }
 
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -1603,7 +1868,9 @@ fn blur_mirrored_5x5_neon(
     input: &ImageF,
     weights: &[f32; 3],
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::f32x8;
 
     let width = input.width();
@@ -1626,6 +1893,9 @@ fn blur_mirrored_5x5_neon(
     let interior_end = if width > 4 { width - 2 } else { 0 };
 
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row = input.row(y);
         let out_row = temp.row_mut(y);
 
@@ -1683,6 +1953,9 @@ fn blur_mirrored_5x5_neon(
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
     for y in 0..v_border {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let iy = y as i32;
         let rm2 = temp.row(mirror(iy - 2, iheight));
         let rm1 = temp.row(mirror(iy - 1, iheight));
@@ -1708,6 +1981,9 @@ fn blur_mirrored_5x5_neon(
     }
 
     for y in v_border..v_interior_end {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let rm2 = temp.row(y - 2);
         let rm1 = temp.row(y - 1);
         let r0 = temp.row(y);
@@ -1732,6 +2008,9 @@ fn blur_mirrored_5x5_neon(
     }
 
     for y in v_interior_end..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let iy = y as i32;
         let rm2 = temp.row(mirror(iy - 2, iheight));
         let rm1 = temp.row(mirror(iy - 1, iheight));
@@ -1757,7 +2036,7 @@ fn blur_mirrored_5x5_neon(
     }
 
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1767,7 +2046,9 @@ fn blur_mirrored_5x5_wasm128(
     input: &ImageF,
     weights: &[f32; 3],
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     use magetypes::simd::f32x8;
 
     let width = input.width();
@@ -1790,6 +2071,9 @@ fn blur_mirrored_5x5_wasm128(
     let interior_end = if width > 4 { width - 2 } else { 0 };
 
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row = input.row(y);
         let out_row = temp.row_mut(y);
 
@@ -1842,6 +2126,9 @@ fn blur_mirrored_5x5_wasm128(
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
     for y in 0..v_border {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let iy = y as i32;
         let rm2 = temp.row(mirror(iy - 2, iheight));
         let rm1 = temp.row(mirror(iy - 1, iheight));
@@ -1867,6 +2154,9 @@ fn blur_mirrored_5x5_wasm128(
     }
 
     for y in v_border..v_interior_end {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let rm2 = temp.row(y - 2);
         let rm1 = temp.row(y - 1);
         let r0 = temp.row(y);
@@ -1891,6 +2181,9 @@ fn blur_mirrored_5x5_wasm128(
     }
 
     for y in v_interior_end..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let iy = y as i32;
         let rm2 = temp.row(mirror(iy - 2, iheight));
         let rm1 = temp.row(mirror(iy - 1, iheight));
@@ -1916,7 +2209,7 @@ fn blur_mirrored_5x5_wasm128(
     }
 
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 fn blur_mirrored_5x5_scalar(
@@ -1924,7 +2217,9 @@ fn blur_mirrored_5x5_scalar(
     input: &ImageF,
     weights: &[f32; 3],
     pool: &BufferPool,
-) -> ImageF {
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = input.width();
     let height = input.height();
 
@@ -1938,6 +2233,9 @@ fn blur_mirrored_5x5_scalar(
     let mut temp = ImageF::from_pool_dirty(height, width, pool);
 
     for y in 0..height {
+        if y.is_multiple_of(BLUR_STOP_ROWS) {
+            stop.check()?;
+        }
         let row = input.row(y);
         for x in 0..width {
             let ix = x as i32;
@@ -1955,6 +2253,9 @@ fn blur_mirrored_5x5_scalar(
     for x in 0..width {
         let col = temp.row(x);
         for y in 0..height {
+            if y.is_multiple_of(BLUR_STOP_ROWS) {
+                stop.check()?;
+            }
             let iy = y as i32;
             let v_m2 = col[mirror(iy - 2, iheight)];
             let v_m1 = col[mirror(iy - 1, iheight)];
@@ -1967,7 +2268,7 @@ fn blur_mirrored_5x5_scalar(
     }
 
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 /// Fast blur for small sigma values (optimized 5x5 kernel).

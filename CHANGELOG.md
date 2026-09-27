@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Cooperative-cancellation polling throughout the comparison pipeline.
+  `*_stop` variants of the blur, Malta, opsin, mask, and
+  frequency-separation stages are threaded through `compute_diffmap_*` and
+  the `compare_*_with_stop` paths; `stop` is checked between pipeline
+  stages and at 64-row granularity inside row loops, never inside
+  per-pixel loops, and `Option<&dyn Stop>` collapsing keeps `Unstoppable`
+  free of poll branches. Measured on a 2048×2048 sRGB pair: worst
+  inter-poll gap 804 ms → 23 ms with an unchanged score. The new entry
+  points (`gaussian_blur_stop`, `blur_mirrored_5x5_stop`,
+  `blur_with_border_stop`, `malta_diff_map_stop`, `opsin_dynamics_image_stop`,
+  `linear_rgb_to_xyb_butteraugli_stop`, `linear_planar_to_xyb_butteraugli_stop`,
+  `compute_mask_from_hf_uhf_stop`, `precompute_reference_mask_stop`,
+  `apply_mask_correction_precomputed_stop`, `gaussian_blur_iir_stop`) are
+  visible under `internals` / `iir-blur` only; the public surface is
+  unchanged.
+
 ### Changed
 
 - Move unpublished Margarine research, measurements, and CI to zenmetrics (`ad386c42` in that repository); Butteraugli arithmetic is unchanged.

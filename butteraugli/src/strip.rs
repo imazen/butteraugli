@@ -562,6 +562,7 @@ pub(crate) fn run_strip_walker_linear(
                 width,
                 strip_h_full,
                 params,
+                stop,
             )
         } else {
             compute_diffmap_multiresolution_linear(
@@ -570,8 +571,10 @@ pub(crate) fn run_strip_walker_linear(
                 width,
                 strip_h_full,
                 params,
+                stop,
             )
-        };
+        }
+        .map_err(ButteraugliError::Cancelled)?;
 
         let interior_y0_in_strip = interior_start - strip_y0;
         let interior_y1_in_strip = interior_end - strip_y0;

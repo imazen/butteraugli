@@ -8,8 +8,9 @@
 //! 2. Uses Gamma function (FastLog2f based), not cube root
 //! 3. Includes dynamic sensitivity based on blurred image
 
-use crate::blur::{blur_mirrored_5x5, compute_separable5_weights};
+use crate::blur::{blur_mirrored_5x5_stop, compute_separable5_weights};
 use crate::image::{BufferPool, Image3F};
+use enough::Stop;
 use imgref::ImgRef;
 use rgb::{RGB, RGB8};
 
@@ -157,6 +158,27 @@ pub fn opsin_dynamics_image(
     intensity_target: f32,
     pool: &BufferPool,
 ) -> Image3F {
+    match opsin_dynamics_image_stop(rgb, intensity_target, pool, &enough::Unstoppable) {
+        Ok(xyb) => xyb,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`opsin_dynamics_image`] with cooperative cancellation — `stop` is
+/// checked between the separable blurs and between row blocks of the
+/// per-pixel transform. Never checked inside the pixel loop.///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+#[archmage::autoversion]
+pub fn opsin_dynamics_image_stop(
+    _token: archmage::SimdToken,
+    rgb: &Image3F,
+    intensity_target: f32,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<Image3F, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = rgb.plane(0).width();
     let height = rgb.plane(0).height();
 
@@ -164,9 +186,9 @@ pub fn opsin_dynamics_image(
     // C++ uses Separable5 (mirrored boundaries) for kernel size 5
     let sigma = 1.2;
     let weights = compute_separable5_weights(sigma);
-    let blurred_r = blur_mirrored_5x5(rgb.plane(0), &weights, pool);
-    let blurred_g = blur_mirrored_5x5(rgb.plane(1), &weights, pool);
-    let blurred_b = blur_mirrored_5x5(rgb.plane(2), &weights, pool);
+    let blurred_r = blur_mirrored_5x5_stop(rgb.plane(0), &weights, pool, &stop)?;
+    let blurred_g = blur_mirrored_5x5_stop(rgb.plane(1), &weights, pool, &stop)?;
+    let blurred_b = blur_mirrored_5x5_stop(rgb.plane(2), &weights, pool, &stop)?;
 
     // Create output XYB image (fully overwritten in the loop below)
     let mut xyb = Image3F::from_pool_dirty(width, height, pool);
@@ -190,6 +212,9 @@ pub fn opsin_dynamics_image(
     let (plane_x, plane_y, plane_b) = xyb.planes_mut();
 
     for y in 0..height {
+        if y.is_multiple_of(64) {
+            stop.check()?;
+        }
         // Get row slices for cache-friendly access
         let row_r = rgb.plane(0).row(y);
         let row_g = rgb.plane(1).row(y);
@@ -247,7 +272,7 @@ pub fn opsin_dynamics_image(
     blurred_r.recycle(pool);
     blurred_g.recycle(pool);
     blurred_b.recycle(pool);
-    xyb
+    Ok(xyb)
 }
 
 /// Converts sRGB u8 image to butteraugli XYB.
@@ -350,6 +375,34 @@ pub fn linear_rgb_to_xyb_butteraugli(
     intensity_target: f32,
     pool: &BufferPool,
 ) -> Image3F {
+    match linear_rgb_to_xyb_butteraugli_stop(
+        rgb,
+        width,
+        height,
+        intensity_target,
+        pool,
+        &enough::Unstoppable,
+    ) {
+        Ok(xyb) => xyb,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`linear_rgb_to_xyb_butteraugli`] with cooperative cancellation —
+/// `stop` is checked between row blocks of the deinterleave and inside
+/// [`opsin_dynamics_image_stop`].///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+pub fn linear_rgb_to_xyb_butteraugli_stop(
+    rgb: &[f32],
+    width: usize,
+    height: usize,
+    intensity_target: f32,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<Image3F, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     assert_eq!(rgb.len(), width * height * 3);
 
     // Convert interleaved linear RGB to planar Image3F
@@ -357,6 +410,9 @@ pub fn linear_rgb_to_xyb_butteraugli(
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for y in 0..height {
+        if y.is_multiple_of(64) {
+            stop.check()?;
+        }
         let row_offset = y * width * 3;
         let row_r = out_r.row_mut(y);
         let row_g = out_g.row_mut(y);
@@ -370,9 +426,9 @@ pub fn linear_rgb_to_xyb_butteraugli(
     }
 
     // Apply OpsinDynamicsImage
-    let xyb = opsin_dynamics_image(&linear, intensity_target, pool);
+    let xyb = opsin_dynamics_image_stop(&linear, intensity_target, pool, &stop)?;
     linear.recycle(pool);
-    xyb
+    Ok(xyb)
 }
 
 /// Converts planar linear RGB f32 data to butteraugli XYB.
@@ -401,6 +457,41 @@ pub fn linear_planar_to_xyb_butteraugli(
     intensity_target: f32,
     pool: &BufferPool,
 ) -> Image3F {
+    match linear_planar_to_xyb_butteraugli_stop(
+        r,
+        g,
+        b,
+        width,
+        height,
+        stride,
+        intensity_target,
+        pool,
+        &enough::Unstoppable,
+    ) {
+        Ok(xyb) => xyb,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`linear_planar_to_xyb_butteraugli`] with cooperative cancellation —
+/// `stop` is checked between row blocks of the planar copy and inside
+/// [`opsin_dynamics_image_stop`].///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+#[allow(clippy::too_many_arguments)]
+pub fn linear_planar_to_xyb_butteraugli_stop(
+    r: &[f32],
+    g: &[f32],
+    b: &[f32],
+    width: usize,
+    height: usize,
+    stride: usize,
+    intensity_target: f32,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<Image3F, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     assert!(stride >= width);
     assert!(r.len() >= stride * height);
     assert!(g.len() >= stride * height);
@@ -411,6 +502,9 @@ pub fn linear_planar_to_xyb_butteraugli(
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for y in 0..height {
+        if y.is_multiple_of(64) {
+            stop.check()?;
+        }
         let src_offset = y * stride;
         let row_r = out_r.row_mut(y);
         let row_g = out_g.row_mut(y);
@@ -421,9 +515,9 @@ pub fn linear_planar_to_xyb_butteraugli(
     }
 
     // Apply OpsinDynamicsImage
-    let xyb = opsin_dynamics_image(&linear, intensity_target, pool);
+    let xyb = opsin_dynamics_image_stop(&linear, intensity_target, pool, &stop)?;
     linear.recycle(pool);
-    xyb
+    Ok(xyb)
 }
 
 /// Converts an sRGB image from ImgRef<RGB8> to butteraugli XYB.
@@ -442,7 +536,9 @@ pub(crate) fn imgref_srgb_to_xyb(
     img: ImgRef<RGB8>,
     intensity_target: f32,
     pool: &BufferPool,
-) -> Image3F {
+    stop: &dyn Stop,
+) -> Result<Image3F, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = img.width();
     let height = img.height();
     let lut = &*SRGB_TO_LINEAR_LUT;
@@ -452,6 +548,9 @@ pub(crate) fn imgref_srgb_to_xyb(
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for (y, row) in img.rows().enumerate() {
+        if y.is_multiple_of(64) {
+            stop.check()?;
+        }
         let row_r = out_r.row_mut(y);
         let row_g = out_g.row_mut(y);
         let row_b = out_b.row_mut(y);
@@ -463,9 +562,9 @@ pub(crate) fn imgref_srgb_to_xyb(
     }
 
     // Apply OpsinDynamicsImage
-    let xyb = opsin_dynamics_image(&linear, intensity_target, pool);
+    let xyb = opsin_dynamics_image_stop(&linear, intensity_target, pool, &stop)?;
     linear.recycle(pool);
-    xyb
+    Ok(xyb)
 }
 
 /// Converts a linear RGB image from ImgRef<RGB<f32>> to butteraugli XYB.

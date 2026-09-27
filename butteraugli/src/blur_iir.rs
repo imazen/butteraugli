@@ -22,6 +22,7 @@
 use crate::image::{BufferPool, ImageF};
 use archmage::{autoversion, incant, magetypes};
 use core::f64::consts::PI;
+use enough::Stop;
 use magetypes::simd::generic::f32x8 as GenericF32x8;
 #[cfg(all(target_arch = "x86_64", feature = "avx512"))]
 use magetypes::simd::v4::f32x16 as MtF32x16;
@@ -507,8 +508,26 @@ fn vertical_pass_scalar_columns(
 
 /// Apply IIR Gaussian blur to an image. Mirrors `gaussian_blur` signature.
 pub fn gaussian_blur_iir(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
+    match gaussian_blur_iir_stop(input, sigma, pool, &enough::Unstoppable) {
+        Ok(o) => o,
+        Err(_) => unreachable!("Unstoppable never stops"),
+    }
+}
+
+/// [`gaussian_blur_iir`] with cooperative cancellation — `stop` is
+/// checked between the horizontal and vertical passes.///
+/// # Errors
+///
+/// Returns [`enough::StopReason`] if `stop` signals cancellation.
+pub fn gaussian_blur_iir_stop(
+    input: &ImageF,
+    sigma: f32,
+    pool: &BufferPool,
+    stop: &dyn enough::Stop,
+) -> Result<ImageF, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     if sigma <= 0.0 {
-        return input.clone();
+        return Ok(input.clone());
     }
     let coeffs = IirCoeffs::for_sigma(sigma);
     let width = input.width();
@@ -534,6 +553,7 @@ pub fn gaussian_blur_iir(input: &ImageF, sigma: f32, pool: &BufferPool) -> Image
         stride,
         &coeffs,
     );
+    stop.check()?;
 
     let mut output = ImageF::from_pool_dirty(width, height, pool);
     debug_assert_eq!(output.stride(), stride);
@@ -546,7 +566,7 @@ pub fn gaussian_blur_iir(input: &ImageF, sigma: f32, pool: &BufferPool) -> Image
         &coeffs,
     );
     temp.recycle(pool);
-    output
+    Ok(output)
 }
 
 #[cfg(test)]

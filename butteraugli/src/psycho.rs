@@ -9,7 +9,7 @@
 //! This decomposition allows butteraugli to weight different spatial
 //! frequencies according to human visual sensitivity.
 
-use crate::blur::gaussian_blur;
+use crate::blur::gaussian_blur_stop;
 use crate::consts::{
     ADD_HF_RANGE, ADD_MF_RANGE, BMUL_LF_TO_VALS, MAXCLAMP_HF, MAXCLAMP_UHF, MUL_Y_HF, MUL_Y_UHF,
     REMOVE_HF_RANGE, REMOVE_MF_RANGE, REMOVE_UHF_RANGE, SIGMA_HF, SIGMA_LF, SIGMA_UHF, SUPPRESS_S,
@@ -17,6 +17,7 @@ use crate::consts::{
 };
 use crate::diff::maybe_join;
 use crate::image::{BufferPool, Image3F, ImageF};
+use enough::Stop;
 
 /// Multi-scale psychovisual decomposition of an image.
 ///
@@ -363,7 +364,14 @@ fn process_uhf_hf_y(
 const MIN_PIXELS_FOR_BLUR_PARALLEL: usize = 768 * 768;
 
 /// Separates LF (low frequency) and MF (medium frequency) components.
-fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &BufferPool) {
+fn separate_lf_and_mf(
+    xyb: &Image3F,
+    lf: &mut Image3F,
+    mf: &mut Image3F,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let sigma = SIGMA_LF as f32;
     let width = xyb.width();
     let height = xyb.height();
@@ -374,15 +382,19 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
         let (mf0, mf1, mf2) = mf.planes_mut();
 
         // Swap blurred result directly into LF (no copy), compute MF = orig - LF
-        let blur_plane = |xyb_plane: &ImageF, lf_out: &mut ImageF, mf_out: &mut ImageF| {
-            let mut blurred = gaussian_blur(xyb_plane, sigma, pool);
+        let blur_plane = |xyb_plane: &ImageF,
+                          lf_out: &mut ImageF,
+                          mf_out: &mut ImageF|
+         -> Result<(), enough::StopReason> {
+            let mut blurred = gaussian_blur_stop(xyb_plane, sigma, pool, &stop)?;
             // Swap blurred into lf_out — both have same dimensions, avoids copy
             core::mem::swap(lf_out, &mut blurred);
             blurred.recycle(pool); // recycle the old dirty lf_out buffer
             subtract_images(xyb_plane, lf_out, mf_out);
+            Ok(())
         };
 
-        maybe_join(
+        let (r0, (r1, r2)) = maybe_join(
             || blur_plane(xyb.plane(0), lf0, mf0),
             || {
                 maybe_join(
@@ -391,9 +403,12 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
                 )
             },
         );
+        r0?;
+        r1?;
+        r2?;
     } else {
         for i in 0..3 {
-            let mut blurred = gaussian_blur(xyb.plane(i), sigma, pool);
+            let mut blurred = gaussian_blur_stop(xyb.plane(i), sigma, pool, &stop)?;
             // Swap blurred into LF plane — avoids full-image copy
             let lf_plane = lf.plane_mut(i);
             core::mem::swap(lf_plane, &mut blurred);
@@ -405,6 +420,7 @@ fn separate_lf_and_mf(xyb: &Image3F, lf: &mut Image3F, mf: &mut Image3F, pool: &
 
     // Convert LF to vals space
     xyb_low_freq_to_vals(lf);
+    Ok(())
 }
 
 /// Processes one MF→HF channel: blur, subtract, apply range function.
@@ -418,12 +434,15 @@ fn separate_mf_hf_channel(
     range: f32,
     use_amplify: bool,
     pool: &BufferPool,
-) {
+    stop: &dyn Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     // Blur the original MF plane
-    let blurred = gaussian_blur(mf_plane, sigma, pool);
+    let blurred = gaussian_blur_stop(mf_plane, sigma, pool, &stop)?;
 
     // HF = orig - blurred (autoversioned SIMD subtraction)
     subtract_images(mf_plane, &blurred, hf_plane);
+    stop.check()?;
 
     // MF = range_adjusted(blurred)
     if use_amplify {
@@ -433,10 +452,17 @@ fn separate_mf_hf_channel(
     }
 
     blurred.recycle(pool);
+    Ok(())
 }
 
 /// Separates MF (medium frequency) and HF (high frequency) components.
-fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool) {
+fn separate_mf_and_hf(
+    mf: &mut Image3F,
+    hf: &mut [ImageF; 2],
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let width = mf.width();
     let height = mf.height();
     let sigma = SIGMA_HF as f32;
@@ -448,19 +474,33 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
         let hf_x = &mut hf_x_slice[0];
         let hf_y = &mut hf_y_slice[0];
 
-        maybe_join(
-            || separate_mf_hf_channel(mf0, hf_x, sigma, REMOVE_MF_RANGE as f32, false, pool),
+        let (r0, (r1, r2)) = maybe_join(
+            || separate_mf_hf_channel(mf0, hf_x, sigma, REMOVE_MF_RANGE as f32, false, pool, &stop),
             || {
                 maybe_join(
-                    || separate_mf_hf_channel(mf1, hf_y, sigma, ADD_MF_RANGE as f32, true, pool),
                     || {
-                        let mut blurred_b = gaussian_blur(mf2, sigma, pool);
+                        separate_mf_hf_channel(
+                            mf1,
+                            hf_y,
+                            sigma,
+                            ADD_MF_RANGE as f32,
+                            true,
+                            pool,
+                            &stop,
+                        )
+                    },
+                    || -> Result<(), enough::StopReason> {
+                        let mut blurred_b = gaussian_blur_stop(mf2, sigma, pool, &stop)?;
                         core::mem::swap(mf2, &mut blurred_b);
                         blurred_b.recycle(pool);
+                        Ok(())
                     },
                 )
             },
         );
+        r0?;
+        r1?;
+        r2?;
 
         suppress_x_by_y(hf_y, hf_x);
     } else {
@@ -479,18 +519,26 @@ fn separate_mf_and_hf(mf: &mut Image3F, hf: &mut [ImageF; 2], pool: &BufferPool)
                 range as f32,
                 use_amplify,
                 pool,
-            );
+                &stop,
+            )?;
         }
-        let mut blurred_b = gaussian_blur(mf.plane(2), sigma, pool);
+        let mut blurred_b = gaussian_blur_stop(mf.plane(2), sigma, pool, &stop)?;
         core::mem::swap(mf.plane_mut(2), &mut blurred_b);
         blurred_b.recycle(pool);
         let (hf_x, hf_y) = hf.split_at_mut(1);
         suppress_x_by_y(&hf_y[0], &mut hf_x[0]);
     }
+    Ok(())
 }
 
 /// Separates HF (high frequency) and UHF (ultra high frequency) components.
-pub(crate) fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], pool: &BufferPool) {
+pub(crate) fn separate_hf_and_uhf(
+    hf: &mut [ImageF; 2],
+    uhf: &mut [ImageF; 2],
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<(), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let sigma = SIGMA_UHF as f32;
 
     if hf[0].width() * hf[0].height() >= MIN_PIXELS_FOR_BLUR_PARALLEL {
@@ -498,26 +546,30 @@ pub(crate) fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], p
         let (hf_x_slice, hf_y_slice) = hf.split_at_mut(1);
         let (uhf_x_slice, uhf_y_slice) = uhf.split_at_mut(1);
 
-        maybe_join(
-            || {
+        let (rx, ry) = maybe_join(
+            || -> Result<(), enough::StopReason> {
                 let hf_x = &mut hf_x_slice[0];
                 let uhf_x = &mut uhf_x_slice[0];
-                let blurred = gaussian_blur(hf_x, sigma, pool);
+                let blurred = gaussian_blur_stop(hf_x, sigma, pool, &stop)?;
                 process_uhf_hf_x(hf_x, &blurred, uhf_x);
                 blurred.recycle(pool);
+                Ok(())
             },
-            || {
+            || -> Result<(), enough::StopReason> {
                 let hf_y = &mut hf_y_slice[0];
                 let uhf_y = &mut uhf_y_slice[0];
-                let blurred = gaussian_blur(hf_y, sigma, pool);
+                let blurred = gaussian_blur_stop(hf_y, sigma, pool, &stop)?;
                 process_uhf_hf_y(hf_y, &blurred, uhf_y);
                 blurred.recycle(pool);
+                Ok(())
             },
         );
+        rx?;
+        ry?;
     } else {
         // Sequential path for small images
         for i in 0..2 {
-            let blurred = gaussian_blur(&hf[i], sigma, pool);
+            let blurred = gaussian_blur_stop(&hf[i], sigma, pool, &stop)?;
             if i == 0 {
                 process_uhf_hf_x(&mut hf[i], &blurred, &mut uhf[i]);
             } else {
@@ -526,6 +578,7 @@ pub(crate) fn separate_hf_and_uhf(hf: &mut [ImageF; 2], uhf: &mut [ImageF; 2], p
             blurred.recycle(pool);
         }
     }
+    Ok(())
 }
 
 /// Performs the full frequency decomposition on an XYB image.
@@ -541,13 +594,16 @@ pub fn separate_frequencies(xyb: &Image3F, pool: &BufferPool) -> PsychoImage {
     let mut ps = PsychoImage::from_pool(width, height, pool);
 
     // Separate into LF and MF
-    separate_lf_and_mf(xyb, &mut ps.lf, &mut ps.mf, pool);
+    separate_lf_and_mf(xyb, &mut ps.lf, &mut ps.mf, pool, &enough::Unstoppable)
+        .unwrap_or_else(|_| unreachable!());
 
     // Separate MF into MF and HF
-    separate_mf_and_hf(&mut ps.mf, &mut ps.hf, pool);
+    separate_mf_and_hf(&mut ps.mf, &mut ps.hf, pool, &enough::Unstoppable)
+        .unwrap_or_else(|_| unreachable!());
 
     // Separate HF into HF and UHF
-    separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf, pool);
+    separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf, pool, &enough::Unstoppable)
+        .unwrap_or_else(|_| unreachable!());
 
     ps
 }
@@ -557,13 +613,18 @@ pub fn separate_frequencies(xyb: &Image3F, pool: &BufferPool) -> PsychoImage {
 /// Only LF/MF extraction reads XYB. Return those three buffers to the pool
 /// immediately afterward so HF/UHF blurs can reuse them instead of keeping
 /// another three full-size planes live until the entire decomposition ends.
-pub(crate) fn separate_frequencies_owned(xyb: Image3F, pool: &BufferPool) -> PsychoImage {
+pub(crate) fn separate_frequencies_owned(
+    xyb: Image3F,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<PsychoImage, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
     let mut ps = PsychoImage::from_pool(xyb.width(), xyb.height(), pool);
-    separate_lf_and_mf(&xyb, &mut ps.lf, &mut ps.mf, pool);
+    separate_lf_and_mf(&xyb, &mut ps.lf, &mut ps.mf, pool, &stop)?;
     xyb.recycle(pool);
-    separate_mf_and_hf(&mut ps.mf, &mut ps.hf, pool);
-    separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf, pool);
-    ps
+    separate_mf_and_hf(&mut ps.mf, &mut ps.hf, pool, &stop)?;
+    separate_hf_and_uhf(&mut ps.hf, &mut ps.uhf, pool, &stop)?;
+    Ok(ps)
 }
 
 #[cfg(test)]
@@ -637,7 +698,8 @@ mod tests {
                 }
             }
             let borrowed = separate_frequencies(&xyb, &BufferPool::new());
-            let owned = separate_frequencies_owned(xyb, &BufferPool::new());
+            let owned = separate_frequencies_owned(xyb, &BufferPool::new(), &enough::Unstoppable)
+                .expect("Unstoppable never stops");
             let borrowed_planes = [
                 &borrowed.uhf[0],
                 &borrowed.uhf[1],
