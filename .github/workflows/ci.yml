@@ -36,25 +36,6 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Check Margarine research formatting and lints
-        run: |
-          python3 -m unittest discover -s experiments/margarine -p 'test_*.py'
-          cargo fmt --manifest-path experiments/margarine/Cargo.toml -p margarine-lab --check
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features planar --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features row-psycho --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features row-tiles,phase-rows --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features peak-stratified --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features native-gaussian --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features native-mask --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features full-malta --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features row-malta --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features wide-malta --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features simd-malta --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --no-default-features --features rayon,avx512,simd-malta,row-malta --bin margarine -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features simd-opsin --all-targets -- -D warnings
-          cargo clippy --locked --manifest-path experiments/margarine/Cargo.toml --features full-malta,coarse-gaussian --all-targets -- -D warnings
-
       # The corpus-tests feature gates conformance tests that need the local
       # jpegli corpus (JPEGLI_TESTDATA). CI can't run them (no corpus), but
       # compiling them here keeps the gated code from rotting. Not running
@@ -94,27 +75,6 @@ jobs:
 
       - name: Run unit tests
         run: cargo test -p butteraugli --lib
-
-      - name: Run Margarine research tests
-        run: |
-          cargo test --locked --manifest-path experiments/margarine/Cargo.toml
-          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features planar
-          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features row-psycho
-          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features row-tiles,phase-rows
-          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features peak-stratified
-          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features native-gaussian
-          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features native-mask
-          cargo test --locked --manifest-path experiments/margarine/Cargo.toml --features full-malta
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features full-malta
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features row-malta
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features wide-malta
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,wide-malta
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,row-malta
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --no-default-features --features rayon,avx512,simd-malta,row-malta --bin margarine
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-opsin,row-malta
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features full-malta,coarse-gaussian
-          cargo test --locked --release --manifest-path experiments/margarine/Cargo.toml --features simd-malta,coarse-gaussian
 
       - name: Run conformance tests
         run: cargo test -p butteraugli --test conformance
@@ -226,14 +186,6 @@ jobs:
       # suite here so that arithmetic is exercised at 32-bit pointer width.
       - name: linear-planes parity (cross/QEMU)
         run: cross test -p butteraugli --features linear-planes --test linear_planes_parity --target ${{ matrix.target }}
-
-      - name: Margarine research tests (cross/QEMU)
-        run: |
-          cross test --locked --manifest-path experiments/margarine/Cargo.toml --target ${{ matrix.target }}
-          cross test --locked --manifest-path experiments/margarine/Cargo.toml --features planar --target ${{ matrix.target }}
-          cross test --locked --manifest-path experiments/margarine/Cargo.toml --features row-psycho --target ${{ matrix.target }}
-          cross test --locked --manifest-path experiments/margarine/Cargo.toml --features row-tiles,phase-rows --target ${{ matrix.target }}
-          cross test --locked --release --manifest-path experiments/margarine/Cargo.toml --no-default-features --features rayon,avx512,simd-malta,row-malta --bin margarine --target ${{ matrix.target }}
 
   # ==========================================================================
   # WASM compilation check (archmage supports wasm32-simd128)

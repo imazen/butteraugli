@@ -1,9 +1,0 @@
-{
-  "build_commit": "4363b038e91c0a8f19fe6b1e8ca8706090a70a98",
-  "pairs": 300,
-  "changed_scores_or_map_hashes": 0,
-  "ledgers": {
-    "/Users/lilith/work/codec-artifacts/margarine/expand-lanes-aic4-2026-09-26/cells.jsonl": "8e9f1aef8f4575b060d91d97ea43a6e2b52969c5fcbf61dec8c9910d3e76a75f",
-    "/Users/lilith/work/codec-artifacts/margarine/phase-tiles-aic4-2026-09-26/cells.jsonl": "8e9f1aef8f4575b060d91d97ea43a6e2b52969c5fcbf61dec8c9910d3e76a75f"
-  }
-}

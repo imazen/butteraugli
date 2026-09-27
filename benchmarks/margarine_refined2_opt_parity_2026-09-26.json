@@ -1,9 +1,0 @@
-{
-  "build_commit": "014455053956e45d0957bd123c982ef7d5afaf83",
-  "pairs": 300,
-  "changed_candidate_maps_or_norms": 0,
-  "ledger_sha256": {
-    "/Users/lilith/work/codec-artifacts/margarine/refined2-aic4-2026-09-26/cells.jsonl": "dfbb6b3943e84e0c52083f9ff69db62548c45be9e03dc23815e7824dbc29674b",
-    "/Users/lilith/work/codec-artifacts/margarine/refined2-opt-aic4-2026-09-26/cells.jsonl": "dfbb6b3943e84e0c52083f9ff69db62548c45be9e03dc23815e7824dbc29674b"
-  }
-}

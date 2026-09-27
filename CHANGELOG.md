@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Move unpublished Margarine research, measurements, and CI to zenmetrics (`ad386c42` in that repository); Butteraugli arithmetic is unchanged.
+
 ### QUEUED BREAKING CHANGES
 
 <!-- Breaking changes that will ship together in the next major (0.10) release.
@@ -24,14 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `linear-planes` (see below). Plan: keep `internals` through the 0.9.x line,
   move `butteraugli-bench` onto a crate-private path or a `__bench` feature,
   then drop it. See `docs/MIGRATION_0.9.4.md` §1.1 and §6.
-
-### Added
-
-- Experimental `margarine` command with streamed scoring, all pooling norms, and optional native diffmaps (`0dceefe0`).
-
-### Changed
-
-- Cache exact 16-bit sRGB conversion for larger experimental Margarine inputs; all CID22 scores and maps retain bit equality (`b6c1e6b1`).
 
 ## [0.9.4] - unreleased
 

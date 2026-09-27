@@ -4,34 +4,8 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 
 ## Known Bugs
 
-The experimental full-Malta row-window implementation in `a85ba912` produced
-incorrect LF responses in its separate final-block path on optimized x86.
-The expanded exact comparison reproduces it at 3×5; the LIVE replay found
-69 of 344 maps changed near the right edge. The uniform overlapping-block
-loop in `2d9d736a` passes the expanded release test and reproduces all 344
-LIVE maps and all five norms bit for bit against the prior native kernel. Production Butteraugli is the unchanged
-reference for this comparison.
-
 For the production library, parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
-
-Margarine lab dependency observation (2026-09-26): pinned zensim `9c0635f1`
-`compute_streaming_strips(..., 256, 40)` panics on a 769-row image because the
-last reference strip is padded from 41 to 64 rows while distorted storage stays
-41 rows (`streaming.rs:3385`, scale-0 height assertion). The lab uses a 64-row
-minimum halo and tests that bottom-tail case. Production Butteraugli is not
-involved; no sibling source was changed.
-
-Margarine x86 ablation check (2026-09-26): the edge-only/full-feature tail
-mismatch is fixed in zensim `7d6d7451`; the lab pins `ad18b444`, which also fixes
-helper feature gating. The unchanged lab tests and clippy pass on dev/Zen 5.
-The broader dependency sync changes 11,869 of 26,544 feature values across
-94/158 real pairs from 50 sources, compared with the old pin plus the isolated
-tail repair (maximum absolute change 0.04966183564163751). Existing frozen
-teacher scores/maps remain valid; training features must be refreshed before
-using the updated runtime. This is not a quality or performance result.
-[Diagnostic provenance](benchmarks/margarine_x86_edge_tail_2026-09-26.json)
-records both binaries and the comparison artifacts.
 
 ## Planar pre-allocation accounting (2026-09-08)
 

@@ -1,9 +1,0 @@
-{
-  "build_commit": "7672863853f01ddfd842e98c651cb8aadb2e005f",
-  "ledger": "/Users/lilith/work/codec-artifacts/margarine/stratified-cid22-2026-09-26/cells.jsonl",
-  "ledger_sha256": "0b25d09a6825231ce380673875627575d7a2943d842bd8b523d63dbdc835e1b0",
-  "candidate": "stratified",
-  "budget_policy": "all distinct observed bpp values per source, no interpolation",
-  "tie_policy": "minimum score, then minimum bpp, then lexicographic pair ID",
-  "acceptance_gate": "unavailable: materiality definition not agreed; thresholds are diagnostics"
-}

@@ -1,7 +1,0 @@
-{
-  "artifact_root": "/Users/lilith/work/codec-artifacts/margarine/vector-expand-row-aic4-intervals-2026-09-26",
-  "manifest_sha256": "a09bbeb37a0d44533ed2ba41194ad14f744f2f9480a550f487d8e0d9c48f12b3",
-  "summary_sha256": "65ee1c32243c84a73a543ae147a6eea386824b19884367a3cb3729768a9b98a7",
-  "build_commit": "6bb371fb079aea3a05436befb091af8cdb82eeaf",
-  "scope": "Within-source pairwise uncertainty diagnosis; not matched-byte encoder choices"
-}

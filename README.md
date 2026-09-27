@@ -677,3 +677,9 @@ full text.
 [imageflow-dotnet]: https://github.com/imazen/imageflow-dotnet
 [imageflow-node]: https://github.com/imazen/imageflow-node
 [imageflow-go]: https://github.com/imazen/imageflow-go
+
+## Margarine research
+
+The unpublished Margarine approximation and its evaluation records moved to
+[zenmetrics](https://github.com/imazen/zenmetrics/tree/master/crates/margarine).
+Butteraugli remains the independent reference metric.

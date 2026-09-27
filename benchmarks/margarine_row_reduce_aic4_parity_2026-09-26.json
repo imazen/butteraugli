@@ -1,9 +1,0 @@
-{
-  "build_commit": "288b3fd7b38742472f238be8f2d94e72b5b7526c",
-  "pairs": 300,
-  "changed_scores_or_map_hashes": 0,
-  "ledgers": {
-    "/Users/lilith/work/codec-artifacts/margarine/row-reduce-aic4-2026-09-26/cells.jsonl": "5a2dbe51e9e5ffebc16cc2517710c92f753af0177cf6c94c718c220b6a7fc105",
-    "/Users/lilith/work/codec-artifacts/margarine/row-psycho-aic4-2026-09-26/cells.jsonl": "5a2dbe51e9e5ffebc16cc2517710c92f753af0177cf6c94c718c220b6a7fc105"
-  }
-}
