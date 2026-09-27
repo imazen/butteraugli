@@ -515,11 +515,12 @@ pub fn gaussian_blur_iir(input: &ImageF, sigma: f32, pool: &BufferPool) -> Image
 }
 
 /// [`gaussian_blur_iir`] with cooperative cancellation — `stop` is
-/// checked between the horizontal and vertical passes.///
+/// checked between the horizontal and vertical passes.
+///
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
-pub fn gaussian_blur_iir_stop(
+pub(crate) fn gaussian_blur_iir_stop(
     input: &ImageF,
     sigma: f32,
     pool: &BufferPool,

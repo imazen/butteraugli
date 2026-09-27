@@ -968,11 +968,12 @@ pub fn gaussian_blur(input: &ImageF, sigma: f32, pool: &BufferPool) -> ImageF {
 }
 
 /// [`gaussian_blur`] with cooperative cancellation — `stop` is checked
-/// between the H/V sub-passes and inside each convolve's row loops.///
+/// between the H/V sub-passes and inside each convolve's row loops.
+///
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
-pub fn gaussian_blur_stop(
+pub(crate) fn gaussian_blur_stop(
     input: &ImageF,
     sigma: f32,
     pool: &BufferPool,
@@ -1207,11 +1208,12 @@ pub fn blur_with_border(
 }
 
 /// [`blur_with_border`] with cooperative cancellation — checked between
-/// sub-passes and inside each convolve's row loops.///
+/// sub-passes and inside each convolve's row loops.
+///
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
-pub fn blur_with_border_stop(
+pub(crate) fn blur_with_border_stop(
     input: &ImageF,
     sigma: f32,
     border_ratio: f32,
@@ -1485,11 +1487,12 @@ pub fn blur_mirrored_5x5(input: &ImageF, weights: &[f32; 3], pool: &BufferPool) 
 }
 
 /// [`blur_mirrored_5x5`] with cooperative cancellation — checked between
-/// the H/V passes and inside their row loops.///
+/// the H/V passes and inside their row loops.
+///
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
-pub fn blur_mirrored_5x5_stop(
+pub(crate) fn blur_mirrored_5x5_stop(
     input: &ImageF,
     weights: &[f32; 3],
     pool: &BufferPool,
@@ -2252,18 +2255,18 @@ fn blur_mirrored_5x5_scalar(
     let mut output = ImageF::from_pool_dirty(width, height, pool);
     for x in 0..width {
         let col = temp.row(x);
-        for y in 0..height {
-            if y.is_multiple_of(BLUR_STOP_ROWS) {
-                stop.check()?;
+        for y0 in (0..height).step_by(BLUR_STOP_ROWS) {
+            stop.check()?;
+            for y in y0..height.min(y0 + BLUR_STOP_ROWS) {
+                let iy = y as i32;
+                let v_m2 = col[mirror(iy - 2, iheight)];
+                let v_m1 = col[mirror(iy - 1, iheight)];
+                let v_0 = col[y];
+                let v_p1 = col[mirror(iy + 1, iheight)];
+                let v_p2 = col[mirror(iy + 2, iheight)];
+                let sum = v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2;
+                output.set(x, y, sum);
             }
-            let iy = y as i32;
-            let v_m2 = col[mirror(iy - 2, iheight)];
-            let v_m1 = col[mirror(iy - 1, iheight)];
-            let v_0 = col[y];
-            let v_p1 = col[mirror(iy + 1, iheight)];
-            let v_p2 = col[mirror(iy + 2, iheight)];
-            let sum = v_0 * w0 + (v_m1 + v_p1) * w1 + (v_m2 + v_p2) * w2;
-            output.set(x, y, sum);
         }
     }
 

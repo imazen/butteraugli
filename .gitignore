@@ -25,3 +25,5 @@ perf.data.old
 
 # apidoc (zenutils-apidoc) runner backup — transient, never commit
 Cargo.toml.original.txt
+
+.jj/

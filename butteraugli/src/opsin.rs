@@ -166,12 +166,13 @@ pub fn opsin_dynamics_image(
 
 /// [`opsin_dynamics_image`] with cooperative cancellation — `stop` is
 /// checked between the separable blurs and between row blocks of the
-/// per-pixel transform. Never checked inside the pixel loop.///
+/// per-pixel transform. Never checked inside the pixel loop.
+///
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
 #[archmage::autoversion]
-pub fn opsin_dynamics_image_stop(
+pub(crate) fn opsin_dynamics_image_stop(
     _token: archmage::SimdToken,
     rgb: &Image3F,
     intensity_target: f32,
@@ -390,11 +391,12 @@ pub fn linear_rgb_to_xyb_butteraugli(
 
 /// [`linear_rgb_to_xyb_butteraugli`] with cooperative cancellation —
 /// `stop` is checked between row blocks of the deinterleave and inside
-/// [`opsin_dynamics_image_stop`].///
+/// [`opsin_dynamics_image_stop`].
+///
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
-pub fn linear_rgb_to_xyb_butteraugli_stop(
+pub(crate) fn linear_rgb_to_xyb_butteraugli_stop(
     rgb: &[f32],
     width: usize,
     height: usize,
@@ -475,12 +477,13 @@ pub fn linear_planar_to_xyb_butteraugli(
 
 /// [`linear_planar_to_xyb_butteraugli`] with cooperative cancellation —
 /// `stop` is checked between row blocks of the planar copy and inside
-/// [`opsin_dynamics_image_stop`].///
+/// [`opsin_dynamics_image_stop`].
+///
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
 #[allow(clippy::too_many_arguments)]
-pub fn linear_planar_to_xyb_butteraugli_stop(
+pub(crate) fn linear_planar_to_xyb_butteraugli_stop(
     r: &[f32],
     g: &[f32],
     b: &[f32],

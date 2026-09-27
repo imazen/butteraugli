@@ -1324,7 +1324,7 @@ pub fn malta_diff_map(
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
 #[allow(clippy::too_many_arguments)]
-pub fn malta_diff_map_stop(
+pub(crate) fn malta_diff_map_stop(
     lum0: &ImageF,
     lum1: &ImageF,
     w_0gt1: f64,

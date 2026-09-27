@@ -366,7 +366,7 @@ pub fn compute_mask_from_hf_uhf(
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
-pub fn compute_mask_from_hf_uhf_stop(
+pub(crate) fn compute_mask_from_hf_uhf_stop(
     hf0: &[ImageF; 2],
     uhf0: &[ImageF; 2],
     hf1: &[ImageF; 2],
@@ -472,7 +472,7 @@ pub fn precompute_reference_mask(
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
-pub fn precompute_reference_mask_stop(
+pub(crate) fn precompute_reference_mask_stop(
     hf: &[ImageF; 2],
     uhf: &[ImageF; 2],
     pool: &BufferPool,
@@ -527,7 +527,7 @@ pub fn apply_mask_correction_precomputed(
 /// # Errors
 ///
 /// Returns [`enough::StopReason`] if `stop` signals cancellation.
-pub fn apply_mask_correction_precomputed_stop(
+pub(crate) fn apply_mask_correction_precomputed_stop(
     precomputed: &PrecomputedMask,
     hf1: &[ImageF; 2],
     uhf1: &[ImageF; 2],
