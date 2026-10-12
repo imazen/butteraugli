@@ -81,6 +81,8 @@ fn main() {
         return;
     }
     let rounds: usize = args.get(2).map_or(7, |s| s.parse().unwrap());
+    let scores_only = args.get(3).is_some_and(|s| s == "--scores-only");
+    let filter = args.iter().find_map(|s| s.strip_prefix("--group="));
     assert!(
         rounds >= 3,
         "at least three alternating rounds are required"
@@ -138,6 +140,10 @@ fn main() {
                     .unwrap(),
             );
             for mode in ["cold", "warm", "warm-map"] {
+                let label = format!("{w}x{h}_{threads}t_{mode}");
+                if filter.is_some_and(|f| !label.contains(f)) {
+                    continue;
+                }
                 let map = mode == "warm-map";
                 let params = ButteraugliParams::default().with_compute_diffmap(map);
                 let old_params = OldParams::default().with_compute_diffmap(map);
@@ -187,8 +193,11 @@ fn main() {
                 );
                 drop(old_score);
                 drop(new_score);
+                if scores_only {
+                    continue;
+                }
                 let result = zenbench::run_gated(zenbench::GateConfig::disabled(), |suite| {
-                    suite.compare(format!("{w}x{h}_{threads}t_{mode}"), |group| {
+                    suite.compare(label, |group| {
                         group
                             .config()
                             .max_rounds(rounds)

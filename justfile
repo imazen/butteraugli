@@ -35,5 +35,11 @@ audit-build:
 audit-golden:
     RAYON_NUM_THREADS=1 target/release/examples/version_audit --golden
 
-audit-perf image rounds="15":
-    target/release/examples/version_audit {{quote(image)}} {{rounds}}
+audit-perf image rounds="15" +args="":
+    target/release/examples/version_audit {{quote(image)}} {{rounds}} {{args}}
+
+audit-scores image:
+    target/release/examples/version_audit {{quote(image)}} 3 --scores-only
+
+audit-msrv:
+    cargo +1.89.0 check -p butteraugli --lib --locked
