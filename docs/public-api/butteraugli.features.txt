@@ -13,7 +13,7 @@
 #   pub types (struct/enum/trait/alias)        13
 #   pub consts/statics                         46
 #   free functions                             27
-#   inherent methods                           69
+#   inherent methods                           70
 #   struct fields                               9
 #   enum variants                               5
 #   trait roster entries (type × trait)        51
@@ -25,13 +25,13 @@
 #   blur                              7
 #   consts                           45
 #   image                            36
-#   linear_planes                    51
+#   linear_planes                    52
 #   malta                             1
 #   mask                             13
 #   opsin                             8
 #   psycho                            8
 
-## items (177 lines)
+## items (178 lines)
 
 pub mod blur
 pub fn blur::blur_5x5(&image::ImageF, &[f32; 3], &image::BufferPool) -> image::ImageF
@@ -164,6 +164,7 @@ pub fn linear_planes::ScorerBuilder::with_diffmap(self, bool) -> Self
 pub fn linear_planes::ScorerBuilder::with_hf_asymmetry(self, f32) -> Self
 pub fn linear_planes::ScorerBuilder::with_intensity_target(self, f32) -> Self
 pub fn linear_planes::ScorerBuilder::with_resolution(self, linear_planes::Resolution) -> Self
+pub fn linear_planes::ScorerBuilder::with_scratch_cache_bytes(self, usize) -> Self
 pub fn linear_planes::ScorerBuilder::with_walk(self, linear_planes::Walk) -> Self
 pub fn linear_planes::ScorerBuilder::with_xmul(self, f32) -> Self
 #[non_exhaustive] pub struct linear_planes::Scores

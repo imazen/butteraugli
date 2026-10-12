@@ -470,6 +470,7 @@ pub struct ScorerBuilder {
     resolution: Resolution,
     walk: Walk,
     diffmap: bool,
+    scratch_cache_bytes: Option<usize>,
 }
 
 impl Default for ScorerBuilder {
@@ -482,6 +483,7 @@ impl Default for ScorerBuilder {
             resolution: Resolution::MultiScale,
             walk: Walk::WholeImage,
             diffmap: false,
+            scratch_cache_bytes: None,
         }
     }
 }
@@ -543,18 +545,33 @@ impl ScorerBuilder {
         self
     }
 
+    /// Set retained scratch-cache bytes for [`Walk::WholeImage`].
+    ///
+    /// `0` disables caching. The default is the image-sized eight-plane bound.
+    /// This does not bound peak working memory and is ignored for strips.
+    /// See [`crate::ButteraugliParams::with_scratch_cache_bytes`].
+    #[must_use]
+    pub fn with_scratch_cache_bytes(mut self, bytes: usize) -> Self {
+        self.scratch_cache_bytes = Some(bytes);
+        self
+    }
+
     /// The [`ButteraugliParams`] these settings correspond to.
     ///
     /// Useful for cross-checking against a default-API call site during
     /// migration.
     #[must_use]
     pub fn to_params(&self) -> ButteraugliParams {
-        ButteraugliParams::new()
+        let params = ButteraugliParams::new()
             .with_intensity_target(self.intensity_target)
             .with_hf_asymmetry(self.hf_asymmetry)
             .with_xmul(self.xmul)
             .with_compute_diffmap(self.diffmap)
-            .with_single_resolution(self.resolution == Resolution::SingleScale)
+            .with_single_resolution(self.resolution == Resolution::SingleScale);
+        match self.scratch_cache_bytes {
+            Some(bytes) => params.with_scratch_cache_bytes(bytes),
+            None => params,
+        }
     }
 
     /// Precompute reference-side data and return a reusable [`Scorer`].

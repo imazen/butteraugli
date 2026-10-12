@@ -6,7 +6,7 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: butteraugli.txt 139 lines (supported surface) | butteraugli.features.txt 193 added (features: avx512,corpus-tests,iir-blur,internals,linear-planes,rayon,unsafe-performance) | butteraugli.internal.txt 18 lines (18 hidden + 0 excluded-feature)
+# files: butteraugli.txt 143 lines (supported surface) | butteraugli.features.txt 194 added (features: avx512,corpus-tests,iir-blur,internals,linear-planes,rayon,unsafe-performance) | butteraugli.internal.txt 18 lines (18 hidden + 0 excluded-feature)
 
 ## summary
 #
@@ -14,7 +14,7 @@
 #   pub types (struct/enum/trait/alias)         6
 #   pub consts/statics                          4
 #   free functions                             11
-#   inherent methods                           83
+#   inherent methods                           87
 #   struct fields                              15
 #   enum variants                               6
 #   re-exports                                  6
@@ -23,10 +23,10 @@
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
-#   (root)                           64
-#   precompute                       69
+#   (root)                           66
+#   precompute                       71
 
-## items (132 lines)
+## items (136 lines)
 
 pub mod butteraugli
 pub use Img
@@ -48,6 +48,7 @@ pub fn precompute::ButteraugliReference::compare_srgb(&self, imgref::ImgRef<'_, 
 pub fn precompute::ButteraugliReference::compare_srgb_with_stop(&self, imgref::ImgRef<'_, rgb::RGB8>, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_with_stop(&self, &[u8], &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::drop_strip_source(&mut self)
+pub fn precompute::ButteraugliReference::estimated_planar_peak_bytes(usize, usize, &ButteraugliParams) -> core::option::Option<usize>
 pub fn precompute::ButteraugliReference::estimated_reference_bytes(usize, usize, &ButteraugliParams) -> usize
 pub fn precompute::ButteraugliReference::from_linear(imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::from_srgb(imgref::ImgRef<'_, rgb::RGB8>, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
@@ -93,11 +94,13 @@ pub fn ButteraugliParams::compute_diffmap(&self) -> bool
 pub fn ButteraugliParams::hf_asymmetry(&self) -> f32
 pub fn ButteraugliParams::intensity_target(&self) -> f32
 pub fn ButteraugliParams::new() -> Self
+pub fn ButteraugliParams::scratch_cache_bytes(&self) -> core::option::Option<usize>
 pub fn ButteraugliParams::single_resolution(&self) -> bool
 pub fn ButteraugliParams::validate(&self) -> core::result::Result<(), ButteraugliError>
 pub fn ButteraugliParams::with_compute_diffmap(self, bool) -> Self
 pub fn ButteraugliParams::with_hf_asymmetry(self, f32) -> Self
 pub fn ButteraugliParams::with_intensity_target(self, f32) -> Self
+pub fn ButteraugliParams::with_scratch_cache_bytes(self, usize) -> Self
 pub fn ButteraugliParams::with_single_resolution(self, bool) -> Self
 pub fn ButteraugliParams::with_xmul(self, f32) -> Self
 pub fn ButteraugliParams::xmul(&self) -> f32
@@ -114,6 +117,7 @@ pub fn precompute::ButteraugliReference::compare_srgb(&self, imgref::ImgRef<'_, 
 pub fn precompute::ButteraugliReference::compare_srgb_with_stop(&self, imgref::ImgRef<'_, rgb::RGB8>, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_with_stop(&self, &[u8], &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::drop_strip_source(&mut self)
+pub fn precompute::ButteraugliReference::estimated_planar_peak_bytes(usize, usize, &ButteraugliParams) -> core::option::Option<usize>
 pub fn precompute::ButteraugliReference::estimated_reference_bytes(usize, usize, &ButteraugliParams) -> usize
 pub fn precompute::ButteraugliReference::from_linear(imgref::ImgRef<'_, rgb::formats::rgb::Rgb<f32>>, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::from_srgb(imgref::ImgRef<'_, rgb::RGB8>, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>

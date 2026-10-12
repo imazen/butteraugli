@@ -166,7 +166,7 @@ impl Clone for ButteraugliReference {
             width: self.width,
             height: self.height,
             params: self.params.clone(),
-            pool: BufferPool::new(), // fresh empty pool for the clone
+            pool: self.pool.clone(), // empty cache, preserving its configured limits
             source: self.source.clone(),
         }
     }
@@ -299,7 +299,7 @@ impl ButteraugliReference {
 
         // Run full-res and half-res in parallel (each with its own BufferPool).
         // The full-res pool is returned and reused for compare calls.
-        let ((full, reuse_pool), half) = maybe_join(
+        let ((full, mut reuse_pool), half) = maybe_join(
             || {
                 let pool = BufferPool::new();
                 let xyb =
@@ -334,6 +334,7 @@ impl ButteraugliReference {
             },
         );
 
+        reuse_pool.configure(params.scratch_cache_bytes());
         Ok(Self {
             full,
             half,
@@ -400,7 +401,7 @@ impl ButteraugliReference {
         // The full-res pool is returned and reused for compare calls, so the
         // first compare_linear_planar call reuses pre-warmed buffers instead
         // of allocating + zeroing fresh memory.
-        let ((full, reuse_pool), half) = maybe_join(
+        let ((full, mut reuse_pool), half) = maybe_join(
             || {
                 let pool = BufferPool::new();
                 let xyb = linear_planar_to_xyb_butteraugli(
@@ -455,6 +456,7 @@ impl ButteraugliReference {
             },
         );
 
+        reuse_pool.configure(params.scratch_cache_bytes());
         Ok(Self {
             full,
             half,
@@ -915,14 +917,25 @@ impl ButteraugliReference {
         // holds RGB(3), blurred RGB(3), XYB(3), and half input RGB(3).
         // Construction's separate pools are also covered by this envelope.
         let scales = if half == 0 { 1usize } else { 2 };
+        // Construction still uses the default cache; an explicit limit applies
+        // only to the returned comparison pool. Include the larger of the two.
+        let default_cache = full.checked_mul(crate::image::MAX_POOL_BUFFERS)?;
+        let (cache_bytes, cache_buffers) = match params.scratch_cache_bytes() {
+            Some(limit) => (
+                default_cache
+                    .max(limit.min(full.checked_mul(crate::image::MAX_CONFIGURED_POOL_BUFFERS)?)),
+                crate::image::MAX_CONFIGURED_POOL_BUFFERS,
+            ),
+            None => (default_cache, crate::image::MAX_POOL_BUFFERS),
+        };
         let scratch = full
             .checked_add(half)?
             .checked_mul(3 + 10 + 6 * 2)?
-            .checked_add(full.checked_mul(crate::image::MAX_POOL_BUFFERS)?)?;
+            .checked_add(cache_bytes)?;
         // Each construction scale owns a pool of at most MAX_POOL_BUFFERS
         // Vec descriptors; compare shares the full scale's pool.
         let pool_metadata = scales
-            .checked_mul(crate::image::MAX_POOL_BUFFERS)?
+            .checked_mul(cache_buffers)?
             .checked_mul(core::mem::size_of::<Vec<f32>>())?;
         reference.checked_add(scratch)?.checked_add(pool_metadata)
     }

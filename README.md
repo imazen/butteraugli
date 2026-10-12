@@ -267,6 +267,14 @@ footprint and `memory_bytes()` the full retained footprint (precompute + strip
 source + idle buffer pool). `width()`, `height()`, and `params()` read back the
 reference's configuration.
 
+**Tuning scratch retention.** Set `params.with_scratch_cache_bytes(bytes)` (or
+`ScorerBuilder::with_scratch_cache_bytes`) for repeated whole-image comparisons.
+Zero disables the cache; leaving it unset retains the default eight-buffer
+bound. A larger budget can reduce allocation work. The byte limit covers idle
+scratch, not peak RSS, inputs, outputs, or reference data. It is ignored by
+one-shot and strip calls. Size the budget for your images and concurrent
+references; `estimated_planar_peak_bytes` includes configured cache storage.
+
 **Reclaiming memory.** `shrink_to_fit()` drains the cached buffer pool (one
 re-allocation on the next `compare`, no loss of the warm-reference speedup);
 `drop_strip_source()` releases the retained reference-side source when you know no
