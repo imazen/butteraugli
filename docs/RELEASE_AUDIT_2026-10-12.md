@@ -51,24 +51,25 @@ This is one photograph at three sizes, not a whole-corpus claim.
 
 Performance **did regress for reused references**. The original eight-buffer
 pool measured +40.6–44.8% at 1080p/eight threads versus 0.9.3. Restoring 48
-buffers in a diagnostic removes that gap. A candidate that retains larger
-planes within the existing eight-buffer bound reduces the regression to
+buffers in a diagnostic removes that gap. The landed fix retains larger
+planes within the existing eight-buffer bound and reduces the regression to
 +18.9–20.3% at 1080p and +10.5–13.1% at 4K. This is a partial fix; the default
 memory-retention limit still trades throughput for a bounded cache. Fresh
 large-image comparisons show much smaller differences, and the bounded
-candidate improves the eight-thread large-image fresh path.
+policy improves the eight-thread large-image fresh path.
 
-The bounded candidate is not yet a release change: its score/pixel checks
-pass, but a newly added cache test assumed unpadded buffers. Existing scratch
-accounting includes Malta borders and transposed blur. Correcting that test
-expectation requires the user's approval under the shared instructions.
+The bounded fix preserves the eight-buffer count and existing padded memory
+bound. Its regression test compares exact scores and diffmap pixels over
+repeated distortions with one and four threads. The user approved correcting
+the new test's budget to include existing Malta borders and transposed blur;
+the production memory bound did not change.
 
 ## Validation and remaining release work
 
-Before the bounded candidate, default library/CLI all-target tests, doctests,
-`linear-planes` tests, IIR unit tests, strict workspace Clippy, formatting and
-the Rust 1.89 library check passed. The opt-in external-corpus suite was not
-run. Captured C++ parity and live photographic probes passed. The complete
+With the bounded fix, default library/CLI all-target tests, doctests,
+`linear-planes` tests, IIR and no-default-feature unit tests, strict workspace
+Clippy, formatting and locked Rust 1.89 library and CLI checks passed. The
+opt-in external-corpus suite was not run. Captured C++ parity and live photographic probes passed. The complete
 benchmark includes paired confidence intervals and whole-process run-heavy
 peak-RSS records; it does not measure each backend's standalone memory peak.
 
@@ -83,8 +84,7 @@ and CLI checks passed with Rust 1.89; the new remote matrix must still finish.
 Before publishing:
 
 1. Resolve the three-constant compatibility decision and hidden-helper behavior.
-2. Approve the cache-test correction, validate the bounded fix, and decide
-   whether the remaining reused-reference regression is acceptable.
+2. Decide whether the remaining reused-reference regression is acceptable.
 3. Complete library/CLI MSRV and all feature/platform CI on the final commit,
    including Windows ARM, Intel macOS and i686. No Butteraugli Intel waiver
    was requested in this audit.

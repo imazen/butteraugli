@@ -94,7 +94,7 @@ impl BufferPool {
         }
     }
 
-    /// Returns a buffer to the pool. Dropped silently if pool is full.
+    /// Returns a buffer to the pool, retaining the largest buffers when full.
     ///
     /// The cap was 48 in 0.9.3; reduced to [`MAX_POOL_BUFFERS`] = 8 in
     /// 0.9.4 after the CPU sweep (`benchmarks/heaptrack/summary*.tsv`,
@@ -111,6 +111,21 @@ impl BufferPool {
         let mut pool = self.buffers.lock().unwrap();
         if pool.len() < self.max_buffers {
             pool.push(buf);
+        } else if let Some((idx, smallest)) = pool
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, cached)| cached.capacity())
+        {
+            // Both scales share this bounded pool. The half-resolution stage
+            // can finish first and fill it with small planes, otherwise making
+            // every subsequent full-resolution comparison allocate again.
+            // Keep the same buffer-count and worst-case byte limits, preferring
+            // the more expensive full-resolution allocations.
+            if smallest.capacity() < buf.capacity() {
+                let displaced = core::mem::replace(&mut pool[idx], buf);
+                drop(pool);
+                drop(displaced);
+            }
         }
     }
 
@@ -590,6 +605,18 @@ impl IndexMut<usize> for Image3F {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn full_pool_reuses_larger_planes_without_growing() {
+        let pool = super::BufferPool::with_capacity(2);
+        pool.put(vec![1.0; 4]);
+        pool.put(vec![2.0; 8]);
+        pool.put(vec![3.0; 16]);
+        assert_eq!(pool.buffers.lock().unwrap().len(), 2);
+        assert_eq!(pool.take(16), vec![3.0; 16]);
+        assert_eq!(pool.take(8), vec![2.0; 8]);
+        assert_eq!(pool.take(4), vec![0.0; 4]);
+    }
+
     #[test]
     fn pool_reuse_preserves_requested_capacity() {
         let pool = super::BufferPool::new();

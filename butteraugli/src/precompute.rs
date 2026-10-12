@@ -2101,6 +2101,44 @@ fn subsample_planar_rgb_2x(
 mod tests {
     use super::*;
 
+    #[test]
+    fn bounded_pool_reuse_does_not_change_scores_between_distortions() {
+        let (w, h) = (65, 49);
+        let rgb: Vec<u8> = (0..w * h * 3).map(|i| (i * 7 % 251) as u8).collect();
+        // Match estimated_planar_peak_bytes: Malta adds PAD=4 per edge,
+        // and blur scratch can transpose the padded plane.
+        let plane_bytes = ImageF::new(w + 8, h + 8)
+            .byte_size()
+            .max(ImageF::new(h + 8, w + 8).byte_size());
+        let check = || {
+            let params = ButteraugliParams::default().with_compute_diffmap(true);
+            let warm = ButteraugliReference::new(&rgb, w, h, params.clone()).unwrap();
+            for shift in [1_u8, 21, 3, 21, 1] {
+                let dst: Vec<u8> = rgb.iter().map(|v| v.saturating_add(shift)).collect();
+                let fresh = ButteraugliReference::new(&rgb, w, h, params.clone()).unwrap();
+                let expected = fresh.compare(&dst).unwrap();
+                let actual = warm.compare(&dst).unwrap();
+                assert_eq!(actual.score, expected.score);
+                assert_eq!(actual.pnorm_3, expected.pnorm_3);
+                assert_eq!(
+                    actual.diffmap.unwrap().buf(),
+                    expected.diffmap.unwrap().buf()
+                );
+                assert!(warm.pool.retained_bytes() <= crate::image::MAX_POOL_BUFFERS * plane_bytes);
+            }
+        };
+        #[cfg(feature = "rayon")]
+        for threads in [1, 4] {
+            let workers = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            workers.install(check);
+        }
+        #[cfg(not(feature = "rayon"))]
+        check();
+    }
+
     /// The a-priori `estimated_reference_bytes` must EXACTLY equal the
     /// persistent precompute an actual reference reports, across sizes that
     /// span the `need_half` gate (small single-res, multi-res, odd dims that

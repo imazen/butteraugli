@@ -116,7 +116,7 @@ were counted. 0.9.3 and current return **exactly identical max-norm scores**
 on all 908. Mean absolute difference from the captured C++ scores is
 0.00006927838760216 for both; maximum relative difference is
 0.00006327171671572 (0.006327%); this is not an improvement in C++ agreement.
-The larger-plane candidate preserves those exact results.
+The landed larger-plane policy preserves those exact results.
 
 A separate live C++ probe uses libjxl
 `b87738951c1254cd8cccaa6d47712ba735da56d8`, unmodified, with its prebuilt FFI
@@ -147,6 +147,7 @@ implementation's standalone peak.
 - Cap-48 probe: `run-heavy: done rc=0 9s | peak-RSS 1.03GiB | min-avail 24995MiB | peak-load 1.06`.
 - Larger-plane probe: `run-heavy: done rc=0 9s | peak-RSS 0.94GiB | min-avail 24878MiB | peak-load 0.69`.
 - Larger-plane full run: `run-heavy: done rc=0 162s | peak-RSS 4.31GiB | min-avail 21420MiB | peak-load 3.09`.
+- Final Clippy/test/doctest/feature/MSRV/build/golden validation: `run-heavy: done rc=0 135s | peak-RSS 0.35GiB | min-avail 13257MiB | peak-load 23.81`.
 - Live C++ scoring/MSRV build probe: `run-heavy: done rc=0 21s | peak-RSS 4.25GiB | min-avail 18380MiB | peak-load 4.76`.
 
 ```sh

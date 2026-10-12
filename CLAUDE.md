@@ -8,7 +8,7 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
   With equal default features and explicit thread pools, the original current
   eight-buffer cache was 40.6–44.8% slower at 1080p/eight threads, and
   23.2–29.5% slower at 4K/eight threads. A cap-48 diagnostic removes the
-  1080p regression; a bounded larger-plane-retention candidate reduces it to
+  1080p regression; the landed bounded larger-plane-retention fix reduces it to
   18.9–20.3% there and 10.5–13.1% at 4K. The latter is a partial fix, not
   parity with published throughput. All 908 captured distorted-pair scores
   remain exactly identical to 0.9.3. Data, scope, peak-RSS records and
