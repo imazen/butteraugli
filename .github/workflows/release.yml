@@ -159,11 +159,9 @@ jobs:
 
       - name: Publish butteraugli library
         run: cargo publish -p butteraugli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true  # May fail if version already published
 
       - name: Wait for crates.io index update
         run: sleep 30
 
       - name: Publish butteraugli-cli
         run: cargo publish -p butteraugli-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true  # May fail if version already published
