@@ -264,7 +264,12 @@ fn main() {
                 if scores_only {
                     continue;
                 }
-                let result = zenbench::run_gated(zenbench::GateConfig::disabled(), |suite| {
+                let gate = if args.iter().any(|arg| arg == "--ungated") {
+                    zenbench::GateConfig::disabled()
+                } else {
+                    zenbench::GateConfig::strict()
+                };
+                let result = zenbench::run_gated(gate, |suite| {
                     suite.compare(label, |group| {
                         group
                             .config()
@@ -334,6 +339,11 @@ fn main() {
                         });
                     });
                 });
+                println!(
+                    "GATE waits={} unreliable={}",
+                    result.gate_waits, result.unreliable
+                );
+                assert!(!result.unreliable, "zenbench rejected this contended run");
                 print!("{}", result.to_csv());
             }
         }
