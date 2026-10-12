@@ -14,3 +14,17 @@ api-doc:
 # Verify the committed snapshots are current
 api-doc-check:
     ZEN_API_DOC=check cargo test --manifest-path apidoc/Cargo.toml
+
+# Rust-only gates explicitly disable the optional C++ benchmark adapter.
+audit-lint:
+    cargo fmt -p butteraugli -p butteraugli-cli -p butteraugli-bench --check
+    BUTTERAUGLI_BENCH_NO_CPP=1 cargo clippy --workspace --all-targets -- -D warnings
+
+audit-test:
+    BUTTERAUGLI_BENCH_NO_CPP=1 cargo test -p butteraugli -p butteraugli-cli --all-targets
+    cargo test -p butteraugli --doc
+    cargo test -p butteraugli --features linear-planes
+    cargo test -p butteraugli --features iir-blur --lib
+
+audit-semver features="--default-features":
+    RUSTUP_TOOLCHAIN=1.98.1 cargo semver-checks check-release -p butteraugli --baseline-version 0.9.3 --release-type patch {{features}}

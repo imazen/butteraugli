@@ -2427,6 +2427,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::assert_is_empty)] // Keep the explicit nonempty-kernel invariant.
     fn test_kernel_generation() {
         let kernel = compute_kernel(1.0);
         assert!(!kernel.is_empty());
