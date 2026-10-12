@@ -14,7 +14,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  verify-ci:
+    name: Verify release commit passed CI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Require green CI on this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit=$(git rev-parse HEAD)
+          successful=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${commit}&per_page=100" --jq '[.workflow_runs[] | select(.head_sha == "'"${commit}"'" and .event == "push" and .status == "completed" and .conclusion == "success")] | length')
+          if [ "$successful" -eq 0 ]; then
+            echo "::error::No successful main-branch CI run for release commit ${commit}"
+            exit 1
+          fi
+
   build:
+    needs: verify-ci
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -34,7 +56,7 @@ jobs:
 
           # macOS
           - target: x86_64-apple-darwin
-            os: macos-26-intel
+            os: macos-15-intel
             artifact: butteraugli
           - target: aarch64-apple-darwin
             os: macos-latest
@@ -49,7 +71,9 @@ jobs:
             artifact: butteraugli.exe
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -96,14 +120,14 @@ jobs:
 
       - name: Upload artifact (Unix)
         if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: butteraugli-${{ matrix.target }}
           path: butteraugli-${{ matrix.target }}.tar.gz
 
       - name: Upload artifact (Windows)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: butteraugli-${{ matrix.target }}
           path: butteraugli-${{ matrix.target }}.zip
@@ -115,10 +139,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -135,7 +161,7 @@ jobs:
           cat SHA256SUMS.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           name: ${{ github.event.inputs.tag || github.ref_name }}
@@ -152,7 +178,9 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
