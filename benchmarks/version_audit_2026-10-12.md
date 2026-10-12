@@ -163,3 +163,13 @@ just audit-extract complete-run.log results.md
 LIBJXL_DIR=/path/to/libjxl LIBJXL_BUILD_DIR=/path/to/build just audit-build
 run-heavy --mem 16G --jobs 8 -- just audit-scores /path/to/reference.png
 ```
+
+## Separate-process profiling
+
+`just audit-profile IMAGE published SIZE THREADS CALLS` and the corresponding
+`current` mode run one version per process, warm the reference once, then
+time repeated planar comparisons. Use `/usr/bin/time -v` around each invocation
+to measure independent maximum RSS, and heaptrack for allocation sites. Inputs,
+JPEG decoding and reference construction remain inside the RSS measurement but
+outside the timed batch. The initial 512×512 one-thread smoke check produced
+identical max-norm and p-norm-3 values for both versions.

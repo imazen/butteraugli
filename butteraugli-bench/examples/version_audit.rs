@@ -74,8 +74,81 @@ unsafe extern "C" {
     ) -> f64;
 }
 
+fn prepare_pair(photo: &image::RgbImage, w: usize, h: usize) -> ([Vec<f32>; 3], [Vec<f32>; 3]) {
+    let img = image::imageops::resize(photo, w as u32, h as u32, FilterType::Triangle);
+    let mut jpg = Vec::new();
+    JpegEncoder::new_with_quality(&mut jpg, 75)
+        .encode(img.as_raw(), w as u32, h as u32, ExtendedColorType::Rgb8)
+        .unwrap();
+    let dst = image::load_from_memory_with_format(&jpg, ImageFormat::Jpeg)
+        .unwrap()
+        .to_rgb8();
+    let planes = |bytes: &[u8]| -> [Vec<f32>; 3] {
+        std::array::from_fn(|c| {
+            bytes
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .map(|p| linear_srgb::default::srgb_u8_to_linear(p[c]))
+                .collect()
+        })
+    };
+    let src = planes(img.as_raw());
+    let dst = planes(dst.as_raw());
+    (src, dst)
+}
+
+// Separate processes let /usr/bin/time -v measure each backend independently.
+fn profile_version(args: &[String], version: &str) {
+    let option = |name: &str, fallback: &str| {
+        args.iter()
+            .find_map(|s| s.strip_prefix(name))
+            .unwrap_or(fallback)
+            .to_owned()
+    };
+    let size = option("--size=", "1920x1080");
+    let (w, h) = size.split_once('x').expect("size is WIDTHxHEIGHT");
+    let (w, h): (usize, usize) = (w.parse().unwrap(), h.parse().unwrap());
+    let threads: usize = option("--threads=", "8").parse().unwrap();
+    let calls: usize = option("--calls=", "20").parse().unwrap();
+    assert!(calls > 0);
+    let photo = image::open(args.get(1).expect("provide a reference PNG"))
+        .unwrap()
+        .to_rgb8();
+    let (src, dst) = prepare_pair(&photo, w, h);
+    let workers = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .unwrap();
+    workers.install(|| {
+        let run = |compare: &mut dyn FnMut() -> (f64, f64)| {
+            black_box(compare()); // warm cache before the timed batch
+            let start = std::time::Instant::now();
+            let mut scores = (0.0, 0.0);
+            for _ in 0..calls { scores = black_box(compare()); }
+            println!("PROFILE version={version} size={size} threads={threads} calls={calls} wall_ms={:.6} score={:.17} pnorm_3={:.17}", start.elapsed().as_secs_f64()*1000.0, scores.0, scores.1);
+        };
+        match version {
+            "published" => {
+                let reference = OldRef::new_linear_planar(&src[0], &src[1], &src[2], w, h, w, OldParams::default()).unwrap();
+                run(&mut || { let r = reference.compare_linear_planar(&dst[0], &dst[1], &dst[2], w).unwrap(); (r.score, r.pnorm_3) });
+            }
+            "current" => {
+                let reference = ButteraugliReference::new_linear_planar(&src[0], &src[1], &src[2], w, h, w, ButteraugliParams::default()).unwrap();
+                run(&mut || { let r = reference.compare_linear_planar(&dst[0], &dst[1], &dst[2], w).unwrap(); (r.score, r.pnorm_3) });
+                println!("RETAINED bytes={} precompute_bytes={}", reference.memory_bytes(), reference.precompute_bytes());
+            }
+            _ => panic!("profile version must be published or current"),
+        }
+    });
+}
+
 fn main() {
     let args: Vec<_> = std::env::args().collect();
+    if let Some(version) = args.iter().find_map(|s| s.strip_prefix("--profile=")) {
+        profile_version(&args, version);
+        return;
+    }
     if args.get(1).is_some_and(|s| s == "--golden") {
         golden_audit();
         return;
@@ -92,26 +165,7 @@ fn main() {
         .to_rgb8();
 
     for (w, h) in [(512, 512), (1920, 1080), (3840, 2160)] {
-        let img = image::imageops::resize(&photo, w as u32, h as u32, FilterType::Triangle);
-        let mut jpg = Vec::new();
-        JpegEncoder::new_with_quality(&mut jpg, 75)
-            .encode(img.as_raw(), w as u32, h as u32, ExtendedColorType::Rgb8)
-            .unwrap();
-        let dst = image::load_from_memory_with_format(&jpg, ImageFormat::Jpeg)
-            .unwrap()
-            .to_rgb8();
-        let planes = |bytes: &[u8]| -> [Vec<f32>; 3] {
-            std::array::from_fn(|c| {
-                bytes
-                    .as_chunks::<3>()
-                    .0
-                    .iter()
-                    .map(|p| linear_srgb::default::srgb_u8_to_linear(p[c]))
-                    .collect()
-            })
-        };
-        let src = planes(img.as_raw());
-        let dst = planes(dst.as_raw());
+        let (src, dst) = prepare_pair(&photo, w, h);
         #[cfg(has_cpp_butteraugli)]
         let cpp = unsafe {
             butteraugli_pnorm3_from_linear_planes(
