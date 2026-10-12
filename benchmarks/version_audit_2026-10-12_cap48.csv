@@ -1,0 +1,5 @@
+group,benchmark,subgroup,mean_ns,std_dev_ns,median_ns,mad_ns,min_ns,max_ns,n,cv,cold_start_ns,cpu_mean_ns,cpu_efficiency,throughput_value,throughput_unit,vs_base_pct,vs_base_ci_lo_pct,vs_base_ci_hi_pct,significant,resolution_limited,cohens_d,wilcoxon_p,drift_r,timer_ticks_per_sample,allocs_per_iter,deallocs_per_iter,reallocs_per_iter,bytes_per_iter
+1920x1080_8t_warm,0.9.3,,65966763.00,964499.94,66014316.00,560476.17,64607349.00,68104949.00,15,0.0146,66642249.00,,,,,,,,,,,,,5497230,,,,
+1920x1080_8t_warm,main,,65799172.13,1546260.01,65606342.00,1841481.12,63115588.00,68430673.00,15,0.0235,65045835.00,,,,,-0.2541,-1.8649,1.4137,false,false,-0.1301,0.798273,-0.1964,5483264,,,,
+1920x1080_8t_warm-map,0.9.3,,65243208.13,1112481.26,64897161.00,826960.18,63646103.00,67811290.00,15,0.0171,66765323.00,,,,,,,,,,,,,5436934,,,,
+1920x1080_8t_warm-map,main,,64506524.40,1071662.13,64252299.00,827957.97,63052030.00,66827952.00,15,0.0166,66777908.00,,,,,-1.1291,-2.3500,0.1619,false,false,-0.6745,0.118313,-0.2143,5375544,,,,

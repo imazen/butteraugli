@@ -42,4 +42,7 @@ audit-scores image:
     target/release/examples/version_audit {{quote(image)}} 3 --scores-only
 
 audit-msrv:
-    cargo +1.89.0 check -p butteraugli --lib --locked
+    cargo +1.89.0 check -p butteraugli -p butteraugli-cli --locked
+
+audit-extract log output:
+    python3 butteraugli-bench/scripts/extract_version_audit.py {{quote(log)}} {{quote(output)}}

@@ -4,6 +4,16 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 
 ## Known Bugs
 
+- **2026-10-12 release audit: warm-reference throughput regressed versus 0.9.3.**
+  With equal default features and explicit thread pools, the original current
+  eight-buffer cache was 40.6–44.8% slower at 1080p/eight threads, and
+  23.2–29.5% slower at 4K/eight threads. A cap-48 diagnostic removes the
+  1080p regression; a bounded larger-plane-retention candidate reduces it to
+  18.9–20.3% there and 10.5–13.1% at 4K. The latter is a partial fix, not
+  parity with published throughput. All 908 captured distorted-pair scores
+  remain exactly identical to 0.9.3. Data, scope, peak-RSS records and
+  commands: [`benchmarks/version_audit_2026-10-12.md`](benchmarks/version_audit_2026-10-12.md).
+
 For the production library, parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 
