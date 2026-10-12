@@ -14,6 +14,12 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
   remain exactly identical to 0.9.3. Data, scope, peak-RSS records and
   commands: [`benchmarks/version_audit_2026-10-12.md`](benchmarks/version_audit_2026-10-12.md).
 
+- **2026-10-12 configurable cache review:** [PR 17](https://github.com/imazen/butteraugli/pull/17)
+  adds an explicit byte budget without increasing the default. Performance
+  tuning is deferred by user request because the host is busy. The new cache
+  allows padded-shape reuse only after reference construction and only for
+  explicit budgets. [Contract and exploratory records](benchmarks/cache_tuning_2026-10-12.md).
+
 For the production library, parity with libjxl `butteraugli_main` verified at <0.0003% on
 21 real photograph pairs (GB82 576x576 + large images 1024-2048px, Q50/Q75/Q90).
 

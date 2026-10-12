@@ -274,6 +274,8 @@ bound. A larger budget can reduce allocation work. The byte limit covers idle
 scratch, not peak RSS, inputs, outputs, or reference data. It is ignored by
 one-shot and strip calls. Size the budget for your images and concurrent
 references; `estimated_planar_peak_bytes` includes configured cache storage.
+See the [cache configuration record](benchmarks/cache_tuning_2026-10-12.md);
+performance tuning is deferred until the host is quiet.
 
 **Reclaiming memory.** `shrink_to_fit()` drains the cached buffer pool (one
 re-allocation on the next `compare`, no loss of the warm-reference speedup);

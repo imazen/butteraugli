@@ -96,3 +96,12 @@ Before publishing:
    both registry source revisions.
 
 Neither a release tag nor a publication was created by this audit.
+
+## Configurable cache follow-up
+
+[PR 17](https://github.com/imazen/butteraugli/pull/17) proposes an explicit idle
+scratch byte budget for reused references and the typed whole-image scorer.
+The default remains eight buffers; the byte limit is not a peak-RSS cap.
+[Configuration contract and exploratory data](../benchmarks/cache_tuning_2026-10-12.md).
+The user deferred performance tuning because the host is busy. This does not
+resolve the remaining throughput release decision or authorize publication.
