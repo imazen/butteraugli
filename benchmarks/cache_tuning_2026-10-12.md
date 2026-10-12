@@ -2,8 +2,9 @@
 
 Performance tuning is **deferred at the user's request because the host is
 busy**. The paired results below are exploratory records, not recommended
-budgets or proof that a throughput regression is resolved. The default remains
-eight buffers. No per-budget standalone RSS measurement was completed.
+budgets or proof that a throughput regression is resolved. The measured default
+was eight buffers; the subsequent automatic policy is described below. No
+per-budget standalone RSS measurement was completed.
 
 ## Configuration contract
 
@@ -11,12 +12,15 @@ eight buffers. No per-budget standalone RSS measurement was completed.
 `linear_planes::ScorerBuilder` method set retained float-buffer capacity for
 whole-image reused references. Zero disables idle scratch retention. An explicit
 budget permits up to 48 buffers within the byte limit, allocated as needed.
+The automatic default budgets 24 padded planes, capped at 256 MiB per reference.
+It is a bounded starting policy, not an optimum validated on the busy host.
+An explicit budget overrides automatic sizing, including zero.
 It excludes persistent reference data, active working buffers, input/output
 pixels, allocator overhead and descriptor bookkeeping. It therefore does **not**
 cap peak RSS. One-shot and strip calls ignore the setting.
 
 Reference construction keeps exact-shape reuse and its original eight-buffer
-bound. After construction the explicit cache may reuse nearby padded shapes
+bound. After construction the comparison cache may reuse nearby padded shapes
 within a scale, but never a full-resolution plane for a half-resolution request.
 Clones preserve the budget with an empty cache; `shrink_to_fit()` drains it.
 `estimated_planar_peak_bytes` includes configured storage and construction's
@@ -47,7 +51,8 @@ artifact as an exploratory record, not a release/performance gate. Command:
 `just audit-perf IMAGE 15`. Wrapper: `run-heavy: done rc=0 155s | peak-RSS
 5.62GiB | min-avail 20629MiB | peak-load 1.89`.
 
-Whole-process records below include **both** Rust versions, setup and all three
+The `default` rows below measured the former eight-buffer policy, not the
+subsequent adaptive default. Whole-process records include **both** Rust versions, setup and all three
 image sizes. These are not per-version or per-size peak RSS values:
 
 - default MiB: `run-heavy: done rc=0 39s | peak-RSS 3.78GiB | min-avail 20505MiB | peak-load 3.42`
@@ -96,3 +101,30 @@ strict Clippy, locked MSRV and API snapshot checks. It keeps 48 descriptors
 from growing to 64 and preserves the admission metadata bound. Wrapper:
 `run-heavy: done rc=0 70s | peak-RSS 0.30GiB | min-avail 23922MiB | peak-load 2.99`.
 The review PR's CI is the source of current platform-validation status.
+
+## Adaptive-default follow-up
+
+At the user's request, the automatic cache now budgets 24 padded planes, capped
+at 256 MiB per reference. Padded plane bytes use the maximum of normal and
+transposed layouts, four-pixel Malta borders, and 16-float row alignment. The
+same calculation feeds reference construction and admission accounting. This
+reserves no full budget up front: float buffers enter the cache only on use.
+For an image whose scratch plane exceeds the cap, that plane is not retained.
+Explicit budgets, including zero, retain their existing meaning. Construction
+still uses eight exact-shape buffers, and each active scale keeps its own size.
+
+The original eight-plane retention test was updated with explicit user approval
+to enforce the adaptive byte bound. Exact score/pixel assertions stay unchanged.
+No new timing measurements were run for this policy on the busy host.
+
+Adaptive-default validation passed safe/unsafe exact cache parity, the approved
+retention bound, memory admission tests, locked Rust 1.89, full library/CLI
+all-target tests, doctests, planar/IIR/no-default tests, 908 captured-score
+comparisons and 223 default-feature semver checks. The complete command ended
+at the generated API inventory check, which omitted the unchanged `RGB` export:
+`run-heavy: done rc=101 315s | peak-RSS 0.46GiB | min-avail 20186MiB | peak-load 33.88`.
+Targeted cache/MSRV run: `run-heavy: done rc=0 101s | peak-RSS 0.25GiB | min-avail 20640MiB | peak-load 26.42`.
+A direct generic `RGB` API usage test passes independently of the inventory
+exporter. All-feature semver checking still reports only the three pre-existing
+removed `internals` constants described in the release audit; this remains a
+release decision, not a new cache/default break.
