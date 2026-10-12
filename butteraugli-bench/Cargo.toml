@@ -16,6 +16,7 @@ cc = "1.4.4"
 # individual kernels. The end-to-end bench cannot show a single kernel losing
 # to its own scalar fallback -- the faster kernels average it away.
 butteraugli = { workspace = true, features = ["internals"] }
+butteraugli-published = { package = "butteraugli", version = "=0.9.3" }
 rayon = { workspace = true }
 linear-srgb = "0.6.12"
 image = { workspace = true }

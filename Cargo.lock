@@ -157,6 +157,19 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "butteraugli"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "914c4086ea33acfef5c3ea38393c6f5c0ec99d32155377818f1723ec1bd565e3"
+dependencies = [
+ "archmage",
+ "imgref",
+ "magetypes",
+ "rayon",
+ "rgb",
+]
+
+[[package]]
+name = "butteraugli"
 version = "0.9.4"
 dependencies = [
  "almost-enough",
@@ -179,7 +192,8 @@ name = "butteraugli-bench"
 version = "0.0.0"
 dependencies = [
  "archmage",
- "butteraugli",
+ "butteraugli 0.9.3",
+ "butteraugli 0.9.4",
  "bytemuck",
  "cc",
  "iai-callgrind",
@@ -195,7 +209,7 @@ dependencies = [
 name = "butteraugli-cli"
 version = "0.9.4"
 dependencies = [
- "butteraugli",
+ "butteraugli 0.9.4",
  "clap",
  "colored",
  "image",

@@ -28,3 +28,12 @@ audit-test:
 
 audit-semver features="--default-features":
     RUSTUP_TOOLCHAIN=1.98.1 cargo semver-checks check-release -p butteraugli --baseline-version 0.9.3 --release-type patch {{features}}
+
+audit-build:
+    cargo build --release -p butteraugli-bench --example version_audit
+
+audit-golden:
+    RAYON_NUM_THREADS=1 target/release/examples/version_audit --golden
+
+audit-perf image rounds="15":
+    target/release/examples/version_audit {{quote(image)}} {{rounds}}
