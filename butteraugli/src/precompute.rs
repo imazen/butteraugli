@@ -334,7 +334,11 @@ impl ButteraugliReference {
             },
         );
 
-        reuse_pool.configure(params.scratch_cache_bytes());
+        let cache_bytes = params
+            .scratch_cache_bytes()
+            .or_else(|| crate::image::automatic_scratch_cache_bytes(width, height))
+            .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
+        reuse_pool.configure(Some(cache_bytes));
         Ok(Self {
             full,
             half,
@@ -456,7 +460,11 @@ impl ButteraugliReference {
             },
         );
 
-        reuse_pool.configure(params.scratch_cache_bytes());
+        let cache_bytes = params
+            .scratch_cache_bytes()
+            .or_else(|| crate::image::automatic_scratch_cache_bytes(width, height))
+            .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
+        reuse_pool.configure(Some(cache_bytes));
         Ok(Self {
             full,
             half,
@@ -875,7 +883,7 @@ impl ButteraugliReference {
     /// Concurrent comparisons on the same reference need separate accounting.
     /// Interleaved constructors and strip comparisons are outside this contract.
     ///
-    /// Pool reuse preserves exact capacity, so each active scale is charged
+    /// Pool reuse stays within each scale (including nearby padding), so each is charged
     /// at its own largest plane size, including Malta's four-pixel border and
     /// SIMD row padding. Idle buffers are charged at full resolution. This
     /// favors safe admission over a tight prediction of typical memory use.
@@ -891,14 +899,7 @@ impl ButteraugliReference {
         }
         // All ImageF buffers align rows to 16 floats. Include transposed blur
         // scratch as well as Malta's PAD=4 border on each edge.
-        let plane = |w: usize, h: usize| -> Option<usize> {
-            let w = w.checked_add(8)?;
-            let h = h.checked_add(8)?;
-            let rows = (w.checked_add(15)? & !15).checked_mul(h)?;
-            let transposed = (h.checked_add(15)? & !15).checked_mul(w)?;
-            rows.max(transposed)
-                .checked_mul(core::mem::size_of::<f32>())
-        };
+        let plane = crate::image::padded_plane_bytes;
         let full = plane(width, height)?;
         let half = if !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
@@ -920,14 +921,12 @@ impl ButteraugliReference {
         // Construction still uses the default cache; an explicit limit applies
         // only to the returned comparison pool. Include the larger of the two.
         let default_cache = full.checked_mul(crate::image::MAX_POOL_BUFFERS)?;
-        let (cache_bytes, cache_buffers) = match params.scratch_cache_bytes() {
-            Some(limit) => (
-                default_cache
-                    .max(limit.min(full.checked_mul(crate::image::MAX_CONFIGURED_POOL_BUFFERS)?)),
-                crate::image::MAX_CONFIGURED_POOL_BUFFERS,
-            ),
-            None => (default_cache, crate::image::MAX_POOL_BUFFERS),
-        };
+        let limit = params
+            .scratch_cache_bytes()
+            .or_else(|| crate::image::automatic_scratch_cache_bytes(width, height))?;
+        let cache_bytes = default_cache
+            .max(limit.min(full.checked_mul(crate::image::MAX_CONFIGURED_POOL_BUFFERS)?));
+        let cache_buffers = crate::image::MAX_CONFIGURED_POOL_BUFFERS;
         let scratch = full
             .checked_add(half)?
             .checked_mul(3 + 10 + 6 * 2)?
@@ -2137,7 +2136,7 @@ mod tests {
                     actual.diffmap.unwrap().buf(),
                     expected.diffmap.unwrap().buf()
                 );
-                assert!(warm.pool.retained_bytes() <= crate::image::MAX_POOL_BUFFERS * plane_bytes);
+                assert!(warm.pool.retained_bytes() <= (24 * plane_bytes).min(256 * 1024 * 1024));
             }
         };
         #[cfg(feature = "rayon")]

@@ -31,6 +31,7 @@ fn byte_budgets_preserve_strided_scores_and_bound_idle_storage() {
                     params.clone(),
                 )
                 .unwrap();
+                assert_eq!(configured.params().scratch_cache_bytes(), Some(bytes));
                 let peak =
                     ButteraugliReference::estimated_planar_peak_bytes(w, h, &params).unwrap();
                 assert!(configured.memory_bytes() - configured.precompute_bytes() <= bytes);
@@ -39,6 +40,14 @@ fn byte_budgets_preserve_strided_scores_and_bound_idle_storage() {
                     let expected = default
                         .compare_linear_planar(&dst, &dst, &dst, stride)
                         .unwrap();
+                    // Exercise the automatic cache as well as explicit overrides.
+                    let automatic_peak = ButteraugliReference::estimated_planar_peak_bytes(
+                        w,
+                        h,
+                        &ButteraugliParams::default(),
+                    )
+                    .unwrap();
+                    assert!(default.memory_bytes() < automatic_peak);
                     for r in [&configured, &configured.clone()] {
                         let actual = r.compare_linear_planar(&dst, &dst, &dst, stride).unwrap();
                         assert_eq!(actual.score, expected.score);

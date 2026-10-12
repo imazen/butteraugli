@@ -7,6 +7,24 @@ use imgref::ImgVec;
 use std::ops::{Index, IndexMut};
 use std::sync::Mutex;
 
+/// Largest padded plane used by Malta and transposed blur, in bytes.
+pub(crate) fn padded_plane_bytes(width: usize, height: usize) -> Option<usize> {
+    let w = width.checked_add(8)?;
+    let h = height.checked_add(8)?;
+    let rows = (w.checked_add(15)? & !15).checked_mul(h)?;
+    let transposed = (h.checked_add(15)? & !15).checked_mul(w)?;
+    rows.max(transposed).checked_mul(size_of::<f32>())
+}
+
+/// Image-sized reuse for small references, bounded retention for large ones.
+pub(crate) fn automatic_scratch_cache_bytes(width: usize, height: usize) -> Option<usize> {
+    Some(
+        padded_plane_bytes(width, height)?
+            .saturating_mul(24)
+            .min(256 * 1024 * 1024),
+    )
+}
+
 /// Reusable buffer pool for `ImageF` allocations.
 ///
 /// Avoids repeated mmap/munmap for large temporary buffers. Thread-safe via

@@ -514,8 +514,8 @@ impl ButteraugliParams {
     /// This is a cache limit, not a limit on peak working memory, the reference
     /// precompute, input pixels, or returned diffmaps. `0` disables caching
     /// between comparisons. Larger budgets can reduce allocation work; scores
-    /// and pixels are unchanged. The default retains at most eight planes,
-    /// scaling with image dimensions. An explicit budget retains at most 48
+    /// and pixels are unchanged. The automatic default budgets 24 padded planes,
+    /// capped at 256 MiB per reference. Every comparison cache retains at most 48
     /// buffers within this byte limit; storage is allocated only as needed.
     /// The limit counts float-buffer capacities; cache bookkeeping is additional.
     ///
@@ -529,8 +529,8 @@ impl ButteraugliParams {
         self
     }
 
-    /// The explicit idle scratch-cache budget, or `None` for the default
-    /// image-sized eight-plane bound. See [`Self::with_scratch_cache_bytes`].
+    /// The explicit idle scratch-cache budget, or `None` for the automatic
+    /// image-sized budget capped at 256 MiB. See [`Self::with_scratch_cache_bytes`].
     #[must_use]
     pub fn scratch_cache_bytes(&self) -> Option<usize> {
         self.scratch_cache_bytes

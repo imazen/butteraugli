@@ -59,3 +59,28 @@ fn planar_peak_checks_overflow_and_resolution_boundary() {
             > ButteraugliReference::estimated_planar_peak_bytes(15, 15, &single)
     );
 }
+
+#[test]
+fn automatic_admission_scales_then_matches_an_explicit_cap() {
+    let automatic = ButteraugliParams::default();
+    let capped = automatic
+        .clone()
+        .with_scratch_cache_bytes(256 * 1024 * 1024);
+    let uncached = automatic.clone().with_scratch_cache_bytes(0);
+    let larger = automatic
+        .clone()
+        .with_scratch_cache_bytes(1024 * 1024 * 1024);
+    let peak = |w, h, params: &ButteraugliParams| {
+        ButteraugliReference::estimated_planar_peak_bytes(w, h, params).unwrap()
+    };
+    // Small images get less admitted cache than a large explicit budget, but
+    // retain useful scratch beyond construction's uncached comparison budget.
+    assert!(peak(65, 49, &automatic) > peak(65, 49, &uncached));
+    assert!(peak(65, 49, &automatic) < peak(65, 49, &capped));
+    // Large-image automatic admission agrees with an explicit cap. Raising
+    // the override still increases the estimate rather than silently clamping.
+    for (w, h) in [(3840, 2160), (7680, 4320)] {
+        assert_eq!(peak(w, h, &automatic), peak(w, h, &capped));
+        assert!(peak(w, h, &automatic) < peak(w, h, &larger));
+    }
+}
