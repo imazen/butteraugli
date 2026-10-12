@@ -77,7 +77,7 @@ impl BufferPool {
         }
     }
 
-    /// Takes a buffer with exactly `needed` capacity, allocating if absent.
+    /// Takes a buffer for `needed` elements, preferring exact capacity.
     /// Returns stale data — caller must zero-fill if needed.
     ///
     /// With `unsafe-performance`, new allocations skip zero-fill entirely.
@@ -219,7 +219,7 @@ impl BufferPool {
     }
 }
 
-/// Maximum number of cached buffers retained by a single [`BufferPool`].
+/// Default maximum number of cached buffers retained by a [`BufferPool`].
 ///
 /// See [`BufferPool::put`] for the rationale behind 8 (down from 48 in
 /// butteraugli 0.9.3). Exposed `pub(crate)` so the precompute module's
@@ -233,6 +233,11 @@ impl Clone for BufferPool {
     /// Clone creates a fresh empty pool — the clone does not share buffers.
     fn clone(&self) -> Self {
         let mut clone = Self::with_capacity(self.max_buffers);
+        if self.max_bytes.is_some() {
+            // Avoid Vec growth rounding 48 descriptors up to 64, which would
+            // exceed the configured-cache metadata used by admission estimates.
+            clone.buffers = Mutex::new(Vec::with_capacity(self.max_buffers));
+        }
         clone.max_bytes = self.max_bytes;
         clone.reuse_padding = self.reuse_padding;
         clone

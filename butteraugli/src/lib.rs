@@ -517,6 +517,7 @@ impl ButteraugliParams {
     /// and pixels are unchanged. The default retains at most eight planes,
     /// scaling with image dimensions. An explicit budget retains at most 48
     /// buffers within this byte limit; storage is allocated only as needed.
+    /// The limit counts float-buffer capacities; cache bookkeeping is additional.
     ///
     /// Applies to [`ButteraugliReference`] comparisons and the whole-image
     /// `butteraugli::linear_planes::Scorer` when that feature is enabled. One-shot
