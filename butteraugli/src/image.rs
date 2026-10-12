@@ -614,7 +614,11 @@ mod tests {
         assert_eq!(pool.buffers.lock().unwrap().len(), 2);
         assert_eq!(pool.take(16), vec![3.0; 16]);
         assert_eq!(pool.take(8), vec![2.0; 8]);
-        assert_eq!(pool.take(4), vec![0.0; 4]);
+        let fresh = pool.take(4);
+        assert_eq!(fresh.len(), 4);
+        assert_eq!(fresh.capacity(), 4);
+        #[cfg(not(feature = "unsafe-performance"))]
+        assert_eq!(fresh, vec![0.0; 4]);
     }
 
     #[test]
