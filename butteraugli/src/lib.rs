@@ -517,6 +517,8 @@ impl ButteraugliParams {
     /// and pixels are unchanged. The automatic default budgets 24 padded planes,
     /// capped at 256 MiB per reference. Every comparison cache retains at most 48
     /// buffers within this byte limit; storage is allocated only as needed.
+    /// Explicit budgets are never rounded up. A budget of `1` byte retains no
+    /// scratch buffers because no nonempty float buffer fits.
     /// The limit counts float-buffer capacities; cache bookkeeping is additional.
     ///
     /// Applies to [`ButteraugliReference`] comparisons and the whole-image

@@ -547,7 +547,8 @@ impl ScorerBuilder {
 
     /// Set retained scratch-cache bytes for [`Walk::WholeImage`].
     ///
-    /// `0` disables caching. The automatic default budgets 24 padded planes,
+    /// Explicit budgets are never rounded up; `0` or `1` retains no scratch
+    /// buffers. The automatic default budgets 24 padded planes,
     /// capped at 256 MiB per reference.
     /// This does not bound peak working memory and is ignored for strips.
     /// See [`crate::ButteraugliParams::with_scratch_cache_bytes`].

@@ -68,7 +68,9 @@ With `linear-planes`, the same override is
 `scratch_cache_bytes()` returns `None` for automatic sizing or `Some(bytes)` for
 an override. One-shot and strip calls ignore this cache setting. Whole-image
 construction uses its smaller eight-buffer pool before configuring the reuse
-cache; cloning preserves the policy with an empty cache.
+cache; cloning preserves the policy with an empty cache. Explicit budgets have
+no minimum and are never rounded up: `1` byte retains no scratch buffers because
+no nonempty float buffer fits.
 
 **Cache bytes are not peak RSS.** The limit counts idle float-buffer capacities,
 not persistent reference data, active scratch, inputs, outputs, or allocator and

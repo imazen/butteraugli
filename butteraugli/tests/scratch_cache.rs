@@ -19,7 +19,7 @@ fn byte_budgets_preserve_strided_scores_and_bound_idle_storage() {
                 ButteraugliParams::default(),
             )
             .unwrap();
-            for bytes in [0, 1024, 1024 * 1024, 32 * 1024 * 1024] {
+            for bytes in [0, 1, 1024, 1024 * 1024, 32 * 1024 * 1024] {
                 let params = ButteraugliParams::default().with_scratch_cache_bytes(bytes);
                 let mut configured = ButteraugliReference::new_linear_planar(
                     &src,
@@ -57,6 +57,9 @@ fn byte_budgets_preserve_strided_scores_and_bound_idle_storage() {
                             expected.diffmap.as_ref().unwrap().buf()
                         );
                         assert!(r.memory_bytes() - r.precompute_bytes() <= bytes);
+                        if bytes < size_of::<f32>() {
+                            assert_eq!(r.memory_bytes(), r.precompute_bytes());
+                        }
                         assert!(r.memory_bytes() < peak);
                     }
                 }
