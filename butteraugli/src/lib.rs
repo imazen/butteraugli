@@ -405,6 +405,7 @@ pub struct ButteraugliParams {
     intensity_target: f32,
     compute_diffmap: bool,
     single_resolution: bool,
+    scratch_cache_bytes: Option<usize>,
 }
 
 impl Default for ButteraugliParams {
@@ -415,6 +416,7 @@ impl Default for ButteraugliParams {
             intensity_target: 80.0,
             compute_diffmap: false,
             single_resolution: false,
+            scratch_cache_bytes: None,
         }
     }
 }
@@ -505,6 +507,35 @@ impl ButteraugliParams {
     #[must_use]
     pub fn single_resolution(&self) -> bool {
         self.single_resolution
+    }
+
+    /// Set the maximum bytes retained as idle scratch by a reused reference.
+    ///
+    /// This is a cache limit, not a limit on peak working memory, the reference
+    /// precompute, input pixels, or returned diffmaps. `0` disables caching
+    /// between comparisons. Larger budgets can reduce allocation work; scores
+    /// and pixels are unchanged. The automatic default budgets 24 padded planes,
+    /// capped at 256 MiB per reference. Every comparison cache retains at most 48
+    /// buffers within this byte limit; storage is allocated only as needed.
+    /// Explicit budgets are never rounded up. A budget of `1` byte retains no
+    /// scratch buffers because no nonempty float buffer fits.
+    /// The limit counts float-buffer capacities; cache bookkeeping is additional.
+    ///
+    /// Applies to [`ButteraugliReference`] comparisons and the whole-image
+    /// `butteraugli::linear_planes::Scorer` when that feature is enabled. One-shot
+    /// and strip calls keep their transient pools and ignore this setting.
+    /// [`ButteraugliReference::estimated_planar_peak_bytes`] includes the budget.
+    #[must_use]
+    pub fn with_scratch_cache_bytes(mut self, bytes: usize) -> Self {
+        self.scratch_cache_bytes = Some(bytes);
+        self
+    }
+
+    /// The explicit idle scratch-cache budget, or `None` for the automatic
+    /// image-sized budget capped at 256 MiB. See [`Self::with_scratch_cache_bytes`].
+    #[must_use]
+    pub fn scratch_cache_bytes(&self) -> Option<usize> {
+        self.scratch_cache_bytes
     }
 
     /// Validates that all parameter values are in acceptable ranges.

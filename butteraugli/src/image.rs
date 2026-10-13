@@ -7,6 +7,24 @@ use imgref::ImgVec;
 use std::ops::{Index, IndexMut};
 use std::sync::Mutex;
 
+/// Largest padded plane used by Malta and transposed blur, in bytes.
+pub(crate) fn padded_plane_bytes(width: usize, height: usize) -> Option<usize> {
+    let w = width.checked_add(8)?;
+    let h = height.checked_add(8)?;
+    let rows = (w.checked_add(15)? & !15).checked_mul(h)?;
+    let transposed = (h.checked_add(15)? & !15).checked_mul(w)?;
+    rows.max(transposed).checked_mul(size_of::<f32>())
+}
+
+/// Image-sized reuse for small references, bounded retention for large ones.
+pub(crate) fn automatic_scratch_cache_bytes(width: usize, height: usize) -> Option<usize> {
+    Some(
+        padded_plane_bytes(width, height)?
+            .saturating_mul(24)
+            .min(256 * 1024 * 1024),
+    )
+}
+
 /// Reusable buffer pool for `ImageF` allocations.
 ///
 /// Avoids repeated mmap/munmap for large temporary buffers. Thread-safe via
@@ -16,6 +34,8 @@ use std::sync::Mutex;
 pub struct BufferPool {
     buffers: Mutex<Vec<Vec<f32>>>,
     max_buffers: usize,
+    max_bytes: Option<usize>,
+    reuse_padding: bool,
 }
 
 impl core::fmt::Debug for BufferPool {
@@ -24,6 +44,8 @@ impl core::fmt::Debug for BufferPool {
         f.debug_struct("BufferPool")
             .field("cached_buffers", &count)
             .field("max_buffers", &self.max_buffers)
+            .field("max_bytes", &self.max_bytes)
+            .field("reuse_padding", &self.reuse_padding)
             .finish()
     }
 }
@@ -46,19 +68,56 @@ impl BufferPool {
         Self {
             buffers: Mutex::new(Vec::new()),
             max_buffers,
+            max_bytes: None,
+            reuse_padding: false,
         }
     }
 
-    /// Takes a buffer with exactly `needed` capacity, allocating if absent.
+    /// Configure only the comparison cache after persistent planes are built.
+    pub(crate) fn configure(&mut self, bytes: Option<usize>) {
+        self.max_bytes = bytes;
+        if let Some(limit) = bytes {
+            self.max_buffers = MAX_CONFIGURED_POOL_BUFFERS;
+            // Reference construction used an exact-shape, eight-buffer pool.
+            // Trim its idle storage before the first configured comparison.
+            let mut pool = self.buffers.lock().unwrap();
+            let additional = MAX_CONFIGURED_POOL_BUFFERS.saturating_sub(pool.len());
+            pool.reserve_exact(additional);
+            while pool
+                .iter()
+                .map(|b| b.capacity() * size_of::<f32>())
+                .sum::<usize>()
+                > limit
+            {
+                pool.pop();
+            }
+            self.reuse_padding = true;
+        }
+    }
+
+    /// Takes a buffer for `needed` elements, preferring exact capacity.
     /// Returns stale data — caller must zero-fill if needed.
     ///
     /// With `unsafe-performance`, new allocations skip zero-fill entirely.
     pub(crate) fn take(&self, needed: usize) -> Vec<f32> {
         let mut pool = self.buffers.lock().unwrap();
-        // Keep capacities tied to the requested shape. Lending a full-size
-        // buffer to a half-size plane makes pre-allocation accounting depend
-        // on the interleaving of both scales and every previous comparison.
-        let best_idx = pool.iter().position(|buf| buf.capacity() == needed);
+        // Exact shapes remain preferred. Configured comparison caches may
+        // reuse padding-sized allocations within a scale, never full planes
+        // for half-size inputs. Persistent construction remains exact-sized.
+        let best_idx = pool
+            .iter()
+            .position(|buf| buf.capacity() == needed)
+            .or_else(|| {
+                if !self.reuse_padding {
+                    return None;
+                }
+                let largest = needed.saturating_add(needed / 8);
+                pool.iter()
+                    .enumerate()
+                    .filter(|(_, buf)| buf.capacity() >= needed && buf.capacity() <= largest)
+                    .min_by_key(|(_, buf)| buf.capacity())
+                    .map(|(idx, _)| idx)
+            });
         if let Some(idx) = best_idx {
             let mut buf = pool.swap_remove(idx);
             drop(pool); // release lock before potential realloc
@@ -108,25 +167,52 @@ impl BufferPool {
     /// (16 / 24 / 48) reintroduced the regression in proportion to the
     /// cap.
     pub(crate) fn put(&self, buf: Vec<f32>) {
-        let mut pool = self.buffers.lock().unwrap();
-        if pool.len() < self.max_buffers {
-            pool.push(buf);
-        } else if let Some((idx, smallest)) = pool
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, cached)| cached.capacity())
-        {
-            // Both scales share this bounded pool. The half-resolution stage
-            // can finish first and fill it with small planes, otherwise making
-            // every subsequent full-resolution comparison allocate again.
-            // Keep the same buffer-count and worst-case byte limits, preferring
-            // the more expensive full-resolution allocations.
-            if smallest.capacity() < buf.capacity() {
+        // Preserve the default eight-buffer path without byte accounting.
+        if self.max_bytes.is_none() {
+            let mut pool = self.buffers.lock().unwrap();
+            if pool.len() < self.max_buffers {
+                pool.push(buf);
+            } else if let Some((idx, smallest)) =
+                pool.iter().enumerate().min_by_key(|(_, b)| b.capacity())
+                && smallest.capacity() < buf.capacity()
+            {
                 let displaced = core::mem::replace(&mut pool[idx], buf);
                 drop(pool);
                 drop(displaced);
             }
+            return;
         }
+        if self
+            .max_bytes
+            .is_some_and(|limit| buf.capacity().saturating_mul(size_of::<f32>()) > limit)
+        {
+            return; // An oversized plane must not evict smaller, usable buffers.
+        }
+        let mut pool = self.buffers.lock().unwrap();
+        let mut displaced = Vec::new();
+        loop {
+            let retained: usize = pool.iter().map(|b| b.capacity() * size_of::<f32>()).sum();
+            let fits = self.max_bytes.is_none_or(|limit| {
+                retained.saturating_add(buf.capacity().saturating_mul(size_of::<f32>())) <= limit
+            });
+            if pool.len() < self.max_buffers && fits {
+                pool.push(buf);
+                break;
+            }
+            let Some((idx, smallest)) = pool
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, cached)| cached.capacity())
+            else {
+                break;
+            };
+            if smallest.capacity() >= buf.capacity() {
+                break;
+            }
+            displaced.push(pool.swap_remove(idx));
+        }
+        drop(pool);
+        drop(displaced);
     }
 
     /// Drains all cached buffers from the pool, freeing the memory.
@@ -151,17 +237,28 @@ impl BufferPool {
     }
 }
 
-/// Maximum number of cached buffers retained by a single [`BufferPool`].
+/// Default maximum number of cached buffers retained by a [`BufferPool`].
 ///
 /// See [`BufferPool::put`] for the rationale behind 8 (down from 48 in
 /// butteraugli 0.9.3). Exposed `pub(crate)` so the precompute module's
 /// tests can assert the cap is honored.
 pub(crate) const MAX_POOL_BUFFERS: usize = 8;
 
+/// Descriptor bound when the caller supplies an explicit byte budget.
+pub(crate) const MAX_CONFIGURED_POOL_BUFFERS: usize = 48;
+
 impl Clone for BufferPool {
     /// Clone creates a fresh empty pool — the clone does not share buffers.
     fn clone(&self) -> Self {
-        Self::new()
+        let mut clone = Self::with_capacity(self.max_buffers);
+        if self.max_bytes.is_some() {
+            // Avoid Vec growth rounding 48 descriptors up to 64, which would
+            // exceed the configured-cache metadata used by admission estimates.
+            clone.buffers = Mutex::new(Vec::with_capacity(self.max_buffers));
+        }
+        clone.max_bytes = self.max_bytes;
+        clone.reuse_padding = self.reuse_padding;
+        clone
     }
 }
 

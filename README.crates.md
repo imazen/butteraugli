@@ -39,6 +39,53 @@ root, so you don't need to add `imgref` or `rgb` to your own `Cargo.toml`. If
 your decoder hands you a flat `Vec<u8>`, see
 [From a flat `Vec<u8>`](#from-a-flat-vecu8-of-rgb-bytes) below.
 
+## Speed and memory
+
+For one reference and many candidates, use `ButteraugliReference` or the
+`linear-planes` feature's `ScorerBuilder`: both reuse reference-side analysis.
+Scratch-cache settings change allocation behavior, not scores or diffmap pixels.
+The cache API and automatic policy below are part of **unreleased 0.9.4**
+([review PR](https://github.com/imazen/butteraugli/pull/17)).
+
+| Choice | API | Speed and RAM characteristics |
+|---|---|---|
+| **Automatic (default)** | `ButteraugliParams::default()` | Budget 24 padded image planes, capped at **256 MiB per reference**. Smaller images get an image-sized reuse cache; large images stop growing retained scratch. |
+| **Fast reuse** | `.with_scratch_cache_bytes(bytes)` | A larger budget permits more reuse between candidates and can reduce allocation/zero-fill work. Up to 48 buffers; memory is allocated as needed. Tune the bytes for your image sizes and number of simultaneous references. |
+| **Low retained memory** | `.with_scratch_cache_bytes(0)` | Keep the reference precompute, retain no idle scratch. Comparisons allocate scratch again, so this trades reuse for lower retained RAM. Active working memory remains. |
+| **Lower peak working memory** | `butteraugli_strip(..., rows)` or `ScorerBuilder::with_walk(Walk::Strip(...))` | Process strips plus halo rows instead of full-image working planes. Smaller strips reduce those planes but repeat halo work. See [strip modes and score limits](#repeated-comparisons-and-bounded-memory). |
+
+```rust
+use butteraugli::{ButteraugliParams, ButteraugliReference};
+
+let automatic = ButteraugliParams::default();
+let lowmem = ButteraugliParams::default().with_scratch_cache_bytes(0);
+// Illustrative explicit budget, not a measured optimum for every image:
+let fast = ButteraugliParams::default().with_scratch_cache_bytes(512 * 1024 * 1024);
+let reference = ButteraugliReference::new(&ref_rgb, width, height, fast)?;
+let result = reference.compare(&candidate_rgb)?;
+```
+
+With `linear-planes`, the same override is
+`ScorerBuilder::new().with_scratch_cache_bytes(bytes).build(&reference_planes)`.
+`scratch_cache_bytes()` returns `None` for automatic sizing or `Some(bytes)` for
+an override. One-shot and strip calls ignore this cache setting. Whole-image
+construction uses its smaller eight-buffer pool before configuring the reuse
+cache; cloning preserves the policy with an empty cache. Explicit budgets have
+no minimum and are never rounded up: `1` byte retains no scratch buffers because
+no nonempty float buffer fits.
+
+**Cache bytes are not peak RSS.** The limit counts idle float-buffer capacities,
+not persistent reference data, active scratch, inputs, outputs, or allocator and
+cache bookkeeping. Budget each concurrent reference separately. Use
+`estimated_planar_peak_bytes(width, height, &params)` for planar admission
+accounting, `memory_bytes()` / `precompute_bytes()` to inspect retained storage,
+and `shrink_to_fit()` to release idle scratch between batches.
+
+The automatic policy is a bounded starting point, not a claim of optimal speed.
+Quiet-host tuning is deferred; the
+[configuration record](https://github.com/imazen/butteraugli/blob/scratch-cache-budget/benchmarks/cache_tuning_2026-10-12.md)
+labels the earlier busy-host measurements as exploratory.
+
 ## What is butteraugli?
 
 Butteraugli estimates the perceived difference between two images using a model
@@ -268,6 +315,11 @@ OOM. On a live reference, `precompute_bytes()` reports the persistent precompute
 footprint and `memory_bytes()` the full retained footprint (precompute + strip
 source + idle buffer pool). `width()`, `height()`, and `params()` read back the
 reference's configuration.
+
+**Tuning scratch retention.** The [speed and memory choices](#speed-and-memory)
+apply to repeated whole-image comparisons. Automatic retention scales with the
+image up to 256 MiB; an explicit byte budget overrides it, and zero disables
+idle caching. This does not limit active working memory or peak RSS.
 
 **Reclaiming memory.** `shrink_to_fit()` drains the cached buffer pool (one
 re-allocation on the next `compare`, no loss of the warm-reference speedup);
@@ -629,3 +681,9 @@ full text.
 [imageflow-dotnet]: https://github.com/imazen/imageflow-dotnet
 [imageflow-node]: https://github.com/imazen/imageflow-node
 [imageflow-go]: https://github.com/imazen/imageflow-go
+
+## Margarine research
+
+The unpublished Margarine approximation and its evaluation records moved to
+[zenmetrics](https://github.com/imazen/zenmetrics/tree/master/crates/margarine).
+Butteraugli remains the independent reference metric.

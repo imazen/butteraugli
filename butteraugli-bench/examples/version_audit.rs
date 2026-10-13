@@ -99,6 +99,16 @@ fn prepare_pair(photo: &image::RgbImage, w: usize, h: usize) -> ([Vec<f32>; 3], 
 }
 
 // Separate processes let /usr/bin/time -v measure each backend independently.
+fn current_params(args: &[String]) -> ButteraugliParams {
+    let params = ButteraugliParams::default();
+    match args.iter().find_map(|s| s.strip_prefix("--cache-bytes=")) {
+        Some(bytes) => {
+            params.with_scratch_cache_bytes(bytes.parse().expect("cache bytes must be an integer"))
+        }
+        None => params,
+    }
+}
+
 fn profile_version(args: &[String], version: &str) {
     let option = |name: &str, fallback: &str| {
         args.iter()
@@ -134,7 +144,7 @@ fn profile_version(args: &[String], version: &str) {
                 run(&mut || { let r = reference.compare_linear_planar(&dst[0], &dst[1], &dst[2], w).unwrap(); (r.score, r.pnorm_3) });
             }
             "current" => {
-                let reference = ButteraugliReference::new_linear_planar(&src[0], &src[1], &src[2], w, h, w, ButteraugliParams::default()).unwrap();
+                let reference = ButteraugliReference::new_linear_planar(&src[0], &src[1], &src[2], w, h, w, current_params(args)).unwrap();
                 run(&mut || { let r = reference.compare_linear_planar(&dst[0], &dst[1], &dst[2], w).unwrap(); (r.score, r.pnorm_3) });
                 println!("RETAINED bytes={} precompute_bytes={}", reference.memory_bytes(), reference.precompute_bytes());
             }
@@ -145,6 +155,10 @@ fn profile_version(args: &[String], version: &str) {
 
 fn main() {
     let args: Vec<_> = std::env::args().collect();
+    println!(
+        "CONFIG scratch_cache_bytes={:?}",
+        current_params(&args).scratch_cache_bytes()
+    );
     if let Some(version) = args.iter().find_map(|s| s.strip_prefix("--profile=")) {
         profile_version(&args, version);
         return;
@@ -199,7 +213,7 @@ fn main() {
                     continue;
                 }
                 let map = mode == "warm-map";
-                let params = ButteraugliParams::default().with_compute_diffmap(map);
+                let params = current_params(&args).with_compute_diffmap(map);
                 let old_params = OldParams::default().with_compute_diffmap(map);
                 assert_eq!(params.intensity_target(), old_params.intensity_target());
                 assert_eq!(params.single_resolution(), old_params.single_resolution());
@@ -250,7 +264,12 @@ fn main() {
                 if scores_only {
                     continue;
                 }
-                let result = zenbench::run_gated(zenbench::GateConfig::disabled(), |suite| {
+                let gate = if args.iter().any(|arg| arg == "--ungated") {
+                    zenbench::GateConfig::disabled()
+                } else {
+                    zenbench::GateConfig::strict()
+                };
+                let result = zenbench::run_gated(gate, |suite| {
                     suite.compare(label, |group| {
                         group
                             .config()
@@ -320,6 +339,11 @@ fn main() {
                         });
                     });
                 });
+                println!(
+                    "GATE waits={} unreliable={}",
+                    result.gate_waits, result.unreliable
+                );
+                assert!(!result.unreliable, "zenbench rejected this contended run");
                 print!("{}", result.to_csv());
             }
         }

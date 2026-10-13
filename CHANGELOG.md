@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `ButteraugliParams::with_scratch_cache_bytes` and the matching planar
+  scorer builder setting to bound idle scratch by bytes. Zero disables the
+  comparison cache; the automatic default budgets 24 padded planes, capped at
+  256 MiB per reference. Scores and pixels are unchanged. The estimate includes
+  configured cache storage.
+
 - Cooperative-cancellation polling throughout the comparison pipeline.
   `*_stop` variants of the blur, Malta, opsin, mask, and
   frequency-separation stages are threaded through `compute_diffmap_*` and

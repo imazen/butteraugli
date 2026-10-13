@@ -48,5 +48,14 @@ audit-extract log output:
     python3 butteraugli-bench/scripts/extract_version_audit.py {{quote(log)}} {{quote(output)}}
 
 # Run exactly one Rust version per process for external RSS/allocation profiling.
-audit-profile image version size="1920x1080" threads="8" calls="20":
-    target/release/examples/version_audit {{quote(image)}} --profile={{version}} --size={{size}} --threads={{threads}} --calls={{calls}}
+audit-profile image version size="1920x1080" threads="8" calls="20" +args="":
+    target/release/examples/version_audit {{quote(image)}} --profile={{version}} --size={{size}} --threads={{threads}} --calls={{calls}} {{args}}
+
+# Summarize complete paired cache runs and independent RSS profiles.
+audit-cache-summary logs output +args="":
+    python3 butteraugli-bench/scripts/cache_budget_summary.py {{quote(logs)}} {{quote(output)}} {{args}}
+
+# Cache parity in safe and existing opt-in allocation modes.
+audit-cache-test:
+    cargo test -p butteraugli --test scratch_cache --features linear-planes
+    cargo test -p butteraugli --test scratch_cache --features linear-planes,unsafe-performance
