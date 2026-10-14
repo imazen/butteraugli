@@ -1,7 +1,7 @@
 # butteraugli [![CI](https://img.shields.io/github/actions/workflow/status/imazen/butteraugli/ci.yml?style=flat-square&label=CI)](https://github.com/imazen/butteraugli/actions/workflows/ci.yml) [![crates.io](https://img.shields.io/crates/v/butteraugli?style=flat-square)](https://crates.io/crates/butteraugli) [![lib.rs](https://img.shields.io/crates/v/butteraugli?style=flat-square&label=lib.rs&color=blue)](https://lib.rs/crates/butteraugli) [![docs.rs](https://img.shields.io/docsrs/butteraugli?style=flat-square)](https://docs.rs/butteraugli) ![MSRV](https://img.shields.io/badge/MSRV-1.89-blue?style=flat-square) [![license](https://img.shields.io/crates/l/butteraugli?style=flat-square)](#license) [![codecov](https://img.shields.io/codecov/c/github/imazen/butteraugli?style=flat-square)](https://codecov.io/gh/imazen/butteraugli)
 
-A pure-Rust port of **butteraugli**, the perceptual image-difference metric from
-Google's [libjxl](https://github.com/libjxl/libjxl). It models human vision —
+A pure-Rust port of **butteraugli**, the perceptual image-difference metric originated
+by Jyrki Alakuijala and maintained in [libjxl](https://github.com/libjxl/libjxl). It models human vision —
 opsin dynamics, an opponent XYB color space, visual masking, and multi-scale
 frequency analysis — to estimate how different two images *look*, where
 pixel-wise metrics like PSNR and MSE do not. Scores are validated against

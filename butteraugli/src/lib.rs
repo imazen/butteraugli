@@ -1,6 +1,6 @@
 //! # Butteraugli
 //!
-//! Butteraugli is a perceptual image quality metric developed by Google.
+//! Butteraugli is a perceptual image quality metric originated by Jyrki Alakuijala.
 //! This is a Rust port of the butteraugli algorithm from libjxl.
 //!
 //! The metric is based on:
