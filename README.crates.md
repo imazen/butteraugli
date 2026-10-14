@@ -2,8 +2,8 @@
 
 # butteraugli
 
-A pure-Rust port of **butteraugli**, the perceptual image-difference metric from
-Google's [libjxl](https://github.com/libjxl/libjxl). It models human vision —
+A pure-Rust port of **butteraugli**, the perceptual image-difference metric originated
+by Jyrki Alakuijala and maintained in [libjxl](https://github.com/libjxl/libjxl). It models human vision —
 opsin dynamics, an opponent XYB color space, visual masking, and multi-scale
 frequency analysis — to estimate how different two images *look*, where
 pixel-wise metrics like PSNR and MSE do not. Scores are validated against
