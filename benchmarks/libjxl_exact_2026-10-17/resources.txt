@@ -1,0 +1,5 @@
+final-isolated: run-heavy: done rc=0 112s | peak-RSS 1.15GiB | min-avail 51295MiB | peak-load 3.47
+neon: run-heavy: done rc=0 37s | peak-RSS 0.42GiB | min-avail 51813MiB | peak-load 2.54
+clippy-pass: run-heavy: done rc=0 7s | peak-RSS 0.33GiB | min-avail 52297MiB | peak-load 1.63
+cli-path-fix: run-heavy: done rc=0 9s | peak-RSS 0.53GiB | min-avail 52251MiB | peak-load 2.39
+final-gates: run-heavy: done rc=0 192s | peak-RSS 0.39GiB | min-avail 51910MiB | peak-load 5.36
