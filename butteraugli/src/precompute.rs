@@ -293,77 +293,49 @@ impl ButteraugliReference {
 
         // Run full-res and half-res in parallel (each with its own BufferPool).
         // The full-res pool is returned and reused for compare calls.
-        let ((full, mut reuse_pool), half) = if params.numerics() == crate::Numerics::LibjxlExact {
-            let pool = BufferPool::new();
-            let psycho =
-                crate::exact::prepare(rgb, width, height, &params, &pool, &enough::Unstoppable)
+        if params.numerics() == crate::Numerics::LibjxlExact {
+            return Self::new_exact(
+                crate::exact::Input::Interleaved(rgb),
+                width,
+                height,
+                params,
+                source,
+            );
+        }
+        let ((full, mut reuse_pool), half) = maybe_join(
+            || {
+                let pool = BufferPool::new();
+                let xyb =
+                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
+                let psycho = separate_frequencies_owned(xyb, &pool, &enough::Unstoppable)
                     .expect("Unstoppable never stops");
-            let mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
-                &psycho.hf,
-                &psycho.uhf,
-                &pool,
-                &enough::Unstoppable,
-            )
-            .expect("Unstoppable never stops");
-            let half = if need_half {
-                let (sub, sw, sh) = crate::diff::subsample_linear_rgb_2x(rgb, width, height);
-                let psycho =
-                    crate::exact::prepare(&sub, sw, sh, &params, &pool, &enough::Unstoppable)
-                        .expect("Unstoppable never stops");
-                let mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
-                    &psycho.hf,
-                    &psycho.uhf,
-                    &pool,
-                    &enough::Unstoppable,
-                )
-                .expect("Unstoppable never stops");
-                Some(ScaleData { psycho, mask })
-            } else {
-                None
-            };
-            ((ScaleData { psycho, mask }, pool), half)
-        } else {
-            maybe_join(
-                || {
+                let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
+                (ScaleData { psycho, mask }, pool)
+            },
+            || {
+                if need_half {
                     let pool = BufferPool::new();
-                    let xyb =
-                        linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
-                    let psycho = separate_frequencies_owned(xyb, &pool, &enough::Unstoppable)
-                        .expect("Unstoppable never stops");
-                    let mask =
-                        crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
-                    (ScaleData { psycho, mask }, pool)
-                },
-                || {
-                    if need_half {
-                        let pool = BufferPool::new();
-                        let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, &pool);
-                        let sub_xyb = linear_rgb_to_xyb_butteraugli(
-                            &sub_rgb,
-                            sw,
-                            sh,
-                            intensity_target,
-                            &pool,
-                        );
-                        pool.put(sub_rgb); // B7b: return subsample buffer to pool
-                        let sub_psycho =
-                            separate_frequencies_owned(sub_xyb, &pool, &enough::Unstoppable)
-                                .expect("Unstoppable never stops");
-                        let sub_mask = crate::mask::precompute_reference_mask(
-                            &sub_psycho.hf,
-                            &sub_psycho.uhf,
-                            &pool,
-                        );
-                        Some(ScaleData {
-                            psycho: sub_psycho,
-                            mask: sub_mask,
-                        })
-                    } else {
-                        None
-                    }
-                },
-            )
-        };
+                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, &pool);
+                    let sub_xyb =
+                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
+                    pool.put(sub_rgb); // B7b: return subsample buffer to pool
+                    let sub_psycho =
+                        separate_frequencies_owned(sub_xyb, &pool, &enough::Unstoppable)
+                            .expect("Unstoppable never stops");
+                    let sub_mask = crate::mask::precompute_reference_mask(
+                        &sub_psycho.hf,
+                        &sub_psycho.uhf,
+                        &pool,
+                    );
+                    Some(ScaleData {
+                        psycho: sub_psycho,
+                        mask: sub_mask,
+                    })
+                } else {
+                    None
+                }
+            },
+        );
 
         let cache_bytes = params
             .scratch_cache_bytes()
@@ -377,6 +349,57 @@ impl ButteraugliReference {
             height,
             params,
             pool: reuse_pool,
+            source,
+        })
+    }
+
+    fn new_exact(
+        input: crate::exact::Input<'_>,
+        width: usize,
+        height: usize,
+        params: ButteraugliParams,
+        source: Option<ReferenceSource>,
+    ) -> Result<Self, ButteraugliError> {
+        let mut pool = BufferPool::new();
+        let scale = |input, width, height| {
+            let psycho =
+                crate::exact::prepare(input, width, height, &params, &pool, &enough::Unstoppable)
+                    .expect("Unstoppable never stops");
+            let mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
+                &psycho.hf,
+                &psycho.uhf,
+                &pool,
+                &enough::Unstoppable,
+            )
+            .expect("Unstoppable never stops");
+            ScaleData { psycho, mask }
+        };
+        let full = scale(input, width, height);
+        let half = if !params.single_resolution()
+            && width >= MIN_SIZE_FOR_SUBSAMPLE
+            && height >= MIN_SIZE_FOR_SUBSAMPLE
+        {
+            let sub = input.subsample(width, height);
+            Some(scale(
+                crate::exact::Input::Interleaved(&sub),
+                width.div_ceil(2),
+                height.div_ceil(2),
+            ))
+        } else {
+            None
+        };
+        let cache_bytes = params
+            .scratch_cache_bytes()
+            .or_else(|| crate::image::automatic_scratch_cache_bytes(width, height))
+            .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
+        pool.configure(Some(cache_bytes));
+        Ok(Self {
+            full,
+            half,
+            width,
+            height,
+            params,
+            pool,
             source,
         })
     }
@@ -428,61 +451,13 @@ impl ButteraugliReference {
         check_finite_f32(&b[..min_size], "planar b")?;
 
         if params.numerics() == crate::Numerics::LibjxlExact {
-            let mut pool = BufferPool::new();
-            let psycho = crate::exact::prepare_planar(
-                [r, g, b],
-                width,
-                height,
-                stride,
-                &params,
-                &pool,
-                &enough::Unstoppable,
-            )
-            .expect("Unstoppable never stops");
-            let make_scale = |psycho: PsychoImage| {
-                let mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
-                    &psycho.hf,
-                    &psycho.uhf,
-                    &pool,
-                    &enough::Unstoppable,
-                )
-                .expect("Unstoppable never stops");
-                ScaleData { psycho, mask }
-            };
-            let full = make_scale(psycho);
-            let half = if !params.single_resolution()
-                && width >= MIN_SIZE_FOR_SUBSAMPLE
-                && height >= MIN_SIZE_FOR_SUBSAMPLE
-            {
-                let sub = crate::exact::subsample_planar([r, g, b], width, height, stride);
-                Some(make_scale(
-                    crate::exact::prepare(
-                        &sub,
-                        width.div_ceil(2),
-                        height.div_ceil(2),
-                        &params,
-                        &pool,
-                        &enough::Unstoppable,
-                    )
-                    .expect("Unstoppable never stops"),
-                ))
-            } else {
-                None
-            };
-            let cache_bytes = params
-                .scratch_cache_bytes()
-                .or_else(|| crate::image::automatic_scratch_cache_bytes(width, height))
-                .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
-            pool.configure(Some(cache_bytes));
-            return Ok(Self {
-                full,
-                half,
+            return Self::new_exact(
+                crate::exact::Input::Planar([r, g, b], stride),
                 width,
                 height,
                 params,
-                pool,
-                source: None,
-            });
+                None,
+            );
         }
 
         let need_half = !params.single_resolution()
@@ -1204,7 +1179,7 @@ impl ButteraugliReference {
                 &self.full.psycho,
                 &self.full.mask,
                 self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
-                rgb,
+                crate::exact::Input::Interleaved(rgb),
                 &self.params,
                 &self.pool,
                 stop,
@@ -1317,12 +1292,11 @@ impl ButteraugliReference {
         stop.check().map_err(ButteraugliError::Cancelled)?;
 
         if self.params.numerics() == crate::Numerics::LibjxlExact {
-            let result = crate::exact::compare_reference_planar(
+            let result = crate::exact::compare_reference(
                 &self.full.psycho,
                 &self.full.mask,
                 self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
-                [r, g, b],
-                stride,
+                crate::exact::Input::Planar([r, g, b], stride),
                 &self.params,
                 &self.pool,
                 stop,
@@ -1456,12 +1430,11 @@ impl ButteraugliReference {
         stop.check().map_err(ButteraugliError::Cancelled)?;
 
         if self.params.numerics() == crate::Numerics::LibjxlExact {
-            let result = crate::exact::compare_reference_planar(
+            let result = crate::exact::compare_reference(
                 &self.full.psycho,
                 &self.full.mask,
                 self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
-                [r, g, b],
-                stride,
+                crate::exact::Input::Planar([r, g, b], stride),
                 &self.params,
                 &self.pool,
                 stop,
