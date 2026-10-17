@@ -59,3 +59,10 @@ audit-cache-summary logs output +args="":
 audit-cache-test:
     cargo test -p butteraugli --test scratch_cache --features linear-planes
     cargo test -p butteraugli --test scratch_cache --features linear-planes,unsafe-performance
+
+# Investigation runner writes raw little-endian f32 diffmaps (top row first).
+libjxl-parity-build:
+    cargo build --release -p butteraugli-cli --example libjxl_parity
+
+libjxl-parity-run reference distorted diffmap +args="":
+    RAYON_NUM_THREADS=1 target/release/examples/libjxl_parity {{quote(reference)}} {{quote(distorted)}} {{quote(diffmap)}} {{args}}
