@@ -4,6 +4,11 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 
 ## Known Bugs
 
+- **2026-10-17 CLI test executable lookup (fixed):** the integration tests
+  assumed `target/debug` relative to the workspace, so all CLI tests failed
+  under `CARGO_TARGET_DIR`. They now use Cargo's `CARGO_BIN_EXE_butteraugli`.
+  No CLI assertions or expected outputs changed.
+
 - **2026-10-12 release audit: warm-reference throughput regressed versus 0.9.3.**
   With equal default features and explicit thread pools, the original current
   eight-buffer cache was 40.6–44.8% slower at 1080p/eight threads, and
