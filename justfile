@@ -114,3 +114,6 @@ libjxl-exact-memory-build:
 
 libjxl-exact-memory binary mode size="2048":
     RAYON_NUM_THREADS=1 /usr/bin/time -v {{quote(binary)}} {{size}} {{size}} {{quote(mode)}}
+
+libjxl-exact-round3-measure:
+    bash benchmarks/libjxl_exact_2026-10-17/round3_measure.sh
