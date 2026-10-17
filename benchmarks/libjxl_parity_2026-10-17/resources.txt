@@ -1,0 +1,11 @@
+reference-build-devtools: run-heavy: done rc=0 27s | peak-RSS 0.58GiB | min-avail 48888MiB | peak-load 5.01
+rust-build: run-heavy: done rc=0 14s | peak-RSS 0.42GiB | min-avail 51440MiB | peak-load 4.81
+latest: run-heavy: done rc=0 20s | peak-RSS 0.95GiB | min-avail 51152MiB | peak-load 4.52
+pin-resumed: run-heavy: done rc=0 19s | peak-RSS 0.95GiB | min-avail 51144MiB | peak-load 2.43
+trace-build: run-heavy: done rc=0 9s | peak-RSS 0.42GiB | min-avail 52259MiB | peak-load 1.80
+trace: run-heavy: done rc=0 8s | peak-RSS 0.07GiB | min-avail 52568MiB | peak-load 1.68
+kernel: run-heavy: done rc=0 3s | peak-RSS 0.29GiB | min-avail 52459MiB | peak-load 1.51
+strict: run-heavy: done rc=0 3s | peak-RSS 0.29GiB | min-avail 52408MiB | peak-load 2.02
+ablations: run-heavy: done rc=0 22s | peak-RSS 0.95GiB | min-avail 51074MiB | peak-load 1.99
+validation: run-heavy: done rc=101 11s | peak-RSS 0.38GiB | min-avail 50990MiB | peak-load 2.82
+validation-data-volume: run-heavy: done rc=0 13s | peak-RSS 0.41GiB | min-avail 51809MiB | peak-load 3.33
