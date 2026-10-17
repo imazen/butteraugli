@@ -403,6 +403,9 @@ pub enum Numerics {
     ///
     /// This mode prioritizes reproducible arithmetic over throughput. It always
     /// uses FIR filtering, including when the `iir-blur` feature is enabled.
+    /// The small-width fallback follows the AVX2 oracle independently of
+    /// dispatch tier. Validation uses a 1e-6 absolute score tolerance against
+    /// libjxl v0.12; last bits can differ from the C++ implementation.
     LibjxlExact,
 }
 

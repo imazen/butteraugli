@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Opt-in `Numerics::LibjxlExact`, selected with
+  `ButteraugliParams::with_numerics` or the planar scorer builder. Default
+  `Fast` arithmetic and outputs are unchanged on the 19-pair validation ladder
+  (`186b648b`, `ceb267cf`).
+
 - Add `ButteraugliParams::with_scratch_cache_bytes` and the matching planar
   scorer builder setting to bound idle scratch by bytes. Zero disables the
   comparison cache; the automatic default budgets 24 padded planes, capped at
