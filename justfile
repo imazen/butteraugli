@@ -117,3 +117,6 @@ libjxl-exact-memory binary mode size="2048":
 
 libjxl-exact-round3-measure:
     bash benchmarks/libjxl_exact_2026-10-17/round3_measure.sh
+
+libjxl-exact-round3-summary:
+    python3 benchmarks/libjxl_exact_2026-10-17/round3_summary.py

@@ -512,7 +512,7 @@ pub(crate) fn linear(
     })
 }
 
-/// Only the half-resolution interleaved input is materialized (3 B/full pixel).
+/// Only half-resolution input is interleaved (12 bytes per half-scale pixel).
 /// Sum order matches diff::subsample_linear_rgb_2x, including odd edges.
 pub(crate) fn subsample_planar(planes: [&[f32]; 3], w: usize, h: usize, stride: usize) -> Vec<f32> {
     let mut out = Vec::with_capacity(w.div_ceil(2) * h.div_ceil(2) * 3);
