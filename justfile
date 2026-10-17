@@ -59,3 +59,11 @@ audit-cache-summary logs output +args="":
 audit-cache-test:
     cargo test -p butteraugli --test scratch_cache --features linear-planes
     cargo test -p butteraugli --test scratch_cache --features linear-planes,unsafe-performance
+
+# Opt-in numerical-policy regression coverage (also runs in native/cross CI).
+exact-test:
+    cargo test -p butteraugli --features linear-planes --lib exact::tests
+    cargo test -p butteraugli --features linear-planes --test exact_numerics
+
+exact-bench:
+    BUTTERAUGLI_BENCH_NO_CPP=1 cargo run --release -p butteraugli-bench --example libjxl_exact_speed

@@ -37,6 +37,15 @@ root, so you don't need to add `imgref` or `rgb` to your own `Cargo.toml`. If
 your decoder hands you a flat `Vec<u8>`, see
 [From a flat `Vec<u8>`](#from-a-flat-vecu8-of-rgb-bytes) below.
 
+## Numerical mode
+
+`Numerics::Fast` is the default. For comparisons against libjxl v0.12,
+select `ButteraugliParams::new().with_numerics(Numerics::LibjxlExact)`
+(or `linear_planes::ScorerBuilder::with_numerics`). Exact uses the pinned
+AVX2 oracle's arithmetic on every SIMD tier and always uses FIR, including
+with `iir-blur`. It costs more CPU time; last bits can still differ from C++.
+See [parity and performance](benchmarks/libjxl-exact.md).
+
 ## Speed and memory
 
 For one reference and many candidates, use `ButteraugliReference` or the

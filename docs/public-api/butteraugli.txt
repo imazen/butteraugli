@@ -6,27 +6,27 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: butteraugli.txt 143 lines (supported surface) | butteraugli.features.txt 194 added (features: avx512,corpus-tests,iir-blur,internals,linear-planes,rayon,unsafe-performance) | butteraugli.internal.txt 18 lines (18 hidden + 0 excluded-feature)
+# files: butteraugli.txt 149 lines (supported surface) | butteraugli.features.txt 195 added (features: avx512,corpus-tests,iir-blur,internals,linear-planes,rayon,unsafe-performance) | butteraugli.internal.txt 20 lines (20 hidden + 0 excluded-feature)
 
 ## summary
 #
 #   pub modules                                 2
-#   pub types (struct/enum/trait/alias)         6
+#   pub types (struct/enum/trait/alias)         7
 #   pub consts/statics                          4
 #   free functions                             11
-#   inherent methods                           87
+#   inherent methods                           89
 #   struct fields                              15
-#   enum variants                               6
+#   enum variants                               8
 #   re-exports                                  6
-#   trait roster entries (type × trait)        15
-#   auto-trait-complete types                   4
+#   trait roster entries (type × trait)        22
+#   auto-trait-complete types                   5
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
-#   (root)                           66
+#   (root)                           71
 #   precompute                       71
 
-## items (136 lines)
+## items (141 lines)
 
 pub mod butteraugli
 pub use Img
@@ -89,17 +89,22 @@ pub ButteraugliError::InvalidParameter::name: &'static str
 pub ButteraugliError::InvalidParameter::reason: &'static str
 pub ButteraugliError::InvalidParameter::value: f64
 pub ButteraugliError::NonFiniteResult
+#[non_exhaustive] pub enum Numerics
+pub Numerics::Fast
+pub Numerics::LibjxlExact
 pub struct ButteraugliParams
 pub fn ButteraugliParams::compute_diffmap(&self) -> bool
 pub fn ButteraugliParams::hf_asymmetry(&self) -> f32
 pub fn ButteraugliParams::intensity_target(&self) -> f32
 pub fn ButteraugliParams::new() -> Self
+pub fn ButteraugliParams::numerics(&self) -> Numerics
 pub fn ButteraugliParams::scratch_cache_bytes(&self) -> core::option::Option<usize>
 pub fn ButteraugliParams::single_resolution(&self) -> bool
 pub fn ButteraugliParams::validate(&self) -> core::result::Result<(), ButteraugliError>
 pub fn ButteraugliParams::with_compute_diffmap(self, bool) -> Self
 pub fn ButteraugliParams::with_hf_asymmetry(self, f32) -> Self
 pub fn ButteraugliParams::with_intensity_target(self, f32) -> Self
+pub fn ButteraugliParams::with_numerics(self, Numerics) -> Self
 pub fn ButteraugliParams::with_scratch_cache_bytes(self, usize) -> Self
 pub fn ButteraugliParams::with_single_resolution(self, bool) -> Self
 pub fn ButteraugliParams::with_xmul(self, f32) -> Self
@@ -165,15 +170,16 @@ pub fn butteraugli_strip_with_stop(imgref::ImgRef<'_, rgb::RGB8>, imgref::ImgRef
 pub fn butteraugli_with_stop(imgref::ImgRef<'_, rgb::RGB8>, imgref::ImgRef<'_, rgb::RGB8>, &ButteraugliParams, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn srgb_to_linear(u8) -> f32
 
-## trait impls (5 types)
+## trait impls (6 types)
 
 ButteraugliError: Clone, Debug, Display, Error, PartialEq
 ButteraugliParams: Clone, Debug, Default
 ButteraugliResult: Clone, Debug
 ButteraugliStripConfig: Clone, Copy, Debug, Default
+Numerics: Clone, Copy, Debug, Default, Eq, Hash, PartialEq
 precompute::ButteraugliReference: Clone
 
 ## auto traits
 
-4 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
+5 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
 precompute::ButteraugliReference: !Freeze

@@ -11,7 +11,7 @@
 //! - `mask_y`: Converts mask value to AC masking factor
 //! - `mask_dc_y`: Converts mask value to DC masking factor
 
-use crate::blur::{gaussian_blur, gaussian_blur_stop};
+use crate::blur::gaussian_blur;
 use crate::consts::{
     COMBINE_CHANNELS_MULS, GLOBAL_SCALE, MASK_BIAS, MASK_DC_Y_MUL, MASK_DC_Y_OFFSET,
     MASK_DC_Y_SCALER, MASK_MUL, MASK_RADIUS, MASK_TO_ERROR_MUL, MASK_Y_MUL, MASK_Y_OFFSET,
@@ -375,6 +375,18 @@ pub(crate) fn compute_mask_from_hf_uhf_stop(
     pool: &BufferPool,
     stop: &dyn Stop,
 ) -> Result<ImageF, enough::StopReason> {
+    compute_mask_from_hf_uhf_stop_numerics::<false>(hf0, uhf0, hf1, uhf1, diff_ac, pool, stop)
+}
+
+pub(crate) fn compute_mask_from_hf_uhf_stop_numerics<const EXACT: bool>(
+    hf0: &[ImageF; 2],
+    uhf0: &[ImageF; 2],
+    hf1: &[ImageF; 2],
+    uhf1: &[ImageF; 2],
+    diff_ac: Option<&mut ImageF>,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<ImageF, enough::StopReason> {
     let stop = stop.may_stop().then_some(stop);
     let width = hf0[0].width();
     let height = hf0[0].height();
@@ -389,8 +401,8 @@ pub(crate) fn compute_mask_from_hf_uhf_stop(
     stop.check()?;
 
     // Blur diff0 and diff1
-    let blurred0 = gaussian_blur_stop(&diff0, MASK_RADIUS, pool, &stop)?;
-    let blurred1 = gaussian_blur_stop(&diff1, MASK_RADIUS, pool, &stop)?;
+    let blurred0 = crate::exact::blur_numerics::<EXACT>(&diff0, MASK_RADIUS, pool, &stop)?;
+    let blurred1 = crate::exact::blur_numerics::<EXACT>(&diff1, MASK_RADIUS, pool, &stop)?;
     diff0.recycle(pool);
     diff1.recycle(pool);
 
@@ -478,6 +490,15 @@ pub(crate) fn precompute_reference_mask_stop(
     pool: &BufferPool,
     stop: &dyn Stop,
 ) -> Result<PrecomputedMask, enough::StopReason> {
+    precompute_reference_mask_stop_numerics::<false>(hf, uhf, pool, stop)
+}
+
+pub(crate) fn precompute_reference_mask_stop_numerics<const EXACT: bool>(
+    hf: &[ImageF; 2],
+    uhf: &[ImageF; 2],
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<PrecomputedMask, enough::StopReason> {
     let stop = stop.may_stop().then_some(stop);
     let width = hf[0].width();
     let height = hf[0].height();
@@ -486,7 +507,7 @@ pub(crate) fn precompute_reference_mask_stop(
     combine_and_precompute(hf, uhf, &mut diff);
     stop.check()?;
 
-    let blurred = gaussian_blur_stop(&diff, MASK_RADIUS, pool, &stop)?;
+    let blurred = crate::exact::blur_numerics::<EXACT>(&diff, MASK_RADIUS, pool, &stop)?;
     diff.recycle(pool);
 
     let mut mask = ImageF::from_pool_dirty(width, height, pool);
@@ -535,6 +556,24 @@ pub(crate) fn apply_mask_correction_precomputed_stop(
     pool: &BufferPool,
     stop: &dyn Stop,
 ) -> Result<(), enough::StopReason> {
+    apply_mask_correction_precomputed_stop_numerics::<false>(
+        precomputed,
+        hf1,
+        uhf1,
+        diff_ac,
+        pool,
+        stop,
+    )
+}
+
+pub(crate) fn apply_mask_correction_precomputed_stop_numerics<const EXACT: bool>(
+    precomputed: &PrecomputedMask,
+    hf1: &[ImageF; 2],
+    uhf1: &[ImageF; 2],
+    diff_ac: Option<&mut ImageF>,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<(), enough::StopReason> {
     let stop = stop.may_stop().then_some(stop);
     let width = hf1[0].width();
     let height = hf1[0].height();
@@ -544,7 +583,7 @@ pub(crate) fn apply_mask_correction_precomputed_stop(
     combine_and_precompute(hf1, uhf1, &mut diff1);
     stop.check()?;
 
-    let blurred1 = gaussian_blur_stop(&diff1, MASK_RADIUS, pool, &stop)?;
+    let blurred1 = crate::exact::blur_numerics::<EXACT>(&diff1, MASK_RADIUS, pool, &stop)?;
     diff1.recycle(pool);
 
     // Accumulate mask-to-error using precomputed reference blur

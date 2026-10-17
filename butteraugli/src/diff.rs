@@ -51,6 +51,7 @@ pub(crate) struct InternalResult {
 /// Minimum image dimension for multi-resolution processing.
 /// Images smaller than this are handled without recursion.
 pub(crate) const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
+pub(crate) const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 
 /// Converts linear RGB f32 buffer to XYB Image3F using butteraugli's OpsinDynamicsImage.
 fn linear_rgb_to_xyb_image_stop(
@@ -678,6 +679,10 @@ pub(crate) fn compute_diffmap_single_resolution_linear(
     params: &ButteraugliParams,
     stop: &dyn Stop,
 ) -> Result<ImageF, enough::StopReason> {
+    if params.numerics() == crate::Numerics::LibjxlExact {
+        return crate::exact::single(rgb1, rgb2, width, height, params, stop);
+    }
+
     let stop = stop.may_stop().then_some(stop);
     let intensity_target = params.intensity_target();
 
@@ -729,8 +734,11 @@ pub(crate) fn compute_diffmap_multiresolution_linear(
     params: &ButteraugliParams,
     stop: &dyn Stop,
 ) -> Result<ImageF, enough::StopReason> {
+    if params.numerics() == crate::Numerics::LibjxlExact {
+        return crate::exact::multires(rgb1, rgb2, width, height, params, stop);
+    }
+
     let stop = stop.may_stop().then_some(stop);
-    const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 
     let need_sub = !params.single_resolution()
         && width >= MIN_SIZE_FOR_SUBSAMPLE
@@ -824,6 +832,10 @@ pub fn compute_butteraugli_linear_impl(
     params: &ButteraugliParams,
     stop: &dyn Stop,
 ) -> Result<InternalResult, ButteraugliError> {
+    if params.numerics() == crate::Numerics::LibjxlExact {
+        return crate::exact::linear(rgb1, rgb2, width, height, params, stop);
+    }
+
     assert_eq!(rgb1.len(), width * height * 3);
     assert_eq!(rgb2.len(), width * height * 3);
 
@@ -872,8 +884,9 @@ pub(crate) fn compute_butteraugli_imgref(
 
     // Fused conversion: ImgRef<RGB8> → linear f32 in one pass (avoids
     // intermediate Vec<u8> and Vec<f32> allocations)
-    let linear1 = imgref_srgb_to_linear_f32(img1);
-    let linear2 = imgref_srgb_to_linear_f32(img2);
+    let convert = |img: ImgRef<RGB8>| crate::exact::srgb_imgref(img, params.numerics());
+    let linear1 = convert(img1);
+    let linear2 = convert(img2);
 
     let mut result =
         compute_butteraugli_linear_impl(&linear1, &linear2, width, height, params, stop)?;

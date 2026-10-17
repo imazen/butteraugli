@@ -387,6 +387,28 @@ impl std::fmt::Display for ButteraugliError {
 
 impl std::error::Error for ButteraugliError {}
 
+mod exact;
+
+/// Arithmetic used by the perceptual comparison pipeline.
+///
+/// The default preserves the crate's optimized arithmetic. The opt-in mode
+/// follows libjxl v0.12's operation order for numerical comparisons.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum Numerics {
+    /// Optimized arithmetic with the historical scores and runtime SIMD dispatch.
+    #[default]
+    Fast,
+    /// libjxl v0.12 kernel, transfer, opsin and reduction operation order.
+    ///
+    /// This mode prioritizes reproducible arithmetic over throughput. It always
+    /// uses FIR filtering, including when the `iir-blur` feature is enabled.
+    /// The small-width fallback follows the AVX2 oracle independently of
+    /// dispatch tier. Validation uses a 1e-6 absolute score tolerance against
+    /// libjxl v0.12; last bits can differ from the C++ implementation.
+    LibjxlExact,
+}
+
 /// Butteraugli comparison parameters.
 ///
 /// Use the builder pattern to construct:
@@ -400,6 +422,7 @@ impl std::error::Error for ButteraugliError {}
 /// ```
 #[derive(Debug, Clone)]
 pub struct ButteraugliParams {
+    numerics: Numerics,
     hf_asymmetry: f32,
     xmul: f32,
     intensity_target: f32,
@@ -411,6 +434,7 @@ pub struct ButteraugliParams {
 impl Default for ButteraugliParams {
     fn default() -> Self {
         Self {
+            numerics: Numerics::Fast,
             hf_asymmetry: 1.0,
             xmul: 1.0,
             intensity_target: 80.0,
@@ -426,6 +450,19 @@ impl ButteraugliParams {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Selects arithmetic. Defaults to [`Numerics::Fast`].
+    #[must_use]
+    pub fn with_numerics(mut self, numerics: Numerics) -> Self {
+        self.numerics = numerics;
+        self
+    }
+
+    /// Returns the selected arithmetic mode.
+    #[must_use]
+    pub fn numerics(&self) -> Numerics {
+        self.numerics
     }
 
     /// Sets the intensity target — the luminance in nits (cd/m²) that a

@@ -464,6 +464,7 @@ impl Scores {
 /// image, no diffmap).
 #[derive(Debug, Clone)]
 pub struct ScorerBuilder {
+    numerics: crate::Numerics,
     intensity_target: f32,
     hf_asymmetry: f32,
     xmul: f32,
@@ -477,6 +478,7 @@ impl Default for ScorerBuilder {
     fn default() -> Self {
         let d = ButteraugliParams::default();
         Self {
+            numerics: crate::Numerics::Fast,
             intensity_target: d.intensity_target(),
             hf_asymmetry: d.hf_asymmetry(),
             xmul: d.xmul(),
@@ -489,6 +491,13 @@ impl Default for ScorerBuilder {
 }
 
 impl ScorerBuilder {
+    /// Selects arithmetic for this scorer. Defaults to [`crate::Numerics::Fast`].
+    #[must_use]
+    pub fn with_numerics(mut self, numerics: crate::Numerics) -> Self {
+        self.numerics = numerics;
+        self
+    }
+
     /// A builder with libjxl-default settings.
     #[must_use]
     pub fn new() -> Self {
@@ -565,6 +574,7 @@ impl ScorerBuilder {
     #[must_use]
     pub fn to_params(&self) -> ButteraugliParams {
         let params = ButteraugliParams::new()
+            .with_numerics(self.numerics)
             .with_intensity_target(self.intensity_target)
             .with_hf_asymmetry(self.hf_asymmetry)
             .with_xmul(self.xmul)

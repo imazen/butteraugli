@@ -55,7 +55,6 @@ jobs:
           - ubuntu-24.04-arm   # Native Linux ARM64
           - ubuntu-22.04       # Ubuntu 22.04 LTS
           - macos-latest       # macOS ARM64 (Apple Silicon)
-          - macos-15-intel     # macOS Intel x86_64
           - windows-latest     # Windows Server 2022
           - windows-11-arm     # Windows 11 ARM64
 
@@ -85,6 +84,9 @@ jobs:
 
       - name: Run cross-arch parity tests
         run: cargo test -p butteraugli --test cross_arch_parity
+
+      - name: Run opt-in exact numerics and SIMD tier parity
+        run: cargo test -p butteraugli --features linear-planes --test exact_numerics
 
       - name: Run strip parity tests
         run: cargo test -p butteraugli --test strip_parity
@@ -143,7 +145,6 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
-          - macos-15-intel
           - windows-latest
           - windows-11-arm
     steps:
@@ -180,6 +181,9 @@ jobs:
         run: cross build -p butteraugli --target ${{ matrix.target }}
       - name: Test (cross/QEMU)
         run: cross test -p butteraugli --lib --target ${{ matrix.target }}
+      - name: Exact numerics and tier parity (cross/QEMU)
+        run: cross test -p butteraugli --features linear-planes --test exact_numerics --target ${{ matrix.target }}
+
       - name: Cross-arch parity (cross/QEMU)
         run: cross test -p butteraugli --test cross_arch_parity --target ${{ matrix.target }}
       # `LinearPlanes` validates `stride * height` with checked_mul and reports

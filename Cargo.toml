@@ -16,8 +16,9 @@ rust-version = "1.89"
 
 [workspace.dependencies]
 butteraugli = { path = "butteraugli", version = "0.9.4" }
-archmage = { version = "0.9.14", features = ["avx512"] }
-magetypes = { version = "0.9.14", features = ["avx512"] }
+# attune preview, pinned to the commit used for 0.9.31-beta.1.
+archmage = { version = "=0.9.31-beta.1", git = "https://github.com/imazen/archmage", rev = "da0ed5deca40ac60df32dcf4f6e7602658b2f959", features = ["avx512"] }
+magetypes = { version = "=0.9.31-beta.1", git = "https://github.com/imazen/archmage", rev = "da0ed5deca40ac60df32dcf4f6e7602658b2f959", features = ["avx512"] }
 clap = { version = "4.6.6", features = ["derive"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 serde = { version = "1.0.229", features = ["derive"] }

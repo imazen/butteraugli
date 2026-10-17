@@ -45,7 +45,7 @@ use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite
 const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
 
 /// Minimum size for computing half-resolution (matches C++ threshold).
-const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
+use crate::diff::MIN_SIZE_FOR_SUBSAMPLE;
 
 /// Precomputed data for a single resolution level.
 #[derive(Clone)]
@@ -172,12 +172,6 @@ impl Clone for ButteraugliReference {
     }
 }
 
-/// Converts sRGB u8 buffer to linear f32.
-fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
-    let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
-    rgb.iter().map(|&v| lut[v as usize]).collect()
-}
-
 impl ButteraugliReference {
     /// Precompute reference data from an sRGB u8 image.
     ///
@@ -220,7 +214,7 @@ impl ButteraugliReference {
 
         // Convert sRGB u8 → linear f32 and delegate.
         // Subsampling must happen in linear space, not gamma-compressed sRGB.
-        let linear = srgb_u8_to_linear_f32(rgb);
+        let linear = crate::exact::srgb_bytes(rgb, params.numerics());
         // 0.9.4 memory fix: retain the original u8 bytes (3 B/pixel)
         // for the strip walker instead of the 12 B/pixel linear f32
         // clone that 0.9.3 stashed. The strip walker re-derives the
@@ -299,6 +293,15 @@ impl ButteraugliReference {
 
         // Run full-res and half-res in parallel (each with its own BufferPool).
         // The full-res pool is returned and reused for compare calls.
+        if params.numerics() == crate::Numerics::LibjxlExact {
+            return Self::new_exact(
+                crate::exact::Input::Interleaved(rgb),
+                width,
+                height,
+                params,
+                source,
+            );
+        }
         let ((full, mut reuse_pool), half) = maybe_join(
             || {
                 let pool = BufferPool::new();
@@ -350,6 +353,57 @@ impl ButteraugliReference {
         })
     }
 
+    fn new_exact(
+        input: crate::exact::Input<'_>,
+        width: usize,
+        height: usize,
+        params: ButteraugliParams,
+        source: Option<ReferenceSource>,
+    ) -> Result<Self, ButteraugliError> {
+        let mut pool = BufferPool::new();
+        let scale = |input, width, height| {
+            let psycho =
+                crate::exact::prepare(input, width, height, &params, &pool, &enough::Unstoppable)
+                    .expect("Unstoppable never stops");
+            let mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
+                &psycho.hf,
+                &psycho.uhf,
+                &pool,
+                &enough::Unstoppable,
+            )
+            .expect("Unstoppable never stops");
+            ScaleData { psycho, mask }
+        };
+        let full = scale(input, width, height);
+        let half = if !params.single_resolution()
+            && width >= MIN_SIZE_FOR_SUBSAMPLE
+            && height >= MIN_SIZE_FOR_SUBSAMPLE
+        {
+            let sub = input.subsample(width, height);
+            Some(scale(
+                crate::exact::Input::Interleaved(&sub),
+                width.div_ceil(2),
+                height.div_ceil(2),
+            ))
+        } else {
+            None
+        };
+        let cache_bytes = params
+            .scratch_cache_bytes()
+            .or_else(|| crate::image::automatic_scratch_cache_bytes(width, height))
+            .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
+        pool.configure(Some(cache_bytes));
+        Ok(Self {
+            full,
+            half,
+            width,
+            height,
+            params,
+            pool,
+            source,
+        })
+    }
+
     /// Creates a new reference from planar linear RGB data.
     ///
     /// Takes three separate channel slices (R, G, B) with the given stride.
@@ -395,6 +449,16 @@ impl ButteraugliReference {
         check_finite_f32(&r[..min_size], "planar r")?;
         check_finite_f32(&g[..min_size], "planar g")?;
         check_finite_f32(&b[..min_size], "planar b")?;
+
+        if params.numerics() == crate::Numerics::LibjxlExact {
+            return Self::new_exact(
+                crate::exact::Input::Planar([r, g, b], stride),
+                width,
+                height,
+                params,
+                None,
+            );
+        }
 
         let need_half = !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
@@ -775,7 +839,9 @@ impl ButteraugliReference {
     pub fn source_linear_rgb_owned(&self) -> Option<Vec<f32>> {
         match self.source.as_ref()? {
             ReferenceSource::Linear(buf) => Some(buf.clone()),
-            ReferenceSource::Srgb(bytes) => Some(srgb_u8_to_linear_f32(bytes)),
+            ReferenceSource::Srgb(bytes) => {
+                Some(crate::exact::srgb_bytes(bytes, self.params.numerics()))
+            }
         }
     }
 
@@ -882,6 +948,9 @@ impl ButteraugliReference {
     /// retained freed pages are excluded: this is not a process RSS limit.
     /// Concurrent comparisons on the same reference need separate accounting.
     /// Interleaved constructors and strip comparisons are outside this contract.
+    /// Exact planar input is copied directly into image planes; its estimate
+    /// additionally covers half-resolution RGB subsampling and transposed FIR scratch.
+    /// Persistent reference storage has the same twelve-plane layout in both modes.
     ///
     /// Pool reuse stays within each scale (including nearby padding), so each is charged
     /// at its own largest plane size, including Malta's four-pixel border and
@@ -936,7 +1005,17 @@ impl ButteraugliReference {
         let pool_metadata = scales
             .checked_mul(cache_buffers)?
             .checked_mul(core::mem::size_of::<Vec<f32>>())?;
-        reference.checked_add(scratch)?.checked_add(pool_metadata)
+        let exact_extra = if params.numerics() == crate::Numerics::LibjxlExact {
+            // Exact uses a half-resolution interleaved RGB subsample and
+            // transposed FIR buffers; charge three additional planes per scale.
+            full.checked_add(half)?.checked_mul(3)?
+        } else {
+            0
+        };
+        reference
+            .checked_add(scratch)?
+            .checked_add(pool_metadata)?
+            .checked_add(exact_extra)
     }
 
     /// Heap bytes of the **persistent precompute** actually held by this
@@ -969,7 +1048,7 @@ impl ButteraugliReference {
         img: imgref::ImgRef<rgb::RGB8>,
         params: ButteraugliParams,
     ) -> Result<Self, ButteraugliError> {
-        let linear = crate::diff::imgref_srgb_to_linear_f32(img);
+        let linear = crate::exact::srgb_imgref(img, params.numerics());
         Self::new_linear(&linear, img.width(), img.height(), params)
     }
 
@@ -1021,7 +1100,7 @@ impl ButteraugliReference {
                 h2: img.height(),
             });
         }
-        let linear = crate::diff::imgref_srgb_to_linear_f32(img);
+        let linear = crate::exact::srgb_imgref(img, self.params.numerics());
         self.compare_linear_with_stop(&linear, stop)
     }
 
@@ -1071,7 +1150,7 @@ impl ButteraugliReference {
         rgb: &[u8],
         stop: &dyn Stop,
     ) -> Result<ButteraugliResult, ButteraugliError> {
-        let linear = srgb_u8_to_linear_f32(rgb);
+        let linear = crate::exact::srgb_bytes(rgb, self.params.numerics());
         self.compare_linear_impl(&linear, stop)
     }
 
@@ -1094,6 +1173,18 @@ impl ButteraugliReference {
         // Cooperative cancellation: outermost per-scale boundary — checked
         // before the scale dispatch below, never inside the kernels.
         stop.check().map_err(ButteraugliError::Cancelled)?;
+
+        if self.params.numerics() == crate::Numerics::LibjxlExact {
+            return crate::exact::compare_reference(
+                &self.full.psycho,
+                &self.full.mask,
+                self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
+                crate::exact::Input::Interleaved(rgb),
+                &self.params,
+                &self.pool,
+                stop,
+            );
+        }
 
         let intensity_target = self.params.intensity_target();
         let width = self.width;
@@ -1199,6 +1290,22 @@ impl ButteraugliReference {
         // Cooperative cancellation: outermost per-scale boundary — checked
         // before the scale dispatch below, never inside the kernels.
         stop.check().map_err(ButteraugliError::Cancelled)?;
+
+        if self.params.numerics() == crate::Numerics::LibjxlExact {
+            let result = crate::exact::compare_reference(
+                &self.full.psycho,
+                &self.full.mask,
+                self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
+                crate::exact::Input::Planar([r, g, b], stride),
+                &self.params,
+                &self.pool,
+                stop,
+            )?;
+            let dm = result.diffmap.expect("internal comparison returns diffmap");
+            diffmap_out.clear();
+            diffmap_out.extend_from_slice(dm.buf());
+            return Ok((result.score, result.pnorm_3));
+        }
 
         let intensity_target = self.params.intensity_target();
         let width = self.width;
@@ -1321,6 +1428,19 @@ impl ButteraugliReference {
         // Cooperative cancellation: outermost per-scale boundary — checked
         // before the scale dispatch below, never inside the kernels.
         stop.check().map_err(ButteraugliError::Cancelled)?;
+
+        if self.params.numerics() == crate::Numerics::LibjxlExact {
+            let result = crate::exact::compare_reference(
+                &self.full.psycho,
+                &self.full.mask,
+                self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
+                crate::exact::Input::Planar([r, g, b], stride),
+                &self.params,
+                &self.pool,
+                stop,
+            )?;
+            return Ok(result);
+        }
 
         let intensity_target = self.params.intensity_target();
         let width = self.width;

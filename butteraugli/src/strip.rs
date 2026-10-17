@@ -94,7 +94,7 @@ use rgb::{RGB, RGB8};
 
 use crate::diff::{
     self, compute_diffmap_multiresolution_linear, compute_diffmap_single_resolution_linear,
-    imgref_rgbf32_to_f32_vec, imgref_srgb_to_linear_f32,
+    imgref_rgbf32_to_f32_vec,
 };
 use crate::image::ImageF;
 use crate::precompute::ButteraugliReference;
@@ -154,18 +154,24 @@ struct StripReducer {
     sum_p6: f64,
     sum_p12: f64,
     pixels: u64,
+    exact_sums: [[f64; 8]; 3],
 }
 
 impl StripReducer {
     /// Accumulate the interior rows of `diffmap`. `interior_y0`
     /// and `interior_y1` are strip-local row indices (0-based into
     /// `diffmap`).
-    fn add_strip(&mut self, diffmap: &ImageF, interior_y0: usize, interior_y1: usize) {
+    fn add_strip<const EXACT: bool>(
+        &mut self,
+        diffmap: &ImageF,
+        interior_y0: usize,
+        interior_y1: usize,
+    ) {
         let width = diffmap.width();
         let mut max_lanes = [0.0f32; 8];
-        let mut sum_p3 = [0.0f64; 8];
-        let mut sum_p6 = [0.0f64; 8];
-        let mut sum_p12 = [0.0f64; 8];
+        let mut sum_p3 = if EXACT { self.exact_sums[0] } else { [0.0; 8] };
+        let mut sum_p6 = if EXACT { self.exact_sums[1] } else { [0.0; 8] };
+        let mut sum_p12 = if EXACT { self.exact_sums[2] } else { [0.0; 8] };
 
         for y in interior_y0..interior_y1 {
             let row = diffmap.row(y);
@@ -208,13 +214,16 @@ impl StripReducer {
         if strip_max > self.max_val {
             self.max_val = strip_max;
         }
+        if EXACT {
+            self.exact_sums = [sum_p3, sum_p6, sum_p12];
+        }
         self.sum_p3 += sum_p3.iter().sum::<f64>();
         self.sum_p6 += sum_p6.iter().sum::<f64>();
         self.sum_p12 += sum_p12.iter().sum::<f64>();
         self.pixels += (interior_y1 - interior_y0) as u64 * width as u64;
     }
 
-    fn finalise(&self, total_pixels: u64) -> (f64, f64) {
+    fn finalise<const EXACT: bool>(&self, total_pixels: u64) -> (f64, f64) {
         debug_assert_eq!(
             self.pixels, total_pixels,
             "strip reducer accumulated {} pixels but image has {}; \
@@ -225,9 +234,27 @@ impl StripReducer {
             return (0.0, 0.0);
         }
         let one_per_pixels = 1.0_f64 / total_pixels as f64;
-        let v0 = (one_per_pixels * self.sum_p3).powf(1.0 / 3.0);
-        let v1 = (one_per_pixels * self.sum_p6).powf(1.0 / 6.0);
-        let v2 = (one_per_pixels * self.sum_p12).powf(1.0 / 12.0);
+        let v0 = (one_per_pixels
+            * if EXACT {
+                self.exact_sums[0].iter().sum::<f64>()
+            } else {
+                self.sum_p3
+            })
+        .powf(1.0 / 3.0);
+        let v1 = (one_per_pixels
+            * if EXACT {
+                self.exact_sums[1].iter().sum::<f64>()
+            } else {
+                self.sum_p6
+            })
+        .powf(1.0 / 6.0);
+        let v2 = (one_per_pixels
+            * if EXACT {
+                self.exact_sums[2].iter().sum::<f64>()
+            } else {
+                self.sum_p12
+            })
+        .powf(1.0 / 12.0);
         let pnorm_3 = (v0 + v1 + v2) / 3.0;
         (self.max_val as f64, pnorm_3)
     }
@@ -336,8 +363,8 @@ fn butteraugli_strip_with_config_and_stop(
         .and_then(|wh| wh.checked_mul(3))
         .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
 
-    let linear1 = imgref_srgb_to_linear_f32(img1);
-    let linear2 = imgref_srgb_to_linear_f32(img2);
+    let linear1 = crate::exact::srgb_imgref(img1, params.numerics());
+    let linear2 = crate::exact::srgb_imgref(img2, params.numerics());
 
     run_strip_walker_linear(
         &linear1,
@@ -578,7 +605,11 @@ pub(crate) fn run_strip_walker_linear(
 
         let interior_y0_in_strip = interior_start - strip_y0;
         let interior_y1_in_strip = interior_end - strip_y0;
-        reducer.add_strip(&diffmap, interior_y0_in_strip, interior_y1_in_strip);
+        if params.numerics() == crate::Numerics::LibjxlExact {
+            reducer.add_strip::<true>(&diffmap, interior_y0_in_strip, interior_y1_in_strip);
+        } else {
+            reducer.add_strip::<false>(&diffmap, interior_y0_in_strip, interior_y1_in_strip);
+        }
 
         if let Some(out) = full_diffmap.as_mut() {
             for (dst_y, src_y) in
@@ -594,7 +625,11 @@ pub(crate) fn run_strip_walker_linear(
     }
 
     let total_pixels = (width as u64) * (height as u64);
-    let (score, pnorm_3) = reducer.finalise(total_pixels);
+    let (score, pnorm_3) = if params.numerics() == crate::Numerics::LibjxlExact {
+        reducer.finalise::<true>(total_pixels)
+    } else {
+        reducer.finalise::<false>(total_pixels)
+    };
 
     if !score.is_finite() {
         return Err(ButteraugliError::NonFiniteResult);
@@ -716,8 +751,7 @@ impl ButteraugliReference {
                      constructor does not retain interleaved source data, \
                      and `drop_strip_source` was not previously called)",
             })?;
-        let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
-        let linear2: Vec<f32> = rgb.iter().map(|&v| lut[v as usize]).collect();
+        let linear2 = crate::exact::srgb_bytes(rgb, self.params().numerics());
 
         // `stop` is checked once per strip inside the walker; non-cancellable
         // callers pass `Unstoppable` (zero-cost).
@@ -883,7 +917,7 @@ impl ButteraugliReference {
                 h2: img.height(),
             });
         }
-        let linear = imgref_srgb_to_linear_f32(img);
+        let linear = crate::exact::srgb_imgref(img, self.params().numerics());
         self.compare_linear_strip_with_stop(&linear, strip_height, stop)
     }
 
