@@ -72,30 +72,213 @@ fn blur5(
         return Ok(out);
     }
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    for y in 0..height {
-        if y % 64 == 0 {
-            stop.check()?;
-        }
-        let row = input.row(y);
-        for x in 0..width {
-            let at = |dx| row[mirror(x as isize + dx, width)];
-            temp.row_mut(y)[x] =
-                (at(-2) + at(2)).mul_add(w[2], (at(-1) + at(1)).mul_add(w[1], at(0) * w[0]));
-        }
-    }
+    blur5_pass::<false>(archmage::ScalarToken, input, &mut temp, w, stop)?;
     let mut out = ImageF::from_pool_dirty(width, height, pool);
-    for y in 0..height {
-        if y % 64 == 0 {
-            stop.check()?;
-        }
-        for x in 0..width {
-            let at = |dy| temp.row(mirror(y as isize + dy, height))[x];
-            out.row_mut(y)[x] =
-                (at(-2) + at(2)).mul_add(w[2], (at(-1) + at(1)).mul_add(w[1], at(0) * w[0]));
-        }
-    }
+    blur5_pass::<true>(archmage::ScalarToken, &temp, &mut out, w, stop)?;
     temp.recycle(pool);
     Ok(out)
+}
+
+#[archmage::attune(make(dispatch, +v4(avx512)), define(f32x8))]
+fn blur5_pass<const VERTICAL: bool>(
+    token: Token,
+    input: &ImageF,
+    out: &mut ImageF,
+    w: [f32; 3],
+    stop: &dyn Stop,
+) -> Result<(), enough::StopReason> {
+    let width = input.width();
+    let weights = w.map(|v| f32x8::splat_t(token, v));
+    for y in 0..input.height() {
+        if y % 64 == 0 {
+            stop.check()?;
+        }
+        let rows = std::array::from_fn::<_, 5, _>(|i| {
+            input.row(if VERTICAL {
+                mirror(y as isize + i as isize - 2, input.height())
+            } else {
+                y
+            })
+        });
+        let scalar = |x: usize| {
+            let at = |i: usize| {
+                rows[i][if VERTICAL {
+                    x
+                } else {
+                    mirror(x as isize + i as isize - 2, width)
+                }]
+            };
+            (at(0) + at(4)).mul_add(w[2], (at(1) + at(3)).mul_add(w[1], at(2) * w[0]))
+        };
+        let (begin, end) = if VERTICAL { (0, width) } else { (2, width - 2) };
+        let dst = out.row_mut(y);
+        for (x, v) in dst[..begin].iter_mut().enumerate() {
+            *v = scalar(x);
+        }
+        let (chunks, tail) = f32x8::partition_slice_mut_t(token, &mut dst[begin..end]);
+        let tail_start = begin + chunks.len() * f32x8::LANES;
+        for (i, chunk) in chunks.iter_mut().enumerate() {
+            let x = begin + i * f32x8::LANES;
+            let at = |j: usize| {
+                f32x8::from_slice_t(token, &rows[j][if VERTICAL { x } else { x + j - 2 }..])
+            };
+            (at(0) + at(4))
+                .mul_add_portable(
+                    weights[2],
+                    (at(1) + at(3)).mul_add_portable(weights[1], at(2) * weights[0]),
+                )
+                .store(chunk);
+        }
+        for (i, v) in tail.iter_mut().enumerate() {
+            *v = scalar(tail_start + i);
+        }
+        for (i, v) in dst[end..].iter_mut().enumerate() {
+            *v = scalar(end + i);
+        }
+    }
+    Ok(())
+}
+
+// Keep each pixel's libjxl summation order; vector lanes are independent pixels.
+#[inline(always)]
+fn fir(k: &[f32], at: impl Fn(usize) -> f32) -> f32 {
+    let radius = k.len() / 2;
+    if k.len() == 7 {
+        at(3) * k[3] + (at(0) + at(6)) * k[0] + (at(1) + at(5)) * k[1] + (at(2) + at(4)) * k[2]
+    } else {
+        let mut sums = [0.0; 4];
+        for i in 0..radius {
+            let t = (at(i) + at(k.len() - 1 - i)) * k[i];
+            if i < 4 {
+                sums[i] = t;
+            } else {
+                sums[i % 4] += t;
+            }
+        }
+        at(radius) * k[radius] + sums[0] + sums[1] + sums[2] + sums[3]
+    }
+}
+
+#[archmage::attune(make(dispatch, +v4(avx512)), define(f32x8))]
+fn blur_pass<const VERTICAL: bool>(
+    token: Token,
+    input: &ImageF,
+    out: &mut ImageF,
+    k: &[f32],
+    sk: &[f32],
+    stop: &dyn Stop,
+) -> Result<(), enough::StopReason> {
+    let width = input.width();
+    let n = k.len();
+    let radius = n / 2;
+    for y in 0..input.height() {
+        if y % 64 == 0 {
+            stop.check()?;
+        }
+        let border = |x: usize| {
+            let pos = if VERTICAL { y } else { x };
+            let length = if VERTICAL { input.height() } else { width };
+            let lo = pos.saturating_sub(radius);
+            let hi = (pos + radius).min(length - 1);
+            let mut z = 0.0;
+            let mut v = 0.0;
+            for j in lo..=hi {
+                let weight = k[j + radius - pos];
+                z += weight;
+                v += if VERTICAL {
+                    input.row(j)[x]
+                } else {
+                    input.row(y)[j]
+                } * weight;
+            }
+            v * (1.0 / z)
+        };
+        let dst = out.row_mut(y);
+        if VERTICAL && (y < radius || y + radius >= input.height()) {
+            // Clipped vertical borders share their normalization across all columns.
+            let lo = y.saturating_sub(radius);
+            let hi = (y + radius).min(input.height() - 1);
+            let mut z = 0.0;
+            for j in lo..=hi {
+                z += k[j + radius - y];
+            }
+            let scale = f32x8::splat_t(token, 1.0 / z);
+            let (chunks, tail) = f32x8::partition_slice_mut_t(token, dst);
+            let tail_start = chunks.len() * f32x8::LANES;
+            for (i, chunk) in chunks.iter_mut().enumerate() {
+                let x = i * f32x8::LANES;
+                let mut v = f32x8::zero_t(token);
+                for j in lo..=hi {
+                    v += f32x8::from_slice_t(token, &input.row(j)[x..])
+                        * f32x8::splat_t(token, k[j + radius - y]);
+                }
+                (v * scale).store(chunk);
+            }
+            for (i, v) in tail.iter_mut().enumerate() {
+                *v = border(tail_start + i);
+            }
+            continue;
+        }
+        let (begin, end) = if VERTICAL {
+            (0, width)
+        } else {
+            (
+                radius.min(width),
+                width.saturating_sub(radius).max(radius.min(width)),
+            )
+        };
+        for (x, v) in dst[..begin].iter_mut().enumerate() {
+            *v = border(x);
+        }
+        let (chunks, tail) = f32x8::partition_slice_mut_t(token, &mut dst[begin..end]);
+        let tail_start = begin + chunks.len() * f32x8::LANES;
+        for (i, chunk) in chunks.iter_mut().enumerate() {
+            let x = begin + i * f32x8::LANES;
+            let at = |j: usize| {
+                f32x8::from_slice_t(
+                    token,
+                    if VERTICAL {
+                        &input.row(y + j - radius)[x..]
+                    } else {
+                        &input.row(y)[x + j - radius..]
+                    },
+                )
+            };
+            let weight = |j| f32x8::splat_t(token, sk[j]);
+            let value = if n == 7 {
+                at(3) * weight(3)
+                    + (at(0) + at(6)) * weight(0)
+                    + (at(1) + at(5)) * weight(1)
+                    + (at(2) + at(4)) * weight(2)
+            } else {
+                let mut sums = [f32x8::zero_t(token); 4];
+                for j in 0..radius {
+                    let t = (at(j) + at(n - 1 - j)) * weight(j);
+                    if j < 4 {
+                        sums[j] = t;
+                    } else {
+                        sums[j % 4] += t;
+                    }
+                }
+                at(radius) * weight(radius) + sums[0] + sums[1] + sums[2] + sums[3]
+            };
+            value.store(chunk);
+        }
+        for (i, v) in tail.iter_mut().enumerate() {
+            let x = tail_start + i;
+            *v = fir(sk, |j| {
+                if VERTICAL {
+                    input.row(y + j - radius)[x]
+                } else {
+                    input.row(y)[x + j - radius]
+                }
+            });
+        }
+        for (i, v) in dst[end..].iter_mut().enumerate() {
+            *v = border(end + i);
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn blur(
@@ -108,60 +291,12 @@ pub(crate) fn blur(
     if k.len() == 5 {
         return blur5(input, &k, pool, stop);
     }
-    fn pass(
-        input: &ImageF,
-        k: &[f32],
-        pool: &BufferPool,
-        stop: &dyn Stop,
-    ) -> Result<ImageF, enough::StopReason> {
-        let n = k.len();
-        let radius = n / 2;
-        let scale = 1.0 / k.iter().sum::<f32>();
-        let sk: Vec<_> = k.iter().map(|&v| v * scale).collect();
-        let mut out = ImageF::from_pool_dirty(input.height(), input.width(), pool);
-        for y in 0..input.height() {
-            if y % 64 == 0 {
-                stop.check()?;
-            }
-            let row = input.row(y);
-            for x in 0..input.width() {
-                let v = if x < radius || x + radius >= input.width() {
-                    let lo = x.saturating_sub(radius);
-                    let hi = (x + radius).min(input.width() - 1);
-                    let mut z = 0.0_f32;
-                    let mut v = 0.0_f32;
-                    for j in lo..=hi {
-                        z += k[j + radius - x];
-                        v += row[j] * k[j + radius - x];
-                    }
-                    v * (1.0 / z)
-                } else {
-                    let r = &row[x - radius..=x + radius];
-                    if n == 7 {
-                        r[3] * sk[3]
-                            + (r[0] + r[6]) * sk[0]
-                            + (r[1] + r[5]) * sk[1]
-                            + (r[2] + r[4]) * sk[2]
-                    } else {
-                        let mut sums = [0.0_f32; 4];
-                        for i in 0..radius {
-                            let t = (r[i] + r[n - 1 - i]) * sk[i];
-                            if i < 4 {
-                                sums[i] = t;
-                            } else {
-                                sums[i % 4] += t;
-                            }
-                        }
-                        r[radius] * sk[radius] + sums[0] + sums[1] + sums[2] + sums[3]
-                    }
-                };
-                out.row_mut(x)[y] = v;
-            }
-        }
-        Ok(out)
-    }
-    let temp = pass(input, &k, pool, stop)?;
-    let out = pass(&temp, &k, pool, stop)?;
+    let scale = 1.0 / k.iter().sum::<f32>();
+    let sk: Vec<_> = k.iter().map(|&v| v * scale).collect();
+    let mut temp = ImageF::from_pool_dirty(input.width(), input.height(), pool);
+    blur_pass::<false>(archmage::ScalarToken, input, &mut temp, &k, &sk, stop)?;
+    let mut out = ImageF::from_pool_dirty(input.width(), input.height(), pool);
+    blur_pass::<true>(archmage::ScalarToken, &temp, &mut out, &k, &sk, stop)?;
     temp.recycle(pool);
     Ok(out)
 }

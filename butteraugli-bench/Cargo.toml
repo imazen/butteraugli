@@ -28,7 +28,7 @@ iai-callgrind = "0.16.1"
 # `testable_dispatch` lets benches/tier_isolation.rs disable the baseline SIMD
 # token (NEON on aarch64) so the scalar arm is real rather than a second
 # measurement of the SIMD path.
-archmage = { version = "0.9.28", features = ["std", "testable_dispatch"] }
+archmage = { workspace = true, features = ["std", "testable_dispatch"] }
 
 [[bench]]
 name = "bench_compare"

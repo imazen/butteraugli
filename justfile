@@ -62,6 +62,7 @@ audit-cache-test:
 
 # Opt-in numerical-policy regression coverage (also runs in native/cross CI).
 exact-test:
+    cargo test -p butteraugli --features linear-planes --lib exact::tests
     cargo test -p butteraugli --features linear-planes --test exact_numerics
 
 exact-bench:

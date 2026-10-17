@@ -93,7 +93,7 @@ enough = "0.4.4"
 
 [dev-dependencies]
 # Exercise scalar and all available SIMD paths in numerics parity tests.
-archmage = { version = "0.9.28", features = ["testable_dispatch"] }
+archmage = { workspace = true, features = ["testable_dispatch"] }
 # Image I/O for testing
 png = "0.18.1"
 
