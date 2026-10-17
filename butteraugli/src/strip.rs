@@ -336,8 +336,16 @@ fn butteraugli_strip_with_config_and_stop(
         .and_then(|wh| wh.checked_mul(3))
         .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
 
-    let linear1 = imgref_srgb_to_linear_f32(img1);
-    let linear2 = imgref_srgb_to_linear_f32(img2);
+    let linear1 = if params.numerics() == crate::Numerics::LibjxlExact {
+        crate::exact::srgb_imgref(img1)
+    } else {
+        imgref_srgb_to_linear_f32(img1)
+    };
+    let linear2 = if params.numerics() == crate::Numerics::LibjxlExact {
+        crate::exact::srgb_imgref(img2)
+    } else {
+        imgref_srgb_to_linear_f32(img2)
+    };
 
     run_strip_walker_linear(
         &linear1,
@@ -883,7 +891,11 @@ impl ButteraugliReference {
                 h2: img.height(),
             });
         }
-        let linear = imgref_srgb_to_linear_f32(img);
+        let linear = if self.params().numerics() == crate::Numerics::LibjxlExact {
+            crate::exact::srgb_imgref(img)
+        } else {
+            imgref_srgb_to_linear_f32(img)
+        };
         self.compare_linear_strip_with_stop(&linear, strip_height, stop)
     }
 

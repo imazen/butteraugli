@@ -220,7 +220,11 @@ impl ButteraugliReference {
 
         // Convert sRGB u8 → linear f32 and delegate.
         // Subsampling must happen in linear space, not gamma-compressed sRGB.
-        let linear = srgb_u8_to_linear_f32(rgb);
+        let linear = if params.numerics() == crate::Numerics::LibjxlExact {
+            rgb.iter().map(|&v| crate::exact::srgb(v)).collect()
+        } else {
+            srgb_u8_to_linear_f32(rgb)
+        };
         // 0.9.4 memory fix: retain the original u8 bytes (3 B/pixel)
         // for the strip walker instead of the 12 B/pixel linear f32
         // clone that 0.9.3 stashed. The strip walker re-derives the
@@ -299,40 +303,77 @@ impl ButteraugliReference {
 
         // Run full-res and half-res in parallel (each with its own BufferPool).
         // The full-res pool is returned and reused for compare calls.
-        let ((full, mut reuse_pool), half) = maybe_join(
-            || {
-                let pool = BufferPool::new();
-                let xyb =
-                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
-                let psycho = separate_frequencies_owned(xyb, &pool, &enough::Unstoppable)
+        let ((full, mut reuse_pool), half) = if params.numerics() == crate::Numerics::LibjxlExact {
+            let pool = BufferPool::new();
+            let psycho =
+                crate::exact::prepare(rgb, width, height, &params, &pool, &enough::Unstoppable)
                     .expect("Unstoppable never stops");
-                let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
-                (ScaleData { psycho, mask }, pool)
-            },
-            || {
-                if need_half {
+            let mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
+                &psycho.hf,
+                &psycho.uhf,
+                &pool,
+                &enough::Unstoppable,
+            )
+            .expect("Unstoppable never stops");
+            let half = if need_half {
+                let (sub, sw, sh) = crate::diff::subsample_linear_rgb_2x(rgb, width, height);
+                let psycho =
+                    crate::exact::prepare(&sub, sw, sh, &params, &pool, &enough::Unstoppable)
+                        .expect("Unstoppable never stops");
+                let mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
+                    &psycho.hf,
+                    &psycho.uhf,
+                    &pool,
+                    &enough::Unstoppable,
+                )
+                .expect("Unstoppable never stops");
+                Some(ScaleData { psycho, mask })
+            } else {
+                None
+            };
+            ((ScaleData { psycho, mask }, pool), half)
+        } else {
+            maybe_join(
+                || {
                     let pool = BufferPool::new();
-                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, &pool);
-                    let sub_xyb =
-                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
-                    pool.put(sub_rgb); // B7b: return subsample buffer to pool
-                    let sub_psycho =
-                        separate_frequencies_owned(sub_xyb, &pool, &enough::Unstoppable)
-                            .expect("Unstoppable never stops");
-                    let sub_mask = crate::mask::precompute_reference_mask(
-                        &sub_psycho.hf,
-                        &sub_psycho.uhf,
-                        &pool,
-                    );
-                    Some(ScaleData {
-                        psycho: sub_psycho,
-                        mask: sub_mask,
-                    })
-                } else {
-                    None
-                }
-            },
-        );
+                    let xyb =
+                        linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
+                    let psycho = separate_frequencies_owned(xyb, &pool, &enough::Unstoppable)
+                        .expect("Unstoppable never stops");
+                    let mask =
+                        crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
+                    (ScaleData { psycho, mask }, pool)
+                },
+                || {
+                    if need_half {
+                        let pool = BufferPool::new();
+                        let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, &pool);
+                        let sub_xyb = linear_rgb_to_xyb_butteraugli(
+                            &sub_rgb,
+                            sw,
+                            sh,
+                            intensity_target,
+                            &pool,
+                        );
+                        pool.put(sub_rgb); // B7b: return subsample buffer to pool
+                        let sub_psycho =
+                            separate_frequencies_owned(sub_xyb, &pool, &enough::Unstoppable)
+                                .expect("Unstoppable never stops");
+                        let sub_mask = crate::mask::precompute_reference_mask(
+                            &sub_psycho.hf,
+                            &sub_psycho.uhf,
+                            &pool,
+                        );
+                        Some(ScaleData {
+                            psycho: sub_psycho,
+                            mask: sub_mask,
+                        })
+                    } else {
+                        None
+                    }
+                },
+            )
+        };
 
         let cache_bytes = params
             .scratch_cache_bytes()
@@ -395,6 +436,11 @@ impl ButteraugliReference {
         check_finite_f32(&r[..min_size], "planar r")?;
         check_finite_f32(&g[..min_size], "planar g")?;
         check_finite_f32(&b[..min_size], "planar b")?;
+
+        if params.numerics() == crate::Numerics::LibjxlExact {
+            let rgb = crate::exact::interleave(r, g, b, width, height, stride);
+            return Self::new_linear_validated(&rgb, width, height, params, None);
+        }
 
         let need_half = !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
@@ -775,7 +821,13 @@ impl ButteraugliReference {
     pub fn source_linear_rgb_owned(&self) -> Option<Vec<f32>> {
         match self.source.as_ref()? {
             ReferenceSource::Linear(buf) => Some(buf.clone()),
-            ReferenceSource::Srgb(bytes) => Some(srgb_u8_to_linear_f32(bytes)),
+            ReferenceSource::Srgb(bytes) => {
+                Some(if self.params.numerics() == crate::Numerics::LibjxlExact {
+                    bytes.iter().map(|&v| crate::exact::srgb(v)).collect()
+                } else {
+                    srgb_u8_to_linear_f32(bytes)
+                })
+            }
         }
     }
 
@@ -1071,7 +1123,11 @@ impl ButteraugliReference {
         rgb: &[u8],
         stop: &dyn Stop,
     ) -> Result<ButteraugliResult, ButteraugliError> {
-        let linear = srgb_u8_to_linear_f32(rgb);
+        let linear = if self.params.numerics() == crate::Numerics::LibjxlExact {
+            rgb.iter().map(|&v| crate::exact::srgb(v)).collect()
+        } else {
+            srgb_u8_to_linear_f32(rgb)
+        };
         self.compare_linear_impl(&linear, stop)
     }
 
@@ -1094,6 +1150,17 @@ impl ButteraugliReference {
         // Cooperative cancellation: outermost per-scale boundary — checked
         // before the scale dispatch below, never inside the kernels.
         stop.check().map_err(ButteraugliError::Cancelled)?;
+
+        if self.params.numerics() == crate::Numerics::LibjxlExact {
+            return crate::exact::compare_reference(
+                &self.full.psycho,
+                self.half.as_ref().map(|s| &s.psycho),
+                rgb,
+                &self.params,
+                &self.pool,
+                stop,
+            );
+        }
 
         let intensity_target = self.params.intensity_target();
         let width = self.width;
@@ -1199,6 +1266,15 @@ impl ButteraugliReference {
         // Cooperative cancellation: outermost per-scale boundary — checked
         // before the scale dispatch below, never inside the kernels.
         stop.check().map_err(ButteraugliError::Cancelled)?;
+
+        if self.params.numerics() == crate::Numerics::LibjxlExact {
+            let rgb = crate::exact::interleave(r, g, b, self.width, self.height, stride);
+            let result = self.compare_linear_impl(&rgb, stop)?;
+            let dm = result.diffmap.expect("internal comparison returns diffmap");
+            diffmap_out.clear();
+            diffmap_out.extend_from_slice(dm.buf());
+            return Ok((result.score, result.pnorm_3));
+        }
 
         let intensity_target = self.params.intensity_target();
         let width = self.width;
@@ -1321,6 +1397,12 @@ impl ButteraugliReference {
         // Cooperative cancellation: outermost per-scale boundary — checked
         // before the scale dispatch below, never inside the kernels.
         stop.check().map_err(ButteraugliError::Cancelled)?;
+
+        if self.params.numerics() == crate::Numerics::LibjxlExact {
+            let rgb = crate::exact::interleave(r, g, b, self.width, self.height, stride);
+            let result = self.compare_linear_impl(&rgb, stop)?;
+            return Ok(result);
+        }
 
         let intensity_target = self.params.intensity_target();
         let width = self.width;
