@@ -104,3 +104,13 @@ libjxl-exact-check:
 
 libjxl-exact-neon:
     CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER='qemu-aarch64 -L /usr/aarch64-linux-gnu' cargo test -p butteraugli --target aarch64-unknown-linux-gnu --test exact_numerics -- --nocapture
+
+# Review qualification; run under run-heavy, with TMPDIR on disk.
+libjxl-exact-round3-check:
+    bash benchmarks/libjxl_exact_2026-10-17/round3_check.sh
+
+libjxl-exact-memory-build:
+    cargo build --release -p butteraugli-cli --example libjxl_memory --example libjxl_parity
+
+libjxl-exact-memory binary mode size="2048":
+    RAYON_NUM_THREADS=1 /usr/bin/time -v {{quote(binary)}} {{size}} {{size}} {{quote(mode)}}

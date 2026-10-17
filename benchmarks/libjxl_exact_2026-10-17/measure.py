@@ -13,6 +13,11 @@ for case in manifest:
         text=subprocess.check_output([binary,case['reference'],case['distorted'],str(path),*(['--exact'] if mode=='exact' else [])],env={**os.environ,'RAYON_NUM_THREADS':'1'},text=True)
         scores[mode]=list(map(float,text.split()))
     expected=main[name]; fast=scores['fast']; exact=scores['exact']
+    previous=next((v.split('=',1)[1] for v in sys.argv[2:] if v.startswith('--exact-baseline-dir=')),None)
+    if previous:
+        prior=next(r for r in csv.DictReader((pathlib.Path(previous)/'parity.tsv').open(),delimiter='\t') if r['case']==name)
+        assert struct.pack('dd',*exact)==struct.pack('dd',float(prior['exact_max']),float(prior['exact_pnorm3'])),('Exact-score drift',name)
+        assert (out/f'{name}.exact.f32').read_bytes()==(pathlib.Path(previous)/f'{name}.exact.f32').read_bytes(),('Exact-map drift',name)
     assert struct.pack('dd',*fast)==struct.pack('dd',float(expected['rust_max']),float(expected['rust_3'])),name
     assert (out/f'{name}.fast.f32').read_bytes()==(root/f'{name}.latest-confirmed.f32').read_bytes(),name
     cpp=[float(expected['cpp_max']),float(expected['cpp_cli_3'])]

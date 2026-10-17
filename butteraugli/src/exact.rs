@@ -164,7 +164,31 @@ pub(crate) fn blur(
     Ok(out)
 }
 
+pub(crate) fn srgb_lut(numerics: crate::Numerics) -> &'static [f32; 256] {
+    static EXACT: std::sync::LazyLock<[f32; 256]> =
+        std::sync::LazyLock::new(|| std::array::from_fn(|i| srgb(i as u8)));
+    match numerics {
+        crate::Numerics::Fast => &crate::opsin::SRGB_TO_LINEAR_LUT,
+        crate::Numerics::LibjxlExact => &EXACT,
+    }
+}
+
+pub(crate) fn srgb_bytes(rgb: &[u8], numerics: crate::Numerics) -> Vec<f32> {
+    let lut = srgb_lut(numerics);
+    rgb.iter().map(|&v| lut[v as usize]).collect()
+}
+
+#[allow(
+    clippy::inline_always,
+    reason = "Inline explicit FMA into archmage target-feature bodies"
+)]
+#[inline(always)]
 fn rational(x: f32, p: &[f32], q: &[f32]) -> f32 {
+    #[allow(
+        clippy::inline_always,
+        reason = "Inline explicit FMA into archmage target-feature bodies"
+    )]
+    #[inline(always)]
     fn horner(x: f32, c: &[f32]) -> f32 {
         let mut y = c[c.len() - 1];
         for &v in c[..c.len() - 1].iter().rev() {
@@ -175,7 +199,7 @@ fn rational(x: f32, p: &[f32], q: &[f32]) -> f32 {
     horner(x, p) / horner(x, q)
 }
 
-pub(crate) fn srgb(v: u8) -> f32 {
+fn srgb(v: u8) -> f32 {
     let x = f32::from(v) * (1.0_f32 / 255.0);
     if x <= 0.04045 {
         x * (1.0_f32 / 12.92)
@@ -200,6 +224,11 @@ pub(crate) fn srgb(v: u8) -> f32 {
     }
 }
 
+#[allow(
+    clippy::inline_always,
+    reason = "Inline explicit FMA into archmage target-feature bodies"
+)]
+#[inline(always)]
 fn gamma(v: f32) -> f32 {
     let x = v.max(0.0) + 9.9710635769299145_f32;
     let bits = x.to_bits() as i32;
@@ -221,6 +250,11 @@ fn gamma(v: f32) -> f32 {
     (19.245013259874995_f32 * std::f32::consts::LN_2).mul_add(log, -23.16046239805755)
 }
 
+#[allow(
+    clippy::inline_always,
+    reason = "Inline explicit FMA into archmage target-feature bodies"
+)]
+#[inline(always)]
 fn absorb(v: [f32; 3]) -> [f32; 3] {
     let [r, g, b] = v;
     [
@@ -256,13 +290,63 @@ pub(crate) fn prepare(
             }
         }
     }
+    prepare_image(image, params, pool, stop)
+}
+
+pub(crate) fn prepare_planar(
+    planes: [&[f32]; 3],
+    w: usize,
+    h: usize,
+    stride: usize,
+    params: &ButteraugliParams,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<PsychoImage, enough::StopReason> {
+    let mut image = Image3F::from_pool_dirty(w, h, pool);
+    for (c, plane) in planes.iter().enumerate() {
+        for y in 0..h {
+            image
+                .plane_mut(c)
+                .row_mut(y)
+                .copy_from_slice(&plane[y * stride..y * stride + w]);
+        }
+    }
+    prepare_image(image, params, pool, stop)
+}
+
+fn prepare_image(
+    image: Image3F,
+    params: &ButteraugliParams,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<PsychoImage, enough::StopReason> {
+    let (w, h) = (image.width(), image.height());
     let blurred = [
         blur(image.plane(0), 1.2, pool, stop)?,
         blur(image.plane(1), 1.2, pool, stop)?,
         blur(image.plane(2), 1.2, pool, stop)?,
     ];
     let mut xyb = Image3F::from_pool_dirty(w, h, pool);
-    let intensity = params.intensity_target();
+    opsin_loop(&image, &blurred, &mut xyb, params.intensity_target(), stop)?;
+    image.recycle(pool);
+    for b in blurred {
+        b.recycle(pool);
+    }
+    crate::psycho::separate_frequencies_owned_numerics::<true>(xyb, pool, stop)
+}
+
+// Autoversion generates archmage capability-token entry points. Helpers inline
+// into each tier so explicit mul_add uses native FMA where available.
+#[archmage::autoversion]
+fn opsin_loop(
+    image: &Image3F,
+    blurred: &[ImageF; 3],
+    xyb: &mut Image3F,
+    intensity: f32,
+    stop: &dyn Stop,
+) -> Result<(), enough::StopReason> {
+    let (w, h) = (image.width(), image.height());
+
     let minima = [
         1.7557483643287353_f32,
         1.7557483643287353,
@@ -287,16 +371,13 @@ pub(crate) fn prepare(
             xyb.plane_mut(2).row_mut(y)[x] = mixed[2];
         }
     }
-    image.recycle(pool);
-    for b in blurred {
-        b.recycle(pool);
-    }
-    crate::psycho::separate_frequencies_owned_numerics::<true>(xyb, pool, stop)
+    Ok(())
 }
 
 pub(crate) fn compare_psycho(
     a: &PsychoImage,
     b: &PsychoImage,
+    precomputed: Option<&crate::mask::PrecomputedMask>,
     params: &ButteraugliParams,
     pool: &BufferPool,
     stop: &dyn Stop,
@@ -309,15 +390,29 @@ pub(crate) fn compare_psycho(
         pool,
         stop,
     )?;
-    let mask = crate::mask::compute_mask_from_hf_uhf_stop_numerics::<true>(
-        &a.hf,
-        &a.uhf,
-        &b.hf,
-        &b.uhf,
-        Some(ac.plane_mut(1)),
-        pool,
-        stop,
-    )?;
+    let mut owned_mask = None;
+    let mask = if let Some(precomputed) = precomputed {
+        crate::mask::apply_mask_correction_precomputed_stop_numerics::<true>(
+            precomputed,
+            &b.hf,
+            &b.uhf,
+            Some(ac.plane_mut(1)),
+            pool,
+            stop,
+        )?;
+        &precomputed.mask
+    } else {
+        owned_mask = Some(crate::mask::compute_mask_from_hf_uhf_stop_numerics::<true>(
+            &a.hf,
+            &a.uhf,
+            &b.hf,
+            &b.uhf,
+            Some(ac.plane_mut(1)),
+            pool,
+            stop,
+        )?);
+        owned_mask.as_ref().unwrap()
+    };
     let mut out = ImageF::from_pool_dirty(a.width(), a.height(), pool);
     for y in 0..a.height() {
         if y % 64 == 0 {
@@ -338,7 +433,9 @@ pub(crate) fn compare_psycho(
             out.row_mut(y)[x] = (dc_sum + ac_sum).sqrt();
         }
     }
-    mask.recycle(pool);
+    if let Some(mask) = owned_mask {
+        mask.recycle(pool);
+    }
     ac.recycle(pool);
     Ok(out)
 }
@@ -356,7 +453,7 @@ pub(crate) fn single(
         || prepare(a, w, h, params, &pool, stop),
         || prepare(b, w, h, params, &pool, stop),
     );
-    compare_psycho(&a?, &b?, params, &pool, stop)
+    compare_psycho(&a?, &b?, None, params, &pool, stop)
 }
 
 pub(crate) fn merge(sub: &ImageF, full: &mut ImageF) {
@@ -376,7 +473,10 @@ pub(crate) fn multires(
     params: &ButteraugliParams,
     stop: &dyn Stop,
 ) -> Result<ImageF, enough::StopReason> {
-    if params.single_resolution() || w < 15 || h < 15 {
+    if params.single_resolution()
+        || w < crate::diff::MIN_SIZE_FOR_SUBSAMPLE
+        || h < crate::diff::MIN_SIZE_FOR_SUBSAMPLE
+    {
         return single(a, b, w, h, params, stop);
     }
     let (a2, sw, sh) = crate::diff::subsample_linear_rgb_2x(a, w, h);
@@ -412,43 +512,66 @@ pub(crate) fn linear(
     })
 }
 
-pub(crate) fn interleave(
-    red: &[f32],
-    green: &[f32],
-    blue: &[f32],
-    width: usize,
-    height: usize,
-    stride: usize,
-) -> Vec<f32> {
-    let mut rgb = Vec::with_capacity(width * height * 3);
-    for y in 0..height {
-        for x in 0..width {
-            let index = y * stride + x;
-            rgb.extend_from_slice(&[red[index], green[index], blue[index]]);
+/// Only the half-resolution interleaved input is materialized (3 B/full pixel).
+/// Sum order matches diff::subsample_linear_rgb_2x, including odd edges.
+pub(crate) fn subsample_planar(planes: [&[f32]; 3], w: usize, h: usize, stride: usize) -> Vec<f32> {
+    let mut out = Vec::with_capacity(w.div_ceil(2) * h.div_ceil(2) * 3);
+    for y in (0..h).step_by(2) {
+        for x in (0..w).step_by(2) {
+            let x1 = (x + 1).min(w - 1);
+            let y1 = (y + 1).min(h - 1);
+            for p in planes {
+                out.push(if x == x1 && y == y1 {
+                    p[y * stride + x]
+                } else if x == x1 {
+                    (p[y * stride + x] + p[y1 * stride + x]) * 0.5
+                } else if y == y1 {
+                    (p[y * stride + x] + p[y * stride + x1]) * 0.5
+                } else {
+                    (p[y * stride + x]
+                        + p[y * stride + x1]
+                        + p[y1 * stride + x]
+                        + p[y1 * stride + x1])
+                        * 0.25
+                });
+            }
         }
     }
-    rgb
+    out
 }
 
-pub(crate) fn compare_reference(
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Internal strided planar reference pipeline"
+)]
+pub(crate) fn compare_reference_planar(
     reference: &PsychoImage,
-    half: Option<&PsychoImage>,
-    rgb: &[f32],
+    reference_mask: &crate::mask::PrecomputedMask,
+    half: Option<(&PsychoImage, &crate::mask::PrecomputedMask)>,
+    planes: [&[f32]; 3],
+    stride: usize,
     params: &ButteraugliParams,
     pool: &BufferPool,
     stop: &dyn Stop,
 ) -> Result<crate::ButteraugliResult, ButteraugliError> {
-    let w = reference.width();
-    let h = reference.height();
-    let candidate = prepare(rgb, w, h, params, pool, stop).map_err(ButteraugliError::Cancelled)?;
-    let mut dm = compare_psycho(reference, &candidate, params, pool, stop)
+    let (w, h) = (reference.width(), reference.height());
+    let candidate = prepare_planar(planes, w, h, stride, params, pool, stop)
         .map_err(ButteraugliError::Cancelled)?;
+    let mut dm = compare_psycho(
+        reference,
+        &candidate,
+        Some(reference_mask),
+        params,
+        pool,
+        stop,
+    )
+    .map_err(ButteraugliError::Cancelled)?;
     candidate.recycle(pool);
-    if let Some(half) = half {
-        let (sub, sw, sh) = crate::diff::subsample_linear_rgb_2x(rgb, w, h);
-        let candidate =
-            prepare(&sub, sw, sh, params, pool, stop).map_err(ButteraugliError::Cancelled)?;
-        let sub = compare_psycho(half, &candidate, params, pool, stop)
+    if let Some((half, mask)) = half {
+        let sub = subsample_planar(planes, w, h, stride);
+        let candidate = prepare(&sub, w.div_ceil(2), h.div_ceil(2), params, pool, stop)
+            .map_err(ButteraugliError::Cancelled)?;
+        let sub = compare_psycho(half, &candidate, Some(mask), params, pool, stop)
             .map_err(ButteraugliError::Cancelled)?;
         merge(&sub, &mut dm);
         sub.recycle(pool);
@@ -462,12 +585,136 @@ pub(crate) fn compare_reference(
     })
 }
 
-pub(crate) fn srgb_imgref(img: imgref::ImgRef<rgb::RGB8>) -> Vec<f32> {
-    let lut: [f32; 256] = std::array::from_fn(|i| srgb(i as u8));
+pub(crate) fn compare_reference(
+    reference: &PsychoImage,
+    reference_mask: &crate::mask::PrecomputedMask,
+    half: Option<(&PsychoImage, &crate::mask::PrecomputedMask)>,
+    rgb: &[f32],
+    params: &ButteraugliParams,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<crate::ButteraugliResult, ButteraugliError> {
+    let w = reference.width();
+    let h = reference.height();
+    let candidate = prepare(rgb, w, h, params, pool, stop).map_err(ButteraugliError::Cancelled)?;
+    let mut dm = compare_psycho(
+        reference,
+        &candidate,
+        Some(reference_mask),
+        params,
+        pool,
+        stop,
+    )
+    .map_err(ButteraugliError::Cancelled)?;
+    candidate.recycle(pool);
+    if let Some((half, mask)) = half {
+        let (sub, sw, sh) = crate::diff::subsample_linear_rgb_2x(rgb, w, h);
+        let candidate =
+            prepare(&sub, sw, sh, params, pool, stop).map_err(ButteraugliError::Cancelled)?;
+        let sub = compare_psycho(half, &candidate, Some(mask), params, pool, stop)
+            .map_err(ButteraugliError::Cancelled)?;
+        merge(&sub, &mut dm);
+        sub.recycle(pool);
+        candidate.recycle(pool);
+    }
+    let (score, pnorm_3) = crate::diff::compute_score_from_diffmap(&dm);
+    Ok(crate::ButteraugliResult {
+        score,
+        pnorm_3,
+        diffmap: Some(dm.into_imgvec()),
+    })
+}
+
+pub(crate) fn srgb_imgref(img: imgref::ImgRef<rgb::RGB8>, numerics: crate::Numerics) -> Vec<f32> {
+    if numerics == crate::Numerics::Fast {
+        return crate::diff::imgref_srgb_to_linear_f32(img);
+    }
+    let lut = srgb_lut(numerics);
     img.rows()
         .flat_map(|row| {
             row.iter()
                 .flat_map(|p| [lut[p.r as usize], lut[p.g as usize], lut[p.b as usize]])
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ButteraugliReference;
+
+    #[test]
+    fn exact_planar_ingresses_match_srgb_and_account_retained_storage() {
+        let (w, h, stride) = (33, 35, 38);
+        let a: Vec<_> = (0..w * h * 3)
+            .map(|i| ((i * 71 + i / 13) % 256) as u8)
+            .collect();
+        let b: Vec<_> = a.iter().map(|v| v / 8 * 8).collect();
+        let params = ButteraugliParams::new()
+            .with_numerics(crate::Numerics::LibjxlExact)
+            .with_compute_diffmap(true);
+        let reference = ButteraugliReference::new(&a, w, h, params.clone()).unwrap();
+        let mut ap = std::array::from_fn::<_, 3, _>(|_| vec![0.0; stride * h]);
+        let mut bp = ap.clone();
+        for y in 0..h {
+            for x in 0..w {
+                for c in 0..3 {
+                    ap[c][y * stride + x] =
+                        srgb_lut(crate::Numerics::LibjxlExact)[a[(y * w + x) * 3 + c] as usize];
+                    bp[c][y * stride + x] =
+                        srgb_lut(crate::Numerics::LibjxlExact)[b[(y * w + x) * 3 + c] as usize];
+                }
+            }
+        }
+        let planar = ButteraugliReference::new_linear_planar(
+            &ap[0],
+            &ap[1],
+            &ap[2],
+            w,
+            h,
+            stride,
+            params.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            planar.precompute_bytes(),
+            ButteraugliReference::estimated_reference_bytes(w, h, &params)
+        );
+        assert!(planar.memory_bytes() >= planar.precompute_bytes());
+        let expected = reference.compare(&b).unwrap();
+        let mut map = Vec::new();
+        let (max, p3) = planar
+            .compare_linear_planar_into(&bp[0], &bp[1], &bp[2], stride, &mut map)
+            .unwrap();
+        assert_eq!(
+            (max.to_bits(), p3.to_bits()),
+            (expected.score.to_bits(), expected.pnorm_3.to_bits())
+        );
+        assert_eq!(&map, expected.diffmap.as_ref().unwrap().buf());
+        let (max, p3) = planar
+            .compare_linear_planar_into(&ap[0], &ap[1], &ap[2], stride, &mut map)
+            .unwrap();
+        assert_eq!((max, p3), (0.0, 0.0));
+        assert!(map.iter().all(|&v| v == 0.0));
+        #[cfg(feature = "linear-planes")]
+        {
+            use crate::linear_planes::{LinearPlanes, Scorer};
+            let a = LinearPlanes::with_stride(&ap[0], &ap[1], &ap[2], w, h, stride).unwrap();
+            let b = LinearPlanes::with_stride(&bp[0], &bp[1], &bp[2], w, h, stride).unwrap();
+            let scorer = Scorer::builder()
+                .with_numerics(crate::Numerics::LibjxlExact)
+                .with_diffmap(true)
+                .build(&a)
+                .unwrap();
+            let scores = scorer.score_into(&b, &mut map).unwrap();
+            assert_eq!(
+                (scores.max_norm.to_bits(), scores.pnorm_3.to_bits()),
+                (expected.score.to_bits(), expected.pnorm_3.to_bits())
+            );
+            assert_eq!(&map, expected.diffmap.as_ref().unwrap().buf());
+            let zero = scorer.score_into(&a, &mut map).unwrap();
+            assert_eq!((zero.max_norm, zero.pnorm_3), (0.0, 0.0));
+            assert!(map.iter().all(|&v| v == 0.0));
+        }
+    }
 }

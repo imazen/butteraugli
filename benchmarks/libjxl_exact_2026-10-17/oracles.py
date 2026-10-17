@@ -2,6 +2,9 @@
 import pathlib,subprocess,csv,sys
 from PIL import Image
 root=pathlib.Path.home()/'tmp/bu-libjxl-data/round2/oracles';root.mkdir(parents=True,exist_ok=True)
+source=pathlib.Path.home()/'tmp/libjxl-v012/tools/butteraugli_main.cc'
+if 'printf("%g-norm: %.17g\\n", p, pnorm);' not in source.read_text():
+    raise RuntimeError('Missing libjxl pnorm printf instrumentation: require %.17g, rebuild butteraugli_main before freezing oracles')
 rows=[]
 for w,h in [(16,16),(17,19),(65,49),(128,96),(257,193),(512,512)]:
     a=bytes((x*13+y*17+c*71+(x*y)%29)%256 for y in range(h) for x in range(w) for c in range(3));b=bytes(v//8*8 for v in a)

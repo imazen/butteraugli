@@ -1,5 +1,5 @@
 run-heavy: mem-cap=24G (cgroup, hard) jobs=12/32 avail=52513MiB :: bash -c set -e; cargo build --release -p butteraugli-cli --example libjxl_parity; python3 benchmarks/libjxl_exact_2026-10-17/measure.py "$CARGO_TARGET_DIR/release/examples/libjxl_parity"
-[1m[92m   Compiling[0m butteraugli-cli v0.9.4 (/home/lilith/work/butteraugli--libjxl/butteraugli-cli)
+[1m[92m   Compiling[0m butteraugli-cli v0.9.4 ($HOME/work/butteraugli--libjxl/butteraugli-cli)
 [1m[92m    Finished[0m `release` profile [optimized] target(s) in 0.89s
 {'case': '1025469_512x512_q20', 'width': 512, 'height': 512, 'default_score_bits_identical': True, 'default_diffmap_bits_identical': True, 'exact_max': 7.371116638183594, 'cpp_max': 7.371117115020752, 'max_abs': 4.76837158203125e-07, 'max_rel': 6.468994465322405e-08, 'exact_pnorm3': 2.6754813351115794, 'cpp_pnorm3': 2.6754813383668536, 'p3_abs': 3.255274272362385e-09, 'p3_rel': 1.2167060280635126e-09}
 {'case': '1025469_512x512_q50', 'width': 512, 'height': 512, 'default_score_bits_identical': True, 'default_diffmap_bits_identical': True, 'exact_max': 4.739797592163086, 'cpp_max': 4.739797592163086, 'max_abs': 0.0, 'max_rel': 0.0, 'exact_pnorm3': 1.6544994758959735, 'cpp_pnorm3': 1.65449946414925, 'p3_abs': 1.1746723371786061e-08, 'p3_rel': 7.0998653226075666e-09}

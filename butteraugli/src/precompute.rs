@@ -45,7 +45,7 @@ use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite
 const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
 
 /// Minimum size for computing half-resolution (matches C++ threshold).
-const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
+use crate::diff::MIN_SIZE_FOR_SUBSAMPLE;
 
 /// Precomputed data for a single resolution level.
 #[derive(Clone)]
@@ -172,12 +172,6 @@ impl Clone for ButteraugliReference {
     }
 }
 
-/// Converts sRGB u8 buffer to linear f32.
-fn srgb_u8_to_linear_f32(rgb: &[u8]) -> Vec<f32> {
-    let lut = &*crate::opsin::SRGB_TO_LINEAR_LUT;
-    rgb.iter().map(|&v| lut[v as usize]).collect()
-}
-
 impl ButteraugliReference {
     /// Precompute reference data from an sRGB u8 image.
     ///
@@ -220,11 +214,7 @@ impl ButteraugliReference {
 
         // Convert sRGB u8 → linear f32 and delegate.
         // Subsampling must happen in linear space, not gamma-compressed sRGB.
-        let linear = if params.numerics() == crate::Numerics::LibjxlExact {
-            rgb.iter().map(|&v| crate::exact::srgb(v)).collect()
-        } else {
-            srgb_u8_to_linear_f32(rgb)
-        };
+        let linear = crate::exact::srgb_bytes(rgb, params.numerics());
         // 0.9.4 memory fix: retain the original u8 bytes (3 B/pixel)
         // for the strip walker instead of the 12 B/pixel linear f32
         // clone that 0.9.3 stashed. The strip walker re-derives the
@@ -438,8 +428,61 @@ impl ButteraugliReference {
         check_finite_f32(&b[..min_size], "planar b")?;
 
         if params.numerics() == crate::Numerics::LibjxlExact {
-            let rgb = crate::exact::interleave(r, g, b, width, height, stride);
-            return Self::new_linear_validated(&rgb, width, height, params, None);
+            let mut pool = BufferPool::new();
+            let psycho = crate::exact::prepare_planar(
+                [r, g, b],
+                width,
+                height,
+                stride,
+                &params,
+                &pool,
+                &enough::Unstoppable,
+            )
+            .expect("Unstoppable never stops");
+            let make_scale = |psycho: PsychoImage| {
+                let mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
+                    &psycho.hf,
+                    &psycho.uhf,
+                    &pool,
+                    &enough::Unstoppable,
+                )
+                .expect("Unstoppable never stops");
+                ScaleData { psycho, mask }
+            };
+            let full = make_scale(psycho);
+            let half = if !params.single_resolution()
+                && width >= MIN_SIZE_FOR_SUBSAMPLE
+                && height >= MIN_SIZE_FOR_SUBSAMPLE
+            {
+                let sub = crate::exact::subsample_planar([r, g, b], width, height, stride);
+                Some(make_scale(
+                    crate::exact::prepare(
+                        &sub,
+                        width.div_ceil(2),
+                        height.div_ceil(2),
+                        &params,
+                        &pool,
+                        &enough::Unstoppable,
+                    )
+                    .expect("Unstoppable never stops"),
+                ))
+            } else {
+                None
+            };
+            let cache_bytes = params
+                .scratch_cache_bytes()
+                .or_else(|| crate::image::automatic_scratch_cache_bytes(width, height))
+                .ok_or(ButteraugliError::DimensionOverflow { width, height })?;
+            pool.configure(Some(cache_bytes));
+            return Ok(Self {
+                full,
+                half,
+                width,
+                height,
+                params,
+                pool,
+                source: None,
+            });
         }
 
         let need_half = !params.single_resolution()
@@ -822,11 +865,7 @@ impl ButteraugliReference {
         match self.source.as_ref()? {
             ReferenceSource::Linear(buf) => Some(buf.clone()),
             ReferenceSource::Srgb(bytes) => {
-                Some(if self.params.numerics() == crate::Numerics::LibjxlExact {
-                    bytes.iter().map(|&v| crate::exact::srgb(v)).collect()
-                } else {
-                    srgb_u8_to_linear_f32(bytes)
-                })
+                Some(crate::exact::srgb_bytes(bytes, self.params.numerics()))
             }
         }
     }
@@ -934,6 +973,9 @@ impl ButteraugliReference {
     /// retained freed pages are excluded: this is not a process RSS limit.
     /// Concurrent comparisons on the same reference need separate accounting.
     /// Interleaved constructors and strip comparisons are outside this contract.
+    /// Exact planar input is copied directly into image planes; its estimate
+    /// additionally covers half-resolution RGB subsampling and transposed FIR scratch.
+    /// Persistent reference storage has the same twelve-plane layout in both modes.
     ///
     /// Pool reuse stays within each scale (including nearby padding), so each is charged
     /// at its own largest plane size, including Malta's four-pixel border and
@@ -988,7 +1030,17 @@ impl ButteraugliReference {
         let pool_metadata = scales
             .checked_mul(cache_buffers)?
             .checked_mul(core::mem::size_of::<Vec<f32>>())?;
-        reference.checked_add(scratch)?.checked_add(pool_metadata)
+        let exact_extra = if params.numerics() == crate::Numerics::LibjxlExact {
+            // Exact uses a half-resolution interleaved RGB subsample and
+            // transposed FIR buffers; charge three additional planes per scale.
+            full.checked_add(half)?.checked_mul(3)?
+        } else {
+            0
+        };
+        reference
+            .checked_add(scratch)?
+            .checked_add(pool_metadata)?
+            .checked_add(exact_extra)
     }
 
     /// Heap bytes of the **persistent precompute** actually held by this
@@ -1021,7 +1073,7 @@ impl ButteraugliReference {
         img: imgref::ImgRef<rgb::RGB8>,
         params: ButteraugliParams,
     ) -> Result<Self, ButteraugliError> {
-        let linear = crate::diff::imgref_srgb_to_linear_f32(img);
+        let linear = crate::exact::srgb_imgref(img, params.numerics());
         Self::new_linear(&linear, img.width(), img.height(), params)
     }
 
@@ -1073,7 +1125,7 @@ impl ButteraugliReference {
                 h2: img.height(),
             });
         }
-        let linear = crate::diff::imgref_srgb_to_linear_f32(img);
+        let linear = crate::exact::srgb_imgref(img, self.params.numerics());
         self.compare_linear_with_stop(&linear, stop)
     }
 
@@ -1123,11 +1175,7 @@ impl ButteraugliReference {
         rgb: &[u8],
         stop: &dyn Stop,
     ) -> Result<ButteraugliResult, ButteraugliError> {
-        let linear = if self.params.numerics() == crate::Numerics::LibjxlExact {
-            rgb.iter().map(|&v| crate::exact::srgb(v)).collect()
-        } else {
-            srgb_u8_to_linear_f32(rgb)
-        };
+        let linear = crate::exact::srgb_bytes(rgb, self.params.numerics());
         self.compare_linear_impl(&linear, stop)
     }
 
@@ -1154,7 +1202,8 @@ impl ButteraugliReference {
         if self.params.numerics() == crate::Numerics::LibjxlExact {
             return crate::exact::compare_reference(
                 &self.full.psycho,
-                self.half.as_ref().map(|s| &s.psycho),
+                &self.full.mask,
+                self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
                 rgb,
                 &self.params,
                 &self.pool,
@@ -1268,8 +1317,16 @@ impl ButteraugliReference {
         stop.check().map_err(ButteraugliError::Cancelled)?;
 
         if self.params.numerics() == crate::Numerics::LibjxlExact {
-            let rgb = crate::exact::interleave(r, g, b, self.width, self.height, stride);
-            let result = self.compare_linear_impl(&rgb, stop)?;
+            let result = crate::exact::compare_reference_planar(
+                &self.full.psycho,
+                &self.full.mask,
+                self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
+                [r, g, b],
+                stride,
+                &self.params,
+                &self.pool,
+                stop,
+            )?;
             let dm = result.diffmap.expect("internal comparison returns diffmap");
             diffmap_out.clear();
             diffmap_out.extend_from_slice(dm.buf());
@@ -1399,8 +1456,16 @@ impl ButteraugliReference {
         stop.check().map_err(ButteraugliError::Cancelled)?;
 
         if self.params.numerics() == crate::Numerics::LibjxlExact {
-            let rgb = crate::exact::interleave(r, g, b, self.width, self.height, stride);
-            let result = self.compare_linear_impl(&rgb, stop)?;
+            let result = crate::exact::compare_reference_planar(
+                &self.full.psycho,
+                &self.full.mask,
+                self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
+                [r, g, b],
+                stride,
+                &self.params,
+                &self.pool,
+                stop,
+            )?;
             return Ok(result);
         }
 

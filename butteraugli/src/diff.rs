@@ -51,6 +51,7 @@ pub(crate) struct InternalResult {
 /// Minimum image dimension for multi-resolution processing.
 /// Images smaller than this are handled without recursion.
 pub(crate) const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
+pub(crate) const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 
 /// Converts linear RGB f32 buffer to XYB Image3F using butteraugli's OpsinDynamicsImage.
 fn linear_rgb_to_xyb_image_stop(
@@ -738,7 +739,6 @@ pub(crate) fn compute_diffmap_multiresolution_linear(
     }
 
     let stop = stop.may_stop().then_some(stop);
-    const MIN_SIZE_FOR_SUBSAMPLE: usize = 15;
 
     let need_sub = !params.single_resolution()
         && width >= MIN_SIZE_FOR_SUBSAMPLE
@@ -884,13 +884,7 @@ pub(crate) fn compute_butteraugli_imgref(
 
     // Fused conversion: ImgRef<RGB8> → linear f32 in one pass (avoids
     // intermediate Vec<u8> and Vec<f32> allocations)
-    let convert = |img: ImgRef<RGB8>| {
-        if params.numerics() == crate::Numerics::LibjxlExact {
-            crate::exact::srgb_imgref(img)
-        } else {
-            imgref_srgb_to_linear_f32(img)
-        }
-    };
+    let convert = |img: ImgRef<RGB8>| crate::exact::srgb_imgref(img, params.numerics());
     let linear1 = convert(img1);
     let linear2 = convert(img2);
 
