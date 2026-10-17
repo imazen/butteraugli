@@ -60,63 +60,9 @@ audit-cache-test:
     cargo test -p butteraugli --test scratch_cache --features linear-planes
     cargo test -p butteraugli --test scratch_cache --features linear-planes,unsafe-performance
 
-# Investigation runner writes raw little-endian f32 diffmaps (top row first).
-libjxl-parity-build:
-    cargo build --release -p butteraugli-cli --example libjxl_parity
-
-libjxl-parity-run reference distorted diffmap +args="":
-    RAYON_NUM_THREADS=1 target/release/examples/libjxl_parity {{quote(reference)}} {{quote(distorted)}} {{quote(diffmap)}} {{args}}
-
-libjxl-parity-measure artifacts label binary:
-    python3 benchmarks/libjxl_parity_2026-10-17/measure.py {{quote(artifacts)}} {{quote(label)}} {{quote(binary)}}
-
-libjxl-parity-generate artifacts inputs:
-    python3 benchmarks/libjxl_parity_2026-10-17/generate.py {{quote(artifacts)}} {{quote(inputs)}}
-
-libjxl-parity-trace:
-    python3 benchmarks/libjxl_parity_2026-10-17/trace.py
-
-libjxl-parity-ablations:
-    python3 benchmarks/libjxl_parity_2026-10-17/ablations.py
-
-libjxl-parity-google-build output:
-    python3 benchmarks/libjxl_parity_2026-10-17/google_old.py {{quote(output)}}
-
-# Run these under the host's resource supervisor; raw artifacts stay off git.
-libjxl-exact-measure binary:
-    python3 benchmarks/libjxl_exact_2026-10-17/measure.py {{quote(binary)}}
-
-libjxl-exact-oracles output:
-    python3 benchmarks/libjxl_exact_2026-10-17/oracles.py {{quote(output)}}
-
-libjxl-exact-test:
-    cargo test -p butteraugli --test exact_numerics -- --nocapture
-
-libjxl-exact-build-runners:
-    python3 benchmarks/libjxl_exact_2026-10-17/build_runners.py
-
-libjxl-exact-check:
-    BUTTERAUGLI_BENCH_NO_CPP=1 cargo test
-    BUTTERAUGLI_BENCH_NO_CPP=1 cargo clippy --all-targets -- -D warnings
-    cargo fmt --check
+# Opt-in numerical-policy regression coverage (also runs in native/cross CI).
+exact-test:
     cargo test -p butteraugli --features linear-planes --test exact_numerics
-    cargo test -p butteraugli --features iir-blur --test exact_numerics
 
-libjxl-exact-neon:
-    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER='qemu-aarch64 -L /usr/aarch64-linux-gnu' cargo test -p butteraugli --target aarch64-unknown-linux-gnu --test exact_numerics -- --nocapture
-
-# Review qualification; run under run-heavy, with TMPDIR on disk.
-libjxl-exact-round3-check:
-    bash benchmarks/libjxl_exact_2026-10-17/round3_check.sh
-
-libjxl-exact-memory-build:
-    cargo build --release -p butteraugli-cli --example libjxl_memory --example libjxl_parity
-
-libjxl-exact-memory binary mode size="2048":
-    RAYON_NUM_THREADS=1 /usr/bin/time -v {{quote(binary)}} {{size}} {{size}} {{quote(mode)}}
-
-libjxl-exact-round3-measure:
-    bash benchmarks/libjxl_exact_2026-10-17/round3_measure.sh
-
-libjxl-exact-round3-summary:
-    python3 benchmarks/libjxl_exact_2026-10-17/round3_summary.py
+exact-bench:
+    BUTTERAUGLI_BENCH_NO_CPP=1 cargo run --release -p butteraugli-bench --example libjxl_exact_speed

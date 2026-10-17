@@ -4,20 +4,6 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 
 ## Known Bugs
 
-- **2026-10-17 Exact ingress and reuse review (fixed):** all sRGB entry
-  points now select the numerical policy's shared LUT. Exact comparisons
-  consume their retained reference mask, planar inputs copy directly to image
-  planes, and strip 3-norm retains reduction lanes across strips. The Exact
-  peak estimate additionally charges three padded planes per scale; persistent
-  reference estimates remain twelve planes per scale. Tests cover sRGB,
-  strided planar/Scorer, identical images, cached-mask equivalence and frozen
-  cross-architecture score/map bits at 7x9, 16x16 and 65x49.
-
-- **2026-10-17 CLI test executable lookup (fixed):** the integration tests
-  assumed `target/debug` relative to the workspace, so all CLI tests failed
-  under `CARGO_TARGET_DIR`. They now use Cargo's `CARGO_BIN_EXE_butteraugli`.
-  No CLI assertions or expected outputs changed.
-
 - **2026-10-12 release audit: warm-reference throughput regressed versus 0.9.3.**
   With equal default features and explicit thread pools, the original current
   eight-buffer cache was 40.6–44.8% slower at 1080p/eight threads, and

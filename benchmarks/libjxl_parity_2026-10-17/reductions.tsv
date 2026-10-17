@@ -1,3 +1,0 @@
-implementation	max_norm	pnorm3	multires_reconstruction_max_abs
-rust	1.208517074584961	0.4949779301819479	0.0
-cpp	1.2085671424865723	0.4949814891320294	0.0

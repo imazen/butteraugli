@@ -6,7 +6,20 @@ use std::process::Command;
 
 /// Get path to the butteraugli binary.
 fn butteraugli_bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_butteraugli"))
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop(); // Go up from butteraugli-cli to workspace root
+    path.push("target");
+    path.push(if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    });
+    path.push(if cfg!(windows) {
+        "butteraugli.exe"
+    } else {
+        "butteraugli"
+    });
+    path
 }
 
 /// Create a simple PNG file with solid color.

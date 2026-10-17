@@ -37,25 +37,14 @@ root, so you don't need to add `imgref` or `rgb` to your own `Cargo.toml`. If
 your decoder hands you a flat `Vec<u8>`, see
 [From a flat `Vec<u8>`](#from-a-flat-vecu8-of-rgb-bytes) below.
 
-## Opt-in libjxl v0.12 numerics
+## Numerical mode
 
-`Numerics::Fast` remains the default. Select `LibjxlExact` for oracle comparisons:
-
-```rust
-use butteraugli::{ButteraugliParams, Numerics};
-
-let params = ButteraugliParams::new()
-    .with_numerics(Numerics::LibjxlExact);
-```
-
-The same setting is available on `linear_planes::ScorerBuilder`. It follows
-libjxl v0.12's sRGB transfer, opsin, Gaussian kernel and FIR operation order,
-and always uses FIR, including with the `iir-blur` feature. The small-image
-fallback follows the pinned AVX2 oracle so dispatch tiers stay consistent.
-The mode preserves strided input and reusable reference support. See the
-[measured parity and speed tables](benchmarks/libjxl_exact_2026-10-17/README.md);
-validation uses a `1e-6` absolute oracle tolerance. Last bits can still differ
-from C++, and this mode costs more CPU time.
+`Numerics::Fast` is the default. For comparisons against libjxl v0.12,
+select `ButteraugliParams::new().with_numerics(Numerics::LibjxlExact)`
+(or `linear_planes::ScorerBuilder::with_numerics`). Exact uses the pinned
+AVX2 oracle's arithmetic on every SIMD tier and always uses FIR, including
+with `iir-blur`. It costs more CPU time; last bits can still differ from C++.
+See [parity and performance](benchmarks/libjxl-exact.md).
 
 ## Speed and memory
 
