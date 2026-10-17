@@ -13,8 +13,38 @@ fn main() {
     let aa: Vec<_> = a.pixels().map(|p| RGB8::new(p[0], p[1], p[2])).collect();
     let bb: Vec<_> = b.pixels().map(|p| RGB8::new(p[0], p[1], p[2])).collect();
     let params = ButteraugliParams::default()
+        .with_numerics(if args.iter().any(|s| s == "--exact") {
+            butteraugli::Numerics::LibjxlExact
+        } else {
+            butteraugli::Numerics::Fast
+        })
         .with_intensity_target(80.0)
         .with_compute_diffmap(true);
+    if let Some(n) = args.iter().find_map(|s| {
+        s.strip_prefix("--bench=")
+            .map(|n| n.parse::<usize>().unwrap())
+    }) {
+        let score = || {
+            butteraugli(
+                Img::new(aa.as_slice(), w, h),
+                Img::new(bb.as_slice(), w, h),
+                &params,
+            )
+            .unwrap()
+        };
+        std::hint::black_box(score());
+        let mut samples = Vec::new();
+        for _ in 0..n {
+            let start = std::time::Instant::now();
+            let result = score();
+            let elapsed = start.elapsed().as_nanos();
+            std::hint::black_box(result);
+            samples.push(elapsed);
+        }
+        let mut sorted = samples.clone();
+        sorted.sort_unstable();
+        println!("BENCH\t{}\t{:?}", sorted[n / 2], samples);
+    }
     let r = if args.iter().any(|s| s == "--linear") {
         let conv = |v: &Vec<RGB8>| -> Vec<RGB<f32>> {
             v.iter()

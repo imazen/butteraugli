@@ -81,3 +81,13 @@ libjxl-parity-ablations:
 
 libjxl-parity-google-build output:
     python3 benchmarks/libjxl_parity_2026-10-17/google_old.py {{quote(output)}}
+
+# Run these under the host's resource supervisor; raw artifacts stay off git.
+libjxl-exact-measure binary:
+    python3 benchmarks/libjxl_exact_2026-10-17/measure.py {{quote(binary)}}
+
+libjxl-exact-oracles output:
+    python3 benchmarks/libjxl_exact_2026-10-17/oracles.py {{quote(output)}}
+
+libjxl-exact-test:
+    cargo test -p butteraugli --test exact_numerics -- --nocapture
