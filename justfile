@@ -91,3 +91,16 @@ libjxl-exact-oracles output:
 
 libjxl-exact-test:
     cargo test -p butteraugli --test exact_numerics -- --nocapture
+
+libjxl-exact-build-runners:
+    python3 benchmarks/libjxl_exact_2026-10-17/build_runners.py
+
+libjxl-exact-check:
+    BUTTERAUGLI_BENCH_NO_CPP=1 cargo test
+    BUTTERAUGLI_BENCH_NO_CPP=1 cargo clippy --all-targets -- -D warnings
+    cargo fmt --check
+    cargo test -p butteraugli --features linear-planes --test exact_numerics
+    cargo test -p butteraugli --features iir-blur --test exact_numerics
+
+libjxl-exact-neon:
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER='qemu-aarch64 -L /usr/aarch64-linux-gnu' cargo test -p butteraugli --target aarch64-unknown-linux-gnu --test exact_numerics -- --nocapture

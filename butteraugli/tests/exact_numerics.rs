@@ -218,3 +218,22 @@ fn exact_planar_builder_forwards_numerics() {
         Numerics::LibjxlExact
     );
 }
+
+#[test]
+fn exact_strip_preserves_whole_image_pixels() {
+    use butteraugli::butteraugli_strip;
+    let (width, height) = (65, 257);
+    let (a, b) = pair(width, height);
+    let params = ButteraugliParams::new()
+        .with_numerics(Numerics::LibjxlExact)
+        .with_compute_diffmap(true);
+    let a = Img::new(a, width, height);
+    let b = Img::new(b, width, height);
+    let whole = butteraugli(a.as_ref(), b.as_ref(), &params).unwrap();
+    let strip = butteraugli_strip(a.as_ref(), b.as_ref(), &params, 64).unwrap();
+    assert_eq!(whole.score.to_bits(), strip.score.to_bits());
+    let bits =
+        |v: butteraugli::ImgVec<f32>| v.buf().iter().map(|v| v.to_bits()).collect::<Vec<_>>();
+    assert_eq!(bits(whole.diffmap.unwrap()), bits(strip.diffmap.unwrap()));
+    assert!((whole.pnorm_3 - strip.pnorm_3).abs() < 1e-12);
+}
