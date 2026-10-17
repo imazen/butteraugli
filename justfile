@@ -66,3 +66,18 @@ libjxl-parity-build:
 
 libjxl-parity-run reference distorted diffmap +args="":
     RAYON_NUM_THREADS=1 target/release/examples/libjxl_parity {{quote(reference)}} {{quote(distorted)}} {{quote(diffmap)}} {{args}}
+
+libjxl-parity-measure artifacts label binary:
+    python3 benchmarks/libjxl_parity_2026-10-17/measure.py {{quote(artifacts)}} {{quote(label)}} {{quote(binary)}}
+
+libjxl-parity-generate artifacts inputs:
+    python3 benchmarks/libjxl_parity_2026-10-17/generate.py {{quote(artifacts)}} {{quote(inputs)}}
+
+libjxl-parity-trace:
+    python3 benchmarks/libjxl_parity_2026-10-17/trace.py
+
+libjxl-parity-ablations:
+    python3 benchmarks/libjxl_parity_2026-10-17/ablations.py
+
+libjxl-parity-google-build output:
+    python3 benchmarks/libjxl_parity_2026-10-17/google_old.py {{quote(output)}}
