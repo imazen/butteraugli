@@ -40,9 +40,7 @@ excludes caller storage and allocator overhead; it is not an RSS ceiling.
 Measurement receipt: `rc=0 230s | peak-RSS 1.29GiB | min-avail 51072MiB | peak-load 6.21`.
 Measured implementation: `a9063bf7`; zenbench harness: `7b70399f`.
 Full evidence and source are preserved at commit
-[`4b8e72de`](https://github.com/imazen/butteraugli/tree/4b8e72de6a127bf83ff79b1d6509b8c167ca24a5/benchmarks/libjxl_exact_review_2026-10-17),
-and on r5900xt at
-`/mnt/v/output/butteraugli/libjxl-parity-2026-10-17/pr21-pre-cleanup-4b8e72de/`.
+[`4b8e72de`](https://github.com/imazen/butteraugli/tree/4b8e72de6a127bf83ff79b1d6509b8c167ca24a5/benchmarks/libjxl_exact_review_2026-10-17).
 
 ## Reproduce
 
