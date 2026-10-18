@@ -67,3 +67,8 @@ exact-test:
 
 exact-bench:
     BUTTERAUGLI_BENCH_NO_CPP=1 cargo run --release -p butteraugli-bench --example libjxl_exact_speed
+
+# Native numerical validation; the optional C++ benchmark adapter is excluded.
+mac-validation:
+    BUTTERAUGLI_BENCH_NO_CPP=1 cargo test
+    cargo test -p butteraugli --test exact_numerics -- --nocapture --test-threads=1

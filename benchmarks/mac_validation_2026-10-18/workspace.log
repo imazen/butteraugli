@@ -1,0 +1,364 @@
+run-heavy: mem-cap=NONE (macOS has no cgroup; monitored process-tree RSS guard=12884901888 bytes) jobs=2/12 avail=12105MiB (free+inactive+speculative proxy) :: ['cargo', 'test']
+   Compiling butteraugli-bench v0.0.0 (${VALIDATION_REPO}/butteraugli-bench)
+warning: butteraugli-bench@0.0.0: BUTTERAUGLI_BENCH_NO_CPP set — skipping C++ butteraugli FFI build
+    Finished `test` profile [unoptimized] target(s) in 2.37s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (${CARGO_TARGET_DIR}/debug/deps/butteraugli-bf74e0cbb095210f)
+
+running 92 tests
+test blur::tests::test_kernel_generation ... ok
+test diff::tests::test_identical_images ... ok
+test diff::tests::test_l2_diff_asymmetric ... ok
+test diff::tests::test_add_supersampled_2x ... ok
+test blur::tests::test_blur_5x5_constant ... ok
+test blur::tests::test_blur_constant_image ... ok
+test image::tests::full_pool_reuses_larger_planes_without_growing ... ok
+test image::tests::pool_reuse_preserves_requested_capacity ... ok
+test blur::tests::test_blur_reduces_delta ... ok
+test image::tests::test_image3f ... ok
+test image::tests::test_image_creation ... ok
+test image::tests::test_pixel_access ... ok
+test image::tests::test_row_access ... ok
+test malta::tests::test_interior_vs_window ... ok
+test malta::tests::test_malta_edge ... ok
+test malta::tests::test_malta_fast_vs_slow ... ok
+test malta::tests::test_malta_diff_map_identical ... ok
+test malta::tests::test_malta_lf_smaller ... ok
+test malta::tests::test_malta_uniform ... ok
+test mask::test_mask_y_cpp_values ... ok
+test mask::tests::test_diff_precompute ... ok
+test mask::tests::test_fuzzy_erosion ... ok
+test mask::tests::test_fuzzy_erosion_weights ... ok
+test mask::tests::test_mask_dc_y ... ok
+test mask::tests::test_mask_y ... ok
+test mask::tests::test_store_min3 ... ok
+test opsin::tests::test_fast_log2f ... ok
+test opsin::tests::test_gamma_positive ... ok
+test opsin::tests::test_gamma_zero ... ok
+test opsin::tests::test_opsin_absorbance_bias ... ok
+test opsin::tests::test_opsin_absorbance_clamped ... ok
+test diff::tests::test_multiresolution_small_image ... ok
+test precompute::tests::test_compare_dimension_mismatch ... ok
+test precompute::tests::test_compare_linear_planar_into_rejects_short_buffers ... ok
+test precompute::tests::test_precompute_creation ... ok
+test diff::tests::test_diffmap_dimensions ... ok
+test precompute::tests::test_compare_linear_planar_into_resizes_undersized ... ok
+test diff::tests::test_very_different_images ... ok
+test precompute::tests::test_precompute_different_images ... ok
+test precompute::tests::test_precompute_too_small ... ok
+test exact::tests::blur_chunks_and_remainders_match_scalar_order ... ok
+test precompute::tests::test_precompute_wrong_buffer_size ... ok
+test diff::tests::test_slightly_different_images ... ok
+test psycho::tests::test_amplify_range_around_zero ... ok
+test psycho::tests::test_frequency_separation ... ok
+test psycho::tests::test_maximum_clamp ... ok
+test psycho::tests::test_psycho_image_creation ... ok
+test psycho::tests::test_remove_range_around_zero ... ok
+test tests::test_butteraugli_linear_rejects_dimension_overflow ... ok
+test tests::test_butteraugli_rejects_dimension_overflow ... ok
+test precompute::tests::test_precompute_small_image_no_half ... ok
+test tests::test_compute_diffmap_flag ... ok
+test tests::test_default_params_still_valid ... ok
+test precompute::tests::test_precompute_identical_images ... ok
+test tests::test_dimension_mismatch ... ok
+test tests::test_error_display ... ok
+test tests::test_identical_images ... ok
+test tests::test_inf_hf_asymmetry_returns_error ... ok
+test tests::test_inf_pixels_returns_non_finite_result ... ok
+test tests::test_max_norm_alias ... ok
+test tests::test_nan_pixels_returns_non_finite_result ... ok
+test tests::test_nan_xmul_returns_error ... ok
+test tests::test_negative_hf_asymmetry_returns_error ... ok
+test tests::test_negative_xmul_returns_error ... ok
+test tests::test_compare_linear_planar_rejects_stride_overflow ... ok
+test tests::test_different_images ... ok
+test tests::test_pnorm_3_zero_for_identical_images ... ok
+test tests::test_pnorm_method_returns_precomputed_for_p3_without_diffmap ... ok
+test tests::test_pnorm_method_uses_diffmap_for_arbitrary_p ... ok
+test tests::test_pnorm_slice_empty_returns_nan ... ok
+test tests::test_pnorm_slice_matches_libjxl_reference_formula ... ok
+test tests::test_pnorm_slice_uniform_returns_value ... ok
+test tests::test_pnorm_3_available_without_diffmap ... ok
+test tests::test_validate_method_directly ... ok
+test tests::test_validation_on_linear_api ... ok
+test tests::test_validation_on_precompute_api ... ok
+test tests::test_validation_on_precompute_linear_api ... ok
+test tests::test_validation_on_precompute_planar_api ... ok
+test tests::test_zero_hf_asymmetry_returns_error ... ok
+test tests::test_zero_intensity_target_returns_error ... ok
+test tests::test_zero_xmul_is_valid ... ok
+test tests::test_pnorm_3_field_matches_slice_helper_on_diffmap ... ok
+test precompute::tests::estimated_reference_bytes_matches_precompute ... ok
+test tests::test_sub_8_reflect_pads_instead_of_rejecting ... ok
+test exact::tests::exact_planar_ingresses_match_srgb_and_account_retained_storage ... ok
+test precompute::tests::test_precompute_matches_full_compute ... ok
+test precompute::tests::bounded_pool_reuse_does_not_change_scores_between_distortions ... ok
+test precompute::tests::test_compare_linear_planar_iir_determinism_repro ... ok
+test precompute::tests::test_compare_linear_planar_into_matches_owned ... ok
+test precompute::tests::test_precompute_linear_matches_full ... ok
+test precompute::tests::test_precompute_with_multiresolution ... ok
+test psycho::tests::owned_frequency_separation_matches_borrowed_at_odd_width ... ok
+
+test result: ok. 92 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.37s
+
+     Running tests/cancellation.rs (${CARGO_TARGET_DIR}/debug/deps/cancellation-dd808fe96d10de98)
+
+running 18 tests
+test butteraugli_linear_with_stop_cancelled ... ok
+test butteraugli_linear_strip_with_stop_cancelled ... ok
+test butteraugli_strip_with_stop_cancelled ... ok
+test butteraugli_with_stop_cancelled ... ok
+test reference_compare_linear_planar_with_stop_cancelled ... ok
+test reference_compare_strip_with_stop_cancelled ... ok
+test reference_compare_with_stop_cancelled ... ok
+test reference_compare_linear_planar_with_stop_unstoppable_matches_plain ... ok
+test reference_compare_with_stop_unstoppable_ok ... ok
+test reference_compare_with_stop_unstoppable_matches_compare ... ok
+test butteraugli_with_stop_unstoppable_matches_butteraugli ... ok
+test butteraugli_linear_strip_with_stop_unstoppable_ok ... ok
+test reference_compare_strip_with_stop_unstoppable_matches_plain ... ok
+test butteraugli_strip_with_stop_unstoppable_matches_plain_strip ... ok
+test butteraugli_with_stop_unstoppable_ok ... ok
+test butteraugli_strip_with_stop_unstoppable_ok ... ok
+test butteraugli_linear_strip_with_stop_unstoppable_matches_plain_strip ... ok
+test butteraugli_linear_with_stop_unstoppable_ok ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/capture_cpp_scores.rs (${CARGO_TARGET_DIR}/debug/deps/capture_cpp_scores-646af69fe39d263f)
+
+running 1 test
+test capture_all_cpp_scores ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/conformance.rs (${CARGO_TARGET_DIR}/debug/deps/conformance-a3d1bef1e978412c)
+
+running 5 tests
+test test_identical_images_score_zero ... ok
+test test_score_symmetry ... ok
+test test_small_difference_low_score ... ok
+test test_large_difference_nonzero_score ... ok
+test test_diffmap_dimensions ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/cpp_fuzz.rs (${CARGO_TARGET_DIR}/debug/deps/cpp_fuzz-4aac0a8f853175c6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cpp_parity.rs (${CARGO_TARGET_DIR}/debug/deps/cpp_parity-1997151a366dbcd9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cross_arch_parity.rs (${CARGO_TARGET_DIR}/debug/deps/cross_arch_parity-3518a7b506f3ec70)
+
+running 3 tests
+test capture_pnorm_3 ... ignored, capture-only; run with --ignored to regenerate X86_REFERENCE_PNORM_3
+test test_cross_arch_pnorm_3_parity ... ok
+test test_cross_arch_parity_all ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 4.89s
+
+     Running tests/exact_numerics.rs (${CARGO_TARGET_DIR}/debug/deps/exact_numerics-8aa5b9172c028d6e)
+
+running 7 tests
+test exact_all_srgb_reference_ingresses_agree ... ok
+test exact_is_bit_identical_at_all_available_simd_tiers ... ok
+test exact_strided_linear_and_planar_reference_agree ... ok
+test exact_reference_and_strided_rgb_match_one_shot ... ok
+test fast_negative_control_for_cpp_oracles ... ok
+test exact_matches_pinned_cpp_oracle ... ok
+test exact_strip_preserves_whole_image_pixels ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.38s
+
+     Running tests/intermediate_values.rs (${CARGO_TARGET_DIR}/debug/deps/intermediate_values-c3a26eef201958ee)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/linear_planes_parity.rs (${CARGO_TARGET_DIR}/debug/deps/linear_planes_parity-827fa6ce72bb35af)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/planar_memory_estimate.rs (${CARGO_TARGET_DIR}/debug/deps/planar_memory_estimate-3db233c6227b88aa)
+
+running 3 tests
+test planar_peak_checks_overflow_and_resolution_boundary ... ok
+test automatic_admission_scales_then_matches_an_explicit_cap ... ok
+test planar_peak_covers_retained_buffers_after_repeated_comparisons ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.72s
+
+     Running tests/public_api_exports.rs (${CARGO_TARGET_DIR}/debug/deps/public_api_exports-161012f67f1b0760)
+
+running 1 test
+test exported_rgb_supports_the_linear_reference_api ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/reference_parity.rs (${CARGO_TARGET_DIR}/debug/deps/reference_parity-18140de5c25b4021)
+
+running 4 tests
+test test_reference_data_integrity ... ok
+test test_gradient_cases ... ok
+test test_uniform_cases ... ok
+test test_all_reference_cases has been running for over 60 seconds
+test test_all_reference_cases ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 77.81s
+
+     Running tests/scratch_cache.rs (${CARGO_TARGET_DIR}/debug/deps/scratch_cache-f113981e84f0db78)
+
+running 1 test
+test byte_budgets_preserve_strided_scores_and_bound_idle_storage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 42.30s
+
+     Running tests/step_by_step_comparison.rs (${CARGO_TARGET_DIR}/debug/deps/step_by_step_comparison-8052c695328cb3c1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/strip_parity.rs (${CARGO_TARGET_DIR}/debug/deps/strip_parity-45239c30611113a3)
+
+running 11 tests
+test strip_mismatched_dimensions_errors ... ok
+test strip_height_below_minimum_errors ... ok
+test warm_ref_strip_matches_compare ... ok
+test strip_linear_parity_512x512 ... ok
+test strip_parity_1024x1024 ... ok
+test butteraugli_strip_imgref_passthrough ... ok
+test strip_parity_different_64x64 ... ok
+test warm_ref_strip_parity_512x512 ... ok
+test strip_diffmap_output ... ok
+test strip_parity_identical_64x64 ... ok
+test strip_parity_512x512_multiresolution ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 26.87s
+
+     Running unittests src/main.rs (${CARGO_TARGET_DIR}/debug/deps/butteraugli-9200d22bb81f2962)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (${CARGO_TARGET_DIR}/debug/deps/cli-b757ea942f66e8a5)
+
+running 11 tests
+test test_max_score_fail ... FAILED
+test test_max_score_pass ... FAILED
+test test_batch_mode ... FAILED
+test test_missing_file ... FAILED
+test test_version ... FAILED
+test test_help ... FAILED
+test test_quiet_mode ... FAILED
+test test_different_images ... FAILED
+test test_json_output ... FAILED
+test test_identical_images ... FAILED
+test test_quality_format ... FAILED
+
+failures:
+
+---- test_max_score_fail stdout ----
+
+thread 'test_max_score_fail' (59678054) panicked at butteraugli-cli/tests/cli.rs:266:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+---- test_max_score_pass stdout ----
+
+thread 'test_max_score_pass' (59678055) panicked at butteraugli-cli/tests/cli.rs:239:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+---- test_batch_mode stdout ----
+
+thread 'test_batch_mode' (59678049) panicked at butteraugli-cli/tests/cli.rs:374:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+---- test_missing_file stdout ----
+
+thread 'test_missing_file' (59678056) panicked at butteraugli-cli/tests/cli.rs:340:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- test_version stdout ----
+
+thread 'test_version' (59678059) panicked at butteraugli-cli/tests/cli.rs:391:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+---- test_help stdout ----
+
+thread 'test_help' (59678051) panicked at butteraugli-cli/tests/cli.rs:405:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+---- test_quiet_mode stdout ----
+
+thread 'test_quiet_mode' (59678058) panicked at butteraugli-cli/tests/cli.rs:209:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+---- test_different_images stdout ----
+
+thread 'test_different_images' (59678050) panicked at butteraugli-cli/tests/cli.rs:187:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+---- test_json_output stdout ----
+
+thread 'test_json_output' (59678053) panicked at butteraugli-cli/tests/cli.rs:289:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+---- test_identical_images stdout ----
+
+thread 'test_identical_images' (59678052) panicked at butteraugli-cli/tests/cli.rs:164:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+---- test_quality_format stdout ----
+
+thread 'test_quality_format' (59678057) panicked at butteraugli-cli/tests/cli.rs:322:10:
+Failed to run butteraugli: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+
+
+failures:
+    test_batch_mode
+    test_different_images
+    test_help
+    test_identical_images
+    test_json_output
+    test_max_score_fail
+    test_max_score_pass
+    test_missing_file
+    test_quality_format
+    test_quiet_mode
+    test_version
+
+test result: FAILED. 0 passed; 11 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p butteraugli-cli --test cli`
+      171.19 real       238.44 user         1.23 sys
+           347340800  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              175114  page reclaims
+                4762  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   6  signals received
+                1166  voluntary context switches
+               97124  involuntary context switches
+          1132669250  instructions retired
+           467154557  cycles elapsed
+            38961872  peak memory footprint
+run-heavy: done rc=101 172s | peak-RSS 0.32GiB | min-avail 10601MiB | peak-load 71.16

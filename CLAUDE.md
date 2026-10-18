@@ -4,6 +4,14 @@ Pure Rust port of libjxl's butteraugli perceptual image quality metric.
 
 ## Known Bugs
 
+- **2026-10-18 native ARM64 validation:** Exact numerical fingerprints and
+  the pinned C++ oracle pass on mac/NEON and scalar permutations (7/7).
+  Fast frozen-main fingerprints are x86-64-gated and remain unvalidated on ARM64.
+  Workspace `cargo test` with an external `CARGO_TARGET_DIR` fails all 11 CLI
+  tests: `butteraugli-cli/tests/cli.rs::butteraugli_bin` hard-codes the repo's
+  `target` directory. No code or expectations changed.
+  [Commands and evidence](benchmarks/mac_validation_2026-10-18/README.md).
+
 - **2026-10-12 release audit: warm-reference throughput regressed versus 0.9.3.**
   With equal default features and explicit thread pools, the original current
   eight-buffer cache was 40.6–44.8% slower at 1080p/eight threads, and

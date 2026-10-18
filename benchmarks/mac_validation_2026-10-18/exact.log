@@ -1,0 +1,56 @@
+run-heavy: mem-cap=NONE (macOS has no cgroup; monitored process-tree RSS guard=12884901888 bytes) jobs=2/12 avail=11420MiB (free+inactive+speculative proxy) :: ['cargo', 'test', '-p', 'butteraugli', '--test', 'exact_numerics', '--', '--nocapture', '--test-threads=1']
+   Compiling num-traits v0.2.19
+   Compiling rustix v1.1.4
+   Compiling libm v0.2.16
+   Compiling bytemuck v1.25.2
+   Compiling tempfile v3.27.0
+   Compiling rgb v0.8.53
+   Compiling rusty-fork v0.3.1
+   Compiling proptest v1.11.0
+   Compiling magetypes v0.9.31-beta.1 (https://github.com/imazen/archmage?rev=da0ed5deca40ac60df32dcf4f6e7602658b2f959#da0ed5de)
+   Compiling mozjpeg v0.10.13
+   Compiling butteraugli v0.9.4 (${VALIDATION_REPO}/butteraugli)
+   Compiling chrono v0.4.45
+   Compiling approx v0.5.1
+    Finished `test` profile [unoptimized] target(s) in 5.24s
+     Running tests/exact_numerics.rs (${CARGO_TARGET_DIR}/debug/deps/exact_numerics-60f86644690fbb2d)
+
+running 7 tests
+test exact_all_srgb_reference_ingresses_agree ... ok
+test exact_is_bit_identical_at_all_available_simd_tiers ... 25 permutations run
+25 permutations run
+25 permutations run
+ok
+test exact_matches_pinned_cpp_oracle ... ok
+test exact_reference_and_strided_rgb_match_one_shot ... ok
+test exact_strided_linear_and_planar_reference_agree ... ok
+test exact_strip_preserves_whole_image_pixels ... ok
+test fast_negative_control_for_cpp_oracles ... negative 16x16: max=0.000010490424279696597 p3=0.0000058770198458901746
+negative 17x19: max=0.000007033333203176895 p3=0.000000033708914326524564
+negative 65x49: max=0.000004053135278514475 p3=0.0000008993448357141887
+negative 128x96: max=0.00001811985573718644 p3=0.0000023401360520480807
+negative 257x193: max=0.000015497256323104835 p3=0.0000023008741070196237
+negative 512x512: max=0.00001716612470703538 p3=0.0000022645426487333253
+ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.68s
+
+       14.08 real        17.39 user         0.90 sys
+           377536512  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              299694  page reclaims
+                1596  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  20  signals received
+                 769  voluntary context switches
+                9425  involuntary context switches
+          1020690788  instructions retired
+           483980542  cycles elapsed
+            32604856  peak memory footprint
+run-heavy: done rc=0 15s | peak-RSS 0.35GiB | min-avail 10593MiB | peak-load 44.77
