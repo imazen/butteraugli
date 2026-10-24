@@ -68,6 +68,12 @@ exact-test:
 exact-bench:
     BUTTERAUGLI_BENCH_NO_CPP=1 cargo run --release -p butteraugli-bench --example libjxl_exact_speed
 
+# Diffmap parity against libjxl's butteraugli_main (build recipe in
+# benchmarks/libjxl_parity_2026-10-24/README.md). Summarize with
+# awk -f benchmarks/libjxl_parity_2026-10-24/summarize.awk OUT/pairs.tsv
+libjxl-parity butteraugli_main out:
+    cargo run --release -p butteraugli --example libjxl_parity -- --butteraugli-main {{butteraugli_main}} --out {{out}}
+
 # Native numerical validation; the optional C++ benchmark adapter is excluded.
 mac-validation:
     BUTTERAUGLI_BENCH_NO_CPP=1 cargo test
