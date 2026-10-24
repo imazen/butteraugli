@@ -106,6 +106,9 @@ almost-enough = "0.4.4"
 # Date/time for reference data generation
 chrono = "0.4.45"
 
+# Corpus access for the libjxl_parity example
+codec-corpus = "1.1.0"
+
 # These don't compile on wasm32 — gate them to non-wasm targets
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # JPEG encoding/decoding for roundtrip tests
