@@ -87,33 +87,13 @@ dependencies = [
 
 [[package]]
 name = "archmage"
-version = "0.9.31-beta.1"
-source = "git+https://github.com/imazen/archmage?rev=da0ed5deca40ac60df32dcf4f6e7602658b2f959#da0ed5deca40ac60df32dcf4f6e7602658b2f959"
-dependencies = [
- "archmage-macros 0.9.31-beta.1",
- "safe_unaligned_simd",
- "winarm-cpufeatures",
-]
-
-[[package]]
-name = "archmage"
 version = "0.9.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67dcf4e0bcce8da7704d177f604cf43299777de9d0f052ffe8822ab188de2820"
 dependencies = [
- "archmage-macros 0.9.31",
+ "archmage-macros",
  "safe_unaligned_simd",
  "winarm-cpufeatures",
-]
-
-[[package]]
-name = "archmage-macros"
-version = "0.9.31-beta.1"
-source = "git+https://github.com/imazen/archmage?rev=da0ed5deca40ac60df32dcf4f6e7602658b2f959#da0ed5deca40ac60df32dcf4f6e7602658b2f959"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
 ]
 
 [[package]]
@@ -181,9 +161,9 @@ version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "914c4086ea33acfef5c3ea38393c6f5c0ec99d32155377818f1723ec1bd565e3"
 dependencies = [
- "archmage 0.9.31",
+ "archmage",
  "imgref",
- "magetypes 0.9.26",
+ "magetypes",
  "rayon",
  "rgb",
 ]
@@ -194,13 +174,13 @@ version = "0.9.4"
 dependencies = [
  "almost-enough",
  "approx",
- "archmage 0.9.31-beta.1",
+ "archmage",
  "chrono",
  "codec-corpus",
  "enough",
  "imgref",
  "jpeg-decoder",
- "magetypes 0.9.31-beta.1",
+ "magetypes",
  "mozjpeg",
  "png",
  "proptest",
@@ -212,7 +192,7 @@ dependencies = [
 name = "butteraugli-bench"
 version = "0.0.0"
 dependencies = [
- "archmage 0.9.31-beta.1",
+ "archmage",
  "butteraugli 0.9.3",
  "butteraugli 0.9.4",
  "bytemuck",
@@ -720,9 +700,9 @@ version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe0e61c33d85bc56dcaf27cdf48ca32b8e34af7236584eb1d8a47316c49e0be1"
 dependencies = [
- "archmage 0.9.31",
+ "archmage",
  "bytemuck",
- "magetypes 0.9.26",
+ "magetypes",
  "num-traits",
 ]
 
@@ -740,21 +720,11 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "magetypes"
-version = "0.9.26"
+version = "0.9.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4d045ccf3f9d697e15f0b438f73b812ef93eb5e9d29cf5f5cb48dcf09f12e10"
+checksum = "f509b5e651143f19077f1d3874e87d1f8ed617f7c257f60e38d58f27563e0f98"
 dependencies = [
- "archmage 0.9.31",
- "rustversion",
-]
-
-[[package]]
-name = "magetypes"
-version = "0.9.31-beta.1"
-source = "git+https://github.com/imazen/archmage?rev=da0ed5deca40ac60df32dcf4f6e7602658b2f959#da0ed5deca40ac60df32dcf4f6e7602658b2f959"
-dependencies = [
- "archmage 0.9.31-beta.1",
- "libm",
+ "archmage",
  "rustversion",
 ]
 
