@@ -697,6 +697,16 @@ pub struct ButteraugliResult {
 }
 
 impl ButteraugliResult {
+    /// Assemble an owned assessment from native scores and an optional map.
+    /// Useful when a lending consumer explicitly chooses to retain the map.
+    pub fn new(score: f64, pnorm_3: f64, diffmap: Option<ImgVec<f32>>) -> Self {
+        Self {
+            score,
+            pnorm_3,
+            diffmap,
+        }
+    }
+
     /// libjxl-style p-norm of the diffmap (average of three p-norms at
     /// `p`, `2p`, `4p`, matching `lib/extras/metrics.cc:ComputeDistanceP`).
     ///

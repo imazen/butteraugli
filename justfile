@@ -78,3 +78,11 @@ libjxl-parity butteraugli_main out:
 mac-validation:
     BUTTERAUGLI_BENCH_NO_CPP=1 cargo test
     cargo test -p butteraugli --test exact_numerics -- --nocapture --test-threads=1
+
+# Borrow native maps before recycling, including odd shapes and independent strides.
+lending-check:
+    cargo fmt -p butteraugli --check
+    cargo test -p butteraugli --test lending_planes
+    cargo test -p butteraugli --lib
+    cargo test -p butteraugli --features linear-planes --test linear_planes_parity
+    cargo clippy -p butteraugli --all-targets --features linear-planes -- -D warnings
