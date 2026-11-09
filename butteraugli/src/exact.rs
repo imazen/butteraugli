@@ -397,6 +397,7 @@ fn absorb(v: [f32; 3]) -> [f32; 3] {
 pub(crate) enum Input<'a> {
     Interleaved(&'a [f32]),
     Planar([&'a [f32]; 3], usize),
+    Planes([imgref::ImgRef<'a, f32>; 3]),
 }
 
 impl Input<'_> {
@@ -404,6 +405,9 @@ impl Input<'_> {
         match self {
             Self::Interleaved(rgb) => crate::diff::subsample_linear_rgb_2x(rgb, w, h).0,
             Self::Planar(planes, stride) => subsample_planar(planes, w, h, stride),
+            Self::Planes(planes) => {
+                subsample_planar_strides(planes.map(|p| *p.buf()), w, h, planes.map(|p| p.stride()))
+            }
         }
     }
 }
@@ -434,6 +438,16 @@ pub(crate) fn prepare(
                         .plane_mut(c)
                         .row_mut(y)
                         .copy_from_slice(&plane[y * stride..y * stride + w]);
+                }
+            }
+        }
+        Input::Planes(planes) => {
+            for (c, plane) in planes.iter().enumerate() {
+                for y in 0..h {
+                    image
+                        .plane_mut(c)
+                        .row_mut(y)
+                        .copy_from_slice(&plane.buf()[y * plane.stride()..y * plane.stride() + w]);
                 }
             }
         }
@@ -642,23 +656,31 @@ pub(crate) fn linear(
 /// Only half-resolution input is interleaved (12 bytes per half-scale pixel).
 /// Sum order matches diff::subsample_linear_rgb_2x, including odd edges.
 pub(crate) fn subsample_planar(planes: [&[f32]; 3], w: usize, h: usize, stride: usize) -> Vec<f32> {
+    subsample_planar_strides(planes, w, h, [stride; 3])
+}
+fn subsample_planar_strides(
+    planes: [&[f32]; 3],
+    w: usize,
+    h: usize,
+    strides: [usize; 3],
+) -> Vec<f32> {
     let mut out = Vec::with_capacity(w.div_ceil(2) * h.div_ceil(2) * 3);
     for y in (0..h).step_by(2) {
         for x in (0..w).step_by(2) {
             let x1 = (x + 1).min(w - 1);
             let y1 = (y + 1).min(h - 1);
-            for p in planes {
+            for (c, p) in planes.into_iter().enumerate() {
                 out.push(if x == x1 && y == y1 {
-                    p[y * stride + x]
+                    p[y * strides[c] + x]
                 } else if x == x1 {
-                    (p[y * stride + x] + p[y1 * stride + x]) * 0.5
+                    (p[y * strides[c] + x] + p[y1 * strides[c] + x]) * 0.5
                 } else if y == y1 {
-                    (p[y * stride + x] + p[y * stride + x1]) * 0.5
+                    (p[y * strides[c] + x] + p[y * strides[c] + x1]) * 0.5
                 } else {
-                    (p[y * stride + x]
-                        + p[y * stride + x1]
-                        + p[y1 * stride + x]
-                        + p[y1 * stride + x1])
+                    (p[y * strides[c] + x]
+                        + p[y * strides[c] + x1]
+                        + p[y1 * strides[c] + x]
+                        + p[y1 * strides[c] + x1])
                         * 0.25
                 });
             }

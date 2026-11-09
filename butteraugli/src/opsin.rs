@@ -494,12 +494,26 @@ pub(crate) fn linear_planar_to_xyb_butteraugli_stop(
     pool: &BufferPool,
     stop: &dyn Stop,
 ) -> Result<Image3F, enough::StopReason> {
-    let stop = stop.may_stop().then_some(stop);
     assert!(stride >= width);
     assert!(r.len() >= stride * height);
     assert!(g.len() >= stride * height);
     assert!(b.len() >= stride * height);
+    linear_planes_to_xyb_butteraugli_stop(
+        [r, g, b].map(|p| imgref::Img::new_stride(p, width, height, stride)),
+        intensity_target,
+        pool,
+        stop,
+    )
+}
 
+pub(crate) fn linear_planes_to_xyb_butteraugli_stop(
+    planes: [imgref::ImgRef<'_, f32>; 3],
+    intensity_target: f32,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<Image3F, enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
+    let (width, height) = (planes[0].width(), planes[0].height());
     // Copy planar data directly into Image3F (respecting source stride)
     let mut linear = Image3F::from_pool_dirty(width, height, pool);
     let (out_r, out_g, out_b) = linear.planes_mut();
@@ -508,13 +522,18 @@ pub(crate) fn linear_planar_to_xyb_butteraugli_stop(
         if y.is_multiple_of(64) {
             stop.check()?;
         }
-        let src_offset = y * stride;
         let row_r = out_r.row_mut(y);
         let row_g = out_g.row_mut(y);
         let row_b = out_b.row_mut(y);
-        row_r.copy_from_slice(&r[src_offset..src_offset + width]);
-        row_g.copy_from_slice(&g[src_offset..src_offset + width]);
-        row_b.copy_from_slice(&b[src_offset..src_offset + width]);
+        row_r.copy_from_slice(
+            &planes[0].buf()[y * planes[0].stride()..y * planes[0].stride() + width],
+        );
+        row_g.copy_from_slice(
+            &planes[1].buf()[y * planes[1].stride()..y * planes[1].stride() + width],
+        );
+        row_b.copy_from_slice(
+            &planes[2].buf()[y * planes[2].stride()..y * planes[2].stride() + width],
+        );
     }
 
     // Apply OpsinDynamicsImage

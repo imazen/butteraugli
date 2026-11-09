@@ -36,10 +36,32 @@ use crate::image::{BufferPool, Image3F, ImageF};
 use crate::mask::PrecomputedMask;
 use crate::opsin::{
     linear_planar_to_xyb_butteraugli, linear_planar_to_xyb_butteraugli_stop,
-    linear_rgb_to_xyb_butteraugli, linear_rgb_to_xyb_butteraugli_stop,
+    linear_planes_to_xyb_butteraugli_stop, linear_rgb_to_xyb_butteraugli,
+    linear_rgb_to_xyb_butteraugli_stop,
 };
 use crate::psycho::{PsychoImage, separate_frequencies_owned};
 use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite_f32};
+
+fn validate_linear_planes(
+    planes: [imgref::ImgRef<'_, f32>; 3],
+    width: usize,
+    height: usize,
+) -> Result<(), ButteraugliError> {
+    if width < 8
+        || height < 8
+        || planes
+            .iter()
+            .any(|p| p.width() != width || p.height() != height)
+    {
+        return Err(ButteraugliError::InvalidDimensions { width, height });
+    }
+    for p in planes {
+        for row in p.rows() {
+            check_finite_f32(row, "linear plane active row")?;
+        }
+    }
+    Ok(())
+}
 
 /// Minimum image dimension for multi-resolution processing.
 const MIN_SIZE_FOR_MULTIRESOLUTION: usize = 8;
@@ -450,9 +472,30 @@ impl ButteraugliReference {
         check_finite_f32(&g[..min_size], "planar g")?;
         check_finite_f32(&b[..min_size], "planar b")?;
 
+        Self::new_linear_planes(
+            [r, g, b].map(|p| imgref::Img::new_stride(p, width, height, stride)),
+            params,
+        )
+    }
+
+    /// Prepare independently strided linear sRGB/BT.709 D65 planes. A sample
+    /// value of 1.0 means `params.intensity_target()` cd/m². Only active rows
+    /// must exist and be finite; row padding is ignored. No input packing is
+    /// performed. The returned state owns its native precomputation.
+    ///
+    /// # Errors
+    /// Refuses mismatched geometry, axes below 8, invalid parameters or
+    /// nonfinite active samples. Color interpretation is the caller's contract.
+    pub fn new_linear_planes(
+        planes: [imgref::ImgRef<'_, f32>; 3],
+        params: ButteraugliParams,
+    ) -> Result<Self, ButteraugliError> {
+        params.validate()?;
+        let (width, height) = (planes[0].width(), planes[0].height());
+        validate_linear_planes(planes, width, height)?;
         if params.numerics() == crate::Numerics::LibjxlExact {
             return Self::new_exact(
-                crate::exact::Input::Planar([r, g, b], stride),
+                crate::exact::Input::Planes(planes),
                 width,
                 height,
                 params,
@@ -472,16 +515,13 @@ impl ButteraugliReference {
         let ((full, mut reuse_pool), half) = maybe_join(
             || {
                 let pool = BufferPool::new();
-                let xyb = linear_planar_to_xyb_butteraugli(
-                    r,
-                    g,
-                    b,
-                    width,
-                    height,
-                    stride,
+                let xyb = linear_planes_to_xyb_butteraugli_stop(
+                    planes,
                     intensity_target,
                     &pool,
-                );
+                    &enough::Unstoppable,
+                )
+                .expect("Unstoppable never stops");
                 let psycho = separate_frequencies_owned(xyb, &pool, &enough::Unstoppable)
                     .expect("Unstoppable never stops");
                 let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
@@ -491,7 +531,7 @@ impl ButteraugliReference {
                 if need_half {
                     let pool = BufferPool::new();
                     let (sub_r, sub_g, sub_b, sw, sh) =
-                        subsample_planar_rgb_2x(r, g, b, width, height, stride, &pool);
+                        subsample_planar_rgb_views_2x(planes, &pool);
                     let sub_xyb = linear_planar_to_xyb_butteraugli(
                         &sub_r,
                         &sub_g,
@@ -1266,6 +1306,31 @@ impl ButteraugliReference {
         })
     }
 
+    /// Lend a native diffmap before its scratch is recycled. No map export or
+    /// input packing occurs. Planes use independent strides and may omit final
+    /// padding. Values are linear sRGB/BT.709 D65; 1.0 has the reference's
+    /// configured intensity in cd/m². The consumer cannot retain the map borrow.
+    ///
+    /// # Errors
+    /// Refuses geometry/nonfinite active samples, cancellation or a native
+    /// computation failure. Cancellation is checked before invoking the consumer.
+    pub fn compare_linear_planes_with<T>(
+        &self,
+        planes: [imgref::ImgRef<'_, f32>; 3],
+        stop: &dyn Stop,
+        consume: impl FnOnce(f64, f64, imgref::ImgRef<'_, f32>) -> T,
+    ) -> Result<T, ButteraugliError> {
+        stop.check().map_err(ButteraugliError::Cancelled)?;
+        validate_linear_planes(planes, self.width, self.height)?;
+        self.compare_linear_planes_impl_with(planes, stop, |score, p3, map| {
+            if !score.is_finite() || !p3.is_finite() {
+                return Err(ButteraugliError::NonFiniteResult);
+            }
+            stop.check().map_err(ButteraugliError::Cancelled)?;
+            Ok(consume(score, p3, map))
+        })?
+    }
+
     /// Internal comparison implementation for planar linear RGB input,
     /// writing the diffmap into a caller-owned `Vec<f32>` (B7a, 2026-05-23).
     ///
@@ -1287,6 +1352,26 @@ impl ButteraugliReference {
         diffmap_out: &mut Vec<f32>,
         stop: &dyn Stop,
     ) -> Result<(f64, f64), ButteraugliError> {
+        self.compare_linear_planes_impl_with(
+            [r, g, b].map(|p| imgref::Img::new_stride(p, self.width, self.height, stride)),
+            stop,
+            |score, pnorm_3, map| {
+                let needed = self.width * self.height;
+                diffmap_out.resize(needed, 0.0);
+                for (dst, src) in diffmap_out.chunks_exact_mut(self.width).zip(map.rows()) {
+                    dst.copy_from_slice(src);
+                }
+                (score, pnorm_3)
+            },
+        )
+    }
+
+    fn compare_linear_planes_impl_with<T>(
+        &self,
+        planes: [imgref::ImgRef<'_, f32>; 3],
+        stop: &dyn Stop,
+        consume: impl FnOnce(f64, f64, imgref::ImgRef<'_, f32>) -> T,
+    ) -> Result<T, ButteraugliError> {
         // Cooperative cancellation: outermost per-scale boundary — checked
         // before the scale dispatch below, never inside the kernels.
         stop.check().map_err(ButteraugliError::Cancelled)?;
@@ -1296,15 +1381,13 @@ impl ButteraugliReference {
                 &self.full.psycho,
                 &self.full.mask,
                 self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
-                crate::exact::Input::Planar([r, g, b], stride),
+                crate::exact::Input::Planes(planes),
                 &self.params,
                 &self.pool,
                 stop,
             )?;
             let dm = result.diffmap.expect("internal comparison returns diffmap");
-            diffmap_out.clear();
-            diffmap_out.extend_from_slice(dm.buf());
-            return Ok((result.score, result.pnorm_3));
+            return Ok(consume(result.score, result.pnorm_3, dm.as_ref()));
         }
 
         let intensity_target = self.params.intensity_target();
@@ -1320,17 +1403,8 @@ impl ButteraugliReference {
 
         let (rdiffmap, rsub) = maybe_join(
             || -> Result<ImageF, enough::StopReason> {
-                let xyb2 = linear_planar_to_xyb_butteraugli_stop(
-                    r,
-                    g,
-                    b,
-                    width,
-                    height,
-                    stride,
-                    intensity_target,
-                    pool,
-                    &stop,
-                )?;
+                let xyb2 =
+                    linear_planes_to_xyb_butteraugli_stop(planes, intensity_target, pool, &stop)?;
                 let ps2 = separate_frequencies_owned(xyb2, pool, &stop)?;
                 let dm = compute_diffmap_with_precomputed(
                     full_psycho,
@@ -1347,7 +1421,7 @@ impl ButteraugliReference {
                 match half_ref {
                     Some(half) => {
                         let (sub_r, sub_g, sub_b, sw, sh) =
-                            subsample_planar_rgb_2x(r, g, b, width, height, stride, pool);
+                            subsample_planar_rgb_views_2x(planes, pool);
                         let sub_xyb = linear_planar_to_xyb_butteraugli_stop(
                             &sub_r,
                             &sub_g,
@@ -1388,30 +1462,10 @@ impl ButteraugliReference {
 
         let (score, pnorm_3) = compute_score_from_diffmap(&diffmap);
 
-        // B7a: copy into caller's Vec (or move via owned buf if tight-stride)
-        // then recycle the internal ImageF.data back to the pool. The caller's
-        // Vec retains its existing capacity for next-iter reuse.
-        let needed = width * height;
-        if diffmap_out.capacity() < needed {
-            diffmap_out.reserve(needed - diffmap_out.len());
-        }
-        // Resize so element write via index/slicing is valid.
-        diffmap_out.resize(needed, 0.0);
-        let dst = &mut diffmap_out[..needed];
-        if diffmap.stride() == width {
-            // No padding — straight memcpy from packed data.
-            dst.copy_from_slice(&diffmap.data()[..needed]);
-        } else {
-            // Padded — copy row by row to strip stride padding.
-            for y in 0..height {
-                let src_row = diffmap.row(y);
-                let dst_row = &mut dst[y * width..(y + 1) * width];
-                dst_row.copy_from_slice(src_row);
-            }
-        }
+        let view = imgref::Img::new_stride(diffmap.data(), width, height, diffmap.stride());
+        let output = consume(score, pnorm_3, view);
         diffmap.recycle(pool);
-
-        Ok((score, pnorm_3))
+        Ok(output)
     }
 
     /// Internal comparison implementation for planar linear RGB input.
@@ -2174,6 +2228,18 @@ fn subsample_planar_rgb_2x(
     stride: usize,
     pool: &BufferPool,
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>, usize, usize) {
+    subsample_planar_rgb_views_2x(
+        [r, g, b].map(|p| imgref::Img::new_stride(p, width, height, stride)),
+        pool,
+    )
+}
+fn subsample_planar_rgb_views_2x(
+    planes: [imgref::ImgRef<'_, f32>; 3],
+    pool: &BufferPool,
+) -> (Vec<f32>, Vec<f32>, Vec<f32>, usize, usize) {
+    let (width, height) = (planes[0].width(), planes[0].height());
+    let [r, g, b] = planes.map(|p| *p.buf());
+    let strides = planes.map(|p| p.stride());
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
     let out_size = out_width * out_height;
@@ -2186,43 +2252,43 @@ fn subsample_planar_rgb_2x(
     let interior_h = height / 2;
 
     // Fast interior: per-channel SIMD-friendly loop
-    subsample_channel_2x_interior(r, &mut out_r, stride, interior_w, interior_h, out_width);
-    subsample_channel_2x_interior(g, &mut out_g, stride, interior_w, interior_h, out_width);
-    subsample_channel_2x_interior(b, &mut out_b, stride, interior_w, interior_h, out_width);
+    subsample_channel_2x_interior(r, &mut out_r, strides[0], interior_w, interior_h, out_width);
+    subsample_channel_2x_interior(g, &mut out_g, strides[1], interior_w, interior_h, out_width);
+    subsample_channel_2x_interior(b, &mut out_b, strides[2], interior_w, interior_h, out_width);
 
     // Right edge column (if width is odd)
     if out_width > interior_w {
         let ox = interior_w;
         let ix = ox * 2;
         for oy in 0..interior_h {
-            let row0 = oy * 2 * stride;
-            let row1 = (oy * 2 + 1) * stride;
             let out_idx = oy * out_width + ox;
-            out_r[out_idx] = (r[row0 + ix] + r[row1 + ix]) * 0.5;
-            out_g[out_idx] = (g[row0 + ix] + g[row1 + ix]) * 0.5;
-            out_b[out_idx] = (b[row0 + ix] + b[row1 + ix]) * 0.5;
+            out_r[out_idx] =
+                (r[oy * 2 * strides[0] + ix] + r[(oy * 2 + 1) * strides[0] + ix]) * 0.5;
+            out_g[out_idx] =
+                (g[oy * 2 * strides[1] + ix] + g[(oy * 2 + 1) * strides[1] + ix]) * 0.5;
+            out_b[out_idx] =
+                (b[oy * 2 * strides[2] + ix] + b[(oy * 2 + 1) * strides[2] + ix]) * 0.5;
         }
     }
 
     // Bottom edge row (if height is odd)
     if out_height > interior_h {
         let oy = interior_h;
-        let row0 = oy * 2 * stride;
         for ox in 0..interior_w {
             let ix = ox * 2;
             let out_idx = oy * out_width + ox;
-            out_r[out_idx] = (r[row0 + ix] + r[row0 + ix + 1]) * 0.5;
-            out_g[out_idx] = (g[row0 + ix] + g[row0 + ix + 1]) * 0.5;
-            out_b[out_idx] = (b[row0 + ix] + b[row0 + ix + 1]) * 0.5;
+            out_r[out_idx] = (r[oy * 2 * strides[0] + ix] + r[oy * 2 * strides[0] + ix + 1]) * 0.5;
+            out_g[out_idx] = (g[oy * 2 * strides[1] + ix] + g[oy * 2 * strides[1] + ix + 1]) * 0.5;
+            out_b[out_idx] = (b[oy * 2 * strides[2] + ix] + b[oy * 2 * strides[2] + ix + 1]) * 0.5;
         }
         // Bottom-right corner (if both odd)
         if out_width > interior_w {
             let ox = interior_w;
             let ix = ox * 2;
             let out_idx = oy * out_width + ox;
-            out_r[out_idx] = r[row0 + ix];
-            out_g[out_idx] = g[row0 + ix];
-            out_b[out_idx] = b[row0 + ix];
+            out_r[out_idx] = r[oy * 2 * strides[0] + ix];
+            out_g[out_idx] = g[oy * 2 * strides[1] + ix];
+            out_b[out_idx] = b[oy * 2 * strides[2] + ix];
         }
     }
 
