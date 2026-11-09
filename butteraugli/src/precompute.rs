@@ -472,7 +472,7 @@ impl ButteraugliReference {
         check_finite_f32(&g[..min_size], "planar g")?;
         check_finite_f32(&b[..min_size], "planar b")?;
 
-        Self::new_linear_planes(
+        Self::from_validated_linear_planes(
             [r, g, b].map(|p| imgref::Img::new_stride(p, width, height, stride)),
             params,
         )
@@ -493,6 +493,14 @@ impl ButteraugliReference {
         params.validate()?;
         let (width, height) = (planes[0].width(), planes[0].height());
         validate_linear_planes(planes, width, height)?;
+        Self::from_validated_linear_planes(planes, params)
+    }
+
+    fn from_validated_linear_planes(
+        planes: [imgref::ImgRef<'_, f32>; 3],
+        params: ButteraugliParams,
+    ) -> Result<Self, ButteraugliError> {
+        let (width, height) = (planes[0].width(), planes[0].height());
         if params.numerics() == crate::Numerics::LibjxlExact {
             return Self::new_exact(
                 crate::exact::Input::Planes(planes),
@@ -1358,8 +1366,12 @@ impl ButteraugliReference {
             |score, pnorm_3, map| {
                 let needed = self.width * self.height;
                 diffmap_out.resize(needed, 0.0);
-                for (dst, src) in diffmap_out.chunks_exact_mut(self.width).zip(map.rows()) {
-                    dst.copy_from_slice(src);
+                if map.stride() == self.width {
+                    diffmap_out.copy_from_slice(&map.buf()[..needed]);
+                } else {
+                    for (dst, src) in diffmap_out.chunks_exact_mut(self.width).zip(map.rows()) {
+                        dst.copy_from_slice(src);
+                    }
                 }
                 (score, pnorm_3)
             },

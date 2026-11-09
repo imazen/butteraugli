@@ -6,7 +6,7 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: butteraugli.txt 149 lines (supported surface) | butteraugli.features.txt 195 added (features: avx512,corpus-tests,iir-blur,internals,linear-planes,rayon,unsafe-performance) | butteraugli.internal.txt 20 lines (20 hidden + 0 excluded-feature)
+# files: butteraugli.txt 153 lines (supported surface) | butteraugli.features.txt 195 added (features: avx512,corpus-tests,iir-blur,internals,linear-planes,rayon,unsafe-performance) | butteraugli.internal.txt 18 lines (18 hidden + 0 excluded-feature)
 
 ## summary
 #
@@ -14,25 +14,24 @@
 #   pub types (struct/enum/trait/alias)         7
 #   pub consts/statics                          4
 #   free functions                             11
-#   inherent methods                           89
+#   inherent methods                           94
 #   struct fields                              15
 #   enum variants                               8
-#   re-exports                                  6
+#   re-exports                                  5
 #   trait roster entries (type × trait)        22
 #   auto-trait-complete types                   5
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
 #   (root)                           71
-#   precompute                       71
+#   precompute                       75
 
-## items (141 lines)
+## items (145 lines)
 
 pub mod butteraugli
 pub use Img
 pub use ImgRef
 pub use ImgVec
-pub use RGB
 pub use RGB8
 pub use enough
 pub mod precompute
@@ -43,6 +42,7 @@ pub fn precompute::ButteraugliReference::compare_linear_imgref_with_stop(&self, 
 pub fn precompute::ButteraugliReference::compare_linear_planar(&self, &[f32], &[f32], &[f32], usize) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_planar_into(&self, &[f32], &[f32], &[f32], usize, &mut alloc::vec::Vec<f32>) -> core::result::Result<(f64, f64), ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_planar_with_stop(&self, &[f32], &[f32], &[f32], usize, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_linear_planes_with<T>(&self, [imgref::ImgRef<'_, f32>; 3], &dyn enough::Stop, impl core::ops::function::FnOnce(f64, f64, imgref::ImgRef<'_, f32>) -> T) -> core::result::Result<T, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_with_stop(&self, &[f32], &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_srgb(&self, imgref::ImgRef<'_, rgb::RGB8>) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_srgb_with_stop(&self, imgref::ImgRef<'_, rgb::RGB8>, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
@@ -57,6 +57,7 @@ pub fn precompute::ButteraugliReference::memory_bytes(&self) -> usize
 pub fn precompute::ButteraugliReference::new(&[u8], usize, usize, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::new_linear(&[f32], usize, usize, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::new_linear_planar(&[f32], &[f32], &[f32], usize, usize, usize, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
+pub fn precompute::ButteraugliReference::new_linear_planes([imgref::ImgRef<'_, f32>; 3], ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::params(&self) -> &ButteraugliParams
 pub fn precompute::ButteraugliReference::precompute_bytes(&self) -> usize
 pub fn precompute::ButteraugliReference::shrink_to_fit(&mut self)
@@ -117,6 +118,7 @@ pub fn precompute::ButteraugliReference::compare_linear_imgref_with_stop(&self, 
 pub fn precompute::ButteraugliReference::compare_linear_planar(&self, &[f32], &[f32], &[f32], usize) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_planar_into(&self, &[f32], &[f32], &[f32], usize, &mut alloc::vec::Vec<f32>) -> core::result::Result<(f64, f64), ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_planar_with_stop(&self, &[f32], &[f32], &[f32], usize, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
+pub fn precompute::ButteraugliReference::compare_linear_planes_with<T>(&self, [imgref::ImgRef<'_, f32>; 3], &dyn enough::Stop, impl core::ops::function::FnOnce(f64, f64, imgref::ImgRef<'_, f32>) -> T) -> core::result::Result<T, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_linear_with_stop(&self, &[f32], &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_srgb(&self, imgref::ImgRef<'_, rgb::RGB8>) -> core::result::Result<ButteraugliResult, ButteraugliError>
 pub fn precompute::ButteraugliReference::compare_srgb_with_stop(&self, imgref::ImgRef<'_, rgb::RGB8>, &dyn enough::Stop) -> core::result::Result<ButteraugliResult, ButteraugliError>
@@ -131,6 +133,7 @@ pub fn precompute::ButteraugliReference::memory_bytes(&self) -> usize
 pub fn precompute::ButteraugliReference::new(&[u8], usize, usize, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::new_linear(&[f32], usize, usize, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::new_linear_planar(&[f32], &[f32], &[f32], usize, usize, usize, ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
+pub fn precompute::ButteraugliReference::new_linear_planes([imgref::ImgRef<'_, f32>; 3], ButteraugliParams) -> core::result::Result<Self, ButteraugliError>
 pub fn precompute::ButteraugliReference::params(&self) -> &ButteraugliParams
 pub fn precompute::ButteraugliReference::precompute_bytes(&self) -> usize
 pub fn precompute::ButteraugliReference::shrink_to_fit(&mut self)
@@ -150,6 +153,7 @@ pub ButteraugliResult::diffmap: core::option::Option<imgref::ImgVec<f32>>
 pub ButteraugliResult::pnorm_3: f64
 pub ButteraugliResult::score: f64
 pub fn ButteraugliResult::max_norm(&self) -> f64
+pub fn ButteraugliResult::new(f64, f64, core::option::Option<imgref::ImgVec<f32>>) -> Self
 pub fn ButteraugliResult::pnorm(&self, f64) -> core::option::Option<f64>
 pub struct ButteraugliStripConfig
 pub ButteraugliStripConfig::halo_rows: usize
