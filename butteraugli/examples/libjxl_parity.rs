@@ -49,12 +49,16 @@ fn load_png(path: &Path) -> Image {
     let px = match info.color_type {
         png::ColorType::Rgb => src.to_vec(),
         png::ColorType::Rgba => src
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|c| [c[0], c[1], c[2]])
             .collect(),
         png::ColorType::Grayscale => src.iter().flat_map(|&v| [v, v, v]).collect(),
         png::ColorType::GrayscaleAlpha => src
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .flat_map(|c| [c[0], c[0], c[0]])
             .collect(),
         t => panic!("{}: unsupported color type {t:?}", path.display()),
@@ -101,8 +105,8 @@ fn load_distmap(path: &Path, w: usize, h: usize) -> Vec<f32> {
     let mut map = vec![0f32; w * h];
     for (row, chunk) in data.chunks_exact(w * 4).enumerate() {
         let y = h - 1 - row;
-        for (x, b) in chunk.chunks_exact(4).enumerate() {
-            map[y * w + x] = f32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        for (x, b) in chunk.as_chunks::<4>().0.iter().enumerate() {
+            map[y * w + x] = f32::from_le_bytes(*b);
         }
     }
     map
@@ -170,6 +174,7 @@ fn noise(img: &Image) -> Image {
 
 /// libjxl `TF_SRGB::DisplayFromEncoded` (cms/transfer_functions-inl.h) on
 /// `u8 * (1/255)`, Horner steps fused as Highway's MulAdd.
+#[allow(clippy::excessive_precision)]
 fn libjxl_tf_srgb(v: u8) -> f32 {
     const P: [f32; 5] = [
         2.200248328e-4,
@@ -321,7 +326,8 @@ fn main() {
     print!("{report}");
 
     let corpus = codec_corpus::Corpus::new().unwrap();
-    let mut sources: Vec<(String, Image, Vec<(usize, usize)>)> = Vec::new();
+    type SourceEntry = (String, Image, Vec<(usize, usize)>);
+    let mut sources: Vec<SourceEntry> = Vec::new();
     let pngs = |folder: &str| -> Vec<PathBuf> {
         let mut paths: Vec<PathBuf> = fs::read_dir(corpus.get(folder).unwrap())
             .unwrap()
@@ -429,12 +435,16 @@ fn main() {
                             None => {
                                 let a: Vec<RGB8> = reference
                                     .px
-                                    .chunks_exact(3)
+                                    .as_chunks::<3>()
+                                    .0
+                                    .iter()
                                     .map(|c| RGB8::new(c[0], c[1], c[2]))
                                     .collect();
                                 let b: Vec<RGB8> = dist
                                     .px
-                                    .chunks_exact(3)
+                                    .as_chunks::<3>()
+                                    .0
+                                    .iter()
                                     .map(|c| RGB8::new(c[0], c[1], c[2]))
                                     .collect();
                                 butteraugli(Img::new(&a[..], w, h), Img::new(&b[..], w, h), &params)
@@ -442,7 +452,9 @@ fn main() {
                             Some(lut) => {
                                 let lin = |img: &Image| -> Vec<RGB<f32>> {
                                     img.px
-                                        .chunks_exact(3)
+                                        .as_chunks::<3>()
+                                        .0
+                                        .iter()
                                         .map(|c| {
                                             RGB::new(
                                                 lut[c[0] as usize],
