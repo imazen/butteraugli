@@ -72,6 +72,16 @@ let reference = ButteraugliReference::new(&ref_rgb, width, height, fast)?;
 let result = reference.compare(&candidate_rgb)?;
 ```
 
+For an encoder that immediately consumes a map, use
+`ButteraugliReference::new_linear_planes` with three `ImgRef<f32>` views, then
+`compare_linear_planes_with(planes, stop, |score, pnorm3, map| ...)`. Planes may
+have independent strides and omit final-row padding. Only active samples must
+be finite. The callback borrows the native map before its scratch is recycled;
+it can reduce directly into encoder blocks. No exported map vector is needed.
+Samples are linear sRGB/BT.709 D65; `1.0` represents the configured intensity
+in cd/m². This preserves both native scores and every map sample in Fast and
+LibjxlExact modes. Legacy slice entry points retain their padding contract.
+
 With `linear-planes`, the same override is
 `ScorerBuilder::new().with_scratch_cache_bytes(bytes).build(&reference_planes)`.
 `scratch_cache_bytes()` returns `None` for automatic sizing or `Some(bytes)` for

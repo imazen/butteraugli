@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `new_linear_planes` and `compare_linear_planes_with` accept independently
+  strided active-row views. Lending exposes the native map before scratch
+  recycling, preserving native score/map bits without a second map export.
+
 - Add opt-in `Numerics::LibjxlExact`; the default `Fast` mode stays unchanged
   (`186b648b`). See [numerical parity](benchmarks/libjxl-exact.md).
 
