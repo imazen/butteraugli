@@ -161,6 +161,8 @@ jobs:
   test-cross:
     name: Cross (${{ matrix.target }})
     runs-on: ubuntu-latest
+    env:
+      CROSS_CONTAINER_OPTS: --security-opt seccomp=unconfined
     strategy:
       fail-fast: false
       matrix:
