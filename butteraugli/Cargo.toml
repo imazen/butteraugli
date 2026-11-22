@@ -86,7 +86,7 @@ rgb.workspace = true
 rayon = { workspace = true, optional = true }
 # Cooperative cancellation trait (`&dyn enough::Stop`) for the `*_with_stop`
 # entry points. The crate is `std` (not `no_std`), so default features are fine.
-enough = "0.4.4"
+enough = "0.4.5"
 
 # C++ butteraugli bindings for parity testing (not on crates.io)
 # For local C++ parity testing, add jpegli-internals-sys to .cargo/config.toml
@@ -101,7 +101,7 @@ png = "0.18.1"
 approx = "0.5.1"
 
 # Ergonomic cancellation tokens (`Stopper::cancelled()`) for cancellation tests
-almost-enough = "0.4.4"
+almost-enough = "0.4.5"
 
 # Date/time for reference data generation
 chrono = "0.4.45"

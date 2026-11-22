@@ -23,7 +23,7 @@ image = { workspace = true }
 imgref = { workspace = true }
 rgb = { workspace = true }
 bytemuck = "1.25.2"
-zenbench = "0.1.7"
+zenbench = "0.1.11"
 iai-callgrind = "0.16.1"
 # `testable_dispatch` lets benches/tier_isolation.rs disable the baseline SIMD
 # token (NEON on aarch64) so the scalar arm is real rather than a second
