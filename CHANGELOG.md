@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Move unpublished Margarine research, measurements, and CI to zenmetrics (`ad386c42` in that repository); Butteraugli arithmetic is unchanged.
+- Bump `enough` / `almost-enough` to `0.4.5`, `zenbench` to `0.1.11`, and `zenutils-apidoc` to `0.1.1` (alongside `archmage` / `magetypes` `0.9.32`), and update `Cargo.lock` / `apidoc/Cargo.lock`.
+- Refresh `docs/public-api` snapshots with `zenutils-apidoc 0.1.1` (moving `#[doc(hidden)]` `pub use RGB` to `butteraugli.internal.txt`; no public API changes) and resolve Rust 1.100.0 clippy lints in `examples/libjxl_parity.rs`.
+
+### Fixed
+
+- Remove the `macos-15-intel` target from `.github/workflows/release.yml` and pass `CROSS_CONTAINER_OPTS: --security-opt seccomp=unconfined` on the `test-cross` job in `.github/workflows/ci.yml`.
 
 ### QUEUED BREAKING CHANGES
 

@@ -6,7 +6,7 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: butteraugli.txt 149 lines (supported surface) | butteraugli.features.txt 195 added (features: avx512,corpus-tests,iir-blur,internals,linear-planes,rayon,unsafe-performance) | butteraugli.internal.txt 20 lines (20 hidden + 0 excluded-feature)
+# files: butteraugli.txt 148 lines (supported surface) | butteraugli.features.txt 195 added (features: avx512,corpus-tests,iir-blur,internals,linear-planes,rayon,unsafe-performance) | butteraugli.internal.txt 18 lines (18 hidden + 0 excluded-feature)
 
 ## summary
 #
@@ -17,22 +17,21 @@
 #   inherent methods                           89
 #   struct fields                              15
 #   enum variants                               8
-#   re-exports                                  6
+#   re-exports                                  5
 #   trait roster entries (type × trait)        22
 #   auto-trait-complete types                   5
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
-#   (root)                           71
+#   (root)                           70
 #   precompute                       71
 
-## items (141 lines)
+## items (140 lines)
 
 pub mod butteraugli
 pub use Img
 pub use ImgRef
 pub use ImgVec
-pub use RGB
 pub use RGB8
 pub use enough
 pub mod precompute
