@@ -70,13 +70,18 @@ iir-blur = []
 # enabled, missing corpus data fails the tests loudly.
 # Run locally: cargo test -p butteraugli --features corpus-tests --test conformance
 corpus-tests = []
+## Enable zenpixels 0.5 PixelView ingress helpers.
+zenpixels = ["dep:zenpixels"]
+## Implement zenpsy-api Metric and PrepareReference traits for ButteraugliMetric.
+## Score-only by default (zero full-resolution diffmap allocation); diffmap is opt-in.
+zenpsy-api = ["zenpixels", "dep:zenpsy-api"]
 # cpp-parity feature only available locally (requires jpegli-internals-sys which is not published)
 # Enable via: cargo test --features cpp-parity (after setting up local path in .cargo/config.toml)
 # cpp-parity = ["dep:jpegli-internals-sys"]
 
 [lints.rust]
 # cpp-parity tests check for a feature not published to crates.io
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cpp-parity", "avx512", "rayon", "iir-blur"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cpp-parity", "avx512", "rayon", "iir-blur", "zenpixels", "zenpsy-api"))'] }
 
 [dependencies]
 archmage.workspace = true
@@ -84,6 +89,8 @@ magetypes.workspace = true
 imgref.workspace = true
 rgb.workspace = true
 rayon = { workspace = true, optional = true }
+zenpixels = { workspace = true, optional = true }
+zenpsy-api = { workspace = true, optional = true }
 # Cooperative cancellation trait (`&dyn enough::Stop`) for the `*_with_stop`
 # entry points. The crate is `std` (not `no_std`), so default features are fine.
 enough = "0.4.4"

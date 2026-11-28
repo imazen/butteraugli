@@ -36,8 +36,7 @@ use crate::image::{BufferPool, Image3F, ImageF};
 use crate::mask::PrecomputedMask;
 use crate::opsin::{
     linear_planar_to_xyb_butteraugli, linear_planar_to_xyb_butteraugli_stop,
-    linear_planes_to_xyb_butteraugli_stop, linear_rgb_to_xyb_butteraugli,
-    linear_rgb_to_xyb_butteraugli_stop,
+    linear_planes_to_xyb_butteraugli_stop, linear_rgb_to_xyb_butteraugli_stop,
 };
 use crate::psycho::{PsychoImage, separate_frequencies_owned};
 use crate::{ButteraugliError, ButteraugliParams, ButteraugliResult, check_finite_f32};
@@ -276,6 +275,22 @@ impl ButteraugliReference {
         Self::new_linear_validated(rgb, width, height, params, src)
     }
 
+    /// Crate-internal cancellable variant of [`Self::new_linear`].
+    #[cfg(feature = "zenpsy-api")]
+    pub(crate) fn new_linear_with_stop(
+        rgb: &[f32],
+        width: usize,
+        height: usize,
+        params: ButteraugliParams,
+        retain_source: bool,
+        stop: &dyn Stop,
+    ) -> Result<Self, ButteraugliError> {
+        stop.check().map_err(ButteraugliError::Cancelled)?;
+        params.validate()?;
+        let src = retain_source.then(|| ReferenceSource::Linear(rgb.to_vec()));
+        Self::new_linear_validated_stop(rgb, width, height, params, src, stop)
+    }
+
     /// Internal constructor that skips param validation (caller must have
     /// already called `params.validate()`).
     ///
@@ -290,6 +305,19 @@ impl ButteraugliReference {
         params: ButteraugliParams,
         source: Option<ReferenceSource>,
     ) -> Result<Self, ButteraugliError> {
+        Self::new_linear_validated_stop(rgb, width, height, params, source, &enough::Unstoppable)
+    }
+
+    fn new_linear_validated_stop(
+        rgb: &[f32],
+        width: usize,
+        height: usize,
+        params: ButteraugliParams,
+        source: Option<ReferenceSource>,
+        stop: &dyn Stop,
+    ) -> Result<Self, ButteraugliError> {
+        stop.check().map_err(ButteraugliError::Cancelled)?;
+
         let expected_size = width
             .checked_mul(height)
             .and_then(|wh| wh.checked_mul(3))
@@ -307,6 +335,7 @@ impl ButteraugliReference {
         }
 
         check_finite_f32(rgb, "linear rgb")?;
+        stop.check().map_err(ButteraugliError::Cancelled)?;
 
         let need_half = !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
@@ -322,42 +351,65 @@ impl ButteraugliReference {
                 height,
                 params,
                 source,
+                stop,
             );
         }
-        let ((full, mut reuse_pool), half) = maybe_join(
-            || {
+
+        let stop_opt = stop.may_stop().then_some(stop);
+        let (rfull, rhalf) = maybe_join(
+            || -> Result<(ScaleData, BufferPool), enough::StopReason> {
                 let pool = BufferPool::new();
-                let xyb =
-                    linear_rgb_to_xyb_butteraugli(rgb, width, height, intensity_target, &pool);
-                let psycho = separate_frequencies_owned(xyb, &pool, &enough::Unstoppable)
-                    .expect("Unstoppable never stops");
-                let mask = crate::mask::precompute_reference_mask(&psycho.hf, &psycho.uhf, &pool);
-                (ScaleData { psycho, mask }, pool)
+                let xyb = linear_rgb_to_xyb_butteraugli_stop(
+                    rgb,
+                    width,
+                    height,
+                    intensity_target,
+                    &pool,
+                    &stop_opt,
+                )?;
+                let psycho = separate_frequencies_owned(xyb, &pool, &stop_opt)?;
+                let mask = crate::mask::precompute_reference_mask_stop(
+                    &psycho.hf,
+                    &psycho.uhf,
+                    &pool,
+                    &stop_opt,
+                )?;
+                Ok((ScaleData { psycho, mask }, pool))
             },
-            || {
+            || -> Result<Option<ScaleData>, enough::StopReason> {
                 if need_half {
+                    stop_opt.check()?;
                     let pool = BufferPool::new();
-                    let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, &pool);
-                    let sub_xyb =
-                        linear_rgb_to_xyb_butteraugli(&sub_rgb, sw, sh, intensity_target, &pool);
+                    let (sub_rgb, sw, sh) =
+                        subsample_linear_rgb_2x_stop(rgb, width, height, &pool, &stop_opt)?;
+                    let sub_xyb_res = linear_rgb_to_xyb_butteraugli_stop(
+                        &sub_rgb,
+                        sw,
+                        sh,
+                        intensity_target,
+                        &pool,
+                        &stop_opt,
+                    );
                     pool.put(sub_rgb); // B7b: return subsample buffer to pool
-                    let sub_psycho =
-                        separate_frequencies_owned(sub_xyb, &pool, &enough::Unstoppable)
-                            .expect("Unstoppable never stops");
-                    let sub_mask = crate::mask::precompute_reference_mask(
+                    let sub_xyb = sub_xyb_res?;
+                    let sub_psycho = separate_frequencies_owned(sub_xyb, &pool, &stop_opt)?;
+                    let sub_mask = crate::mask::precompute_reference_mask_stop(
                         &sub_psycho.hf,
                         &sub_psycho.uhf,
                         &pool,
-                    );
-                    Some(ScaleData {
+                        &stop_opt,
+                    )?;
+                    Ok(Some(ScaleData {
                         psycho: sub_psycho,
                         mask: sub_mask,
-                    })
+                    }))
                 } else {
-                    None
+                    Ok(None)
                 }
             },
         );
+        let (full, mut reuse_pool) = rfull.map_err(ButteraugliError::Cancelled)?;
+        let half = rhalf.map_err(ButteraugliError::Cancelled)?;
 
         let cache_bytes = params
             .scratch_cache_bytes()
@@ -381,32 +433,36 @@ impl ButteraugliReference {
         height: usize,
         params: ButteraugliParams,
         source: Option<ReferenceSource>,
+        stop: &dyn Stop,
     ) -> Result<Self, ButteraugliError> {
+        stop.check().map_err(ButteraugliError::Cancelled)?;
         let mut pool = BufferPool::new();
-        let scale = |input, width, height| {
-            let psycho =
-                crate::exact::prepare(input, width, height, &params, &pool, &enough::Unstoppable)
-                    .expect("Unstoppable never stops");
+        let scale = |input, width, height| -> Result<ScaleData, ButteraugliError> {
+            let psycho = crate::exact::prepare(input, width, height, &params, &pool, stop)
+                .map_err(ButteraugliError::Cancelled)?;
             let mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
                 &psycho.hf,
                 &psycho.uhf,
                 &pool,
-                &enough::Unstoppable,
+                stop,
             )
-            .expect("Unstoppable never stops");
-            ScaleData { psycho, mask }
+            .map_err(ButteraugliError::Cancelled)?;
+            Ok(ScaleData { psycho, mask })
         };
-        let full = scale(input, width, height);
+        let full = scale(input, width, height)?;
         let half = if !params.single_resolution()
             && width >= MIN_SIZE_FOR_SUBSAMPLE
             && height >= MIN_SIZE_FOR_SUBSAMPLE
         {
-            let sub = input.subsample(width, height);
+            stop.check().map_err(ButteraugliError::Cancelled)?;
+            let sub = input
+                .subsample_stop(width, height, stop)
+                .map_err(ButteraugliError::Cancelled)?;
             Some(scale(
                 crate::exact::Input::Interleaved(&sub),
                 width.div_ceil(2),
                 height.div_ceil(2),
-            ))
+            )?)
         } else {
             None
         };
@@ -508,6 +564,7 @@ impl ButteraugliReference {
                 height,
                 params,
                 None,
+                &enough::Unstoppable,
             );
         }
 
@@ -1213,9 +1270,45 @@ impl ButteraugliReference {
     /// (`maybe_join`) below — so a `cancel()` between warm-ref compares is
     /// honoured without ever entering the per-pixel kernels in
     /// `opsin`/`psycho`/`mask`/`malta`/`blur`. Those inner loops carry no check.
+    /// Crate-internal mode-aware comparison (`want_diffmap = false` skips the
+    /// full-resolution diffmap allocation and reduces directly row-by-row).
+    #[cfg(feature = "zenpsy-api")]
+    pub(crate) fn compare_linear_with_stop_mode(
+        &self,
+        rgb: &[f32],
+        want_diffmap: bool,
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        let expected_size = self.width * self.height * 3;
+
+        if rgb.len() != expected_size {
+            return Err(ButteraugliError::InvalidBufferSize {
+                expected: expected_size,
+                actual: rgb.len(),
+            });
+        }
+
+        check_finite_f32(rgb, "compare linear rgb")?;
+
+        let result = self.compare_linear_impl_mode(rgb, want_diffmap, stop)?;
+        if !result.score.is_finite() || !result.pnorm_3.is_finite() {
+            return Err(ButteraugliError::NonFiniteResult);
+        }
+        Ok(result)
+    }
+
     fn compare_linear_impl(
         &self,
         rgb: &[f32],
+        stop: &dyn Stop,
+    ) -> Result<ButteraugliResult, ButteraugliError> {
+        self.compare_linear_impl_mode(rgb, true, stop)
+    }
+
+    fn compare_linear_impl_mode(
+        &self,
+        rgb: &[f32],
+        want_diffmap: bool,
         stop: &dyn Stop,
     ) -> Result<ButteraugliResult, ButteraugliError> {
         // Cooperative cancellation: outermost per-scale boundary — checked
@@ -1223,13 +1316,14 @@ impl ButteraugliReference {
         stop.check().map_err(ButteraugliError::Cancelled)?;
 
         if self.params.numerics() == crate::Numerics::LibjxlExact {
-            return crate::exact::compare_reference(
+            return crate::exact::compare_reference_mode(
                 &self.full.psycho,
                 &self.full.mask,
                 self.half.as_ref().map(|s| (&s.psycho, &s.mask)),
                 crate::exact::Input::Interleaved(rgb),
                 &self.params,
                 &self.pool,
+                want_diffmap,
                 stop,
             );
         }
@@ -1245,6 +1339,116 @@ impl ButteraugliReference {
 
         let stop = stop.may_stop().then_some(stop);
 
+        if !want_diffmap {
+            let (rfull, rsub) = maybe_join(
+                || -> Result<(PsychoImage, Image3F), enough::StopReason> {
+                    let xyb2 = linear_rgb_to_xyb_butteraugli_stop(
+                        rgb,
+                        width,
+                        height,
+                        intensity_target,
+                        pool,
+                        &stop,
+                    )?;
+                    let ps2 = separate_frequencies_owned(xyb2, pool, &stop)?;
+                    let mut block_diff_ac = match compute_psycho_diff_malta(
+                        full_psycho,
+                        &ps2,
+                        params.hf_asymmetry(),
+                        params.xmul(),
+                        pool,
+                        &stop,
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            ps2.recycle(pool);
+                            return Err(e);
+                        }
+                    };
+                    if let Err(e) = crate::mask::apply_mask_correction_precomputed_stop(
+                        full_mask,
+                        &ps2.hf,
+                        &ps2.uhf,
+                        Some(block_diff_ac.plane_mut(1)),
+                        pool,
+                        &stop,
+                    ) {
+                        ps2.recycle(pool);
+                        block_diff_ac.recycle(pool);
+                        return Err(e);
+                    }
+                    Ok((ps2, block_diff_ac))
+                },
+                || -> Result<Option<ImageF>, enough::StopReason> {
+                    match half_ref {
+                        Some(half) => {
+                            let (sub_rgb, sw, sh) =
+                                subsample_linear_rgb_2x_stop(rgb, width, height, pool, &stop)?;
+                            let sub_xyb_res = linear_rgb_to_xyb_butteraugli_stop(
+                                &sub_rgb,
+                                sw,
+                                sh,
+                                intensity_target,
+                                pool,
+                                &stop,
+                            );
+                            pool.put(sub_rgb);
+                            let sub_xyb = sub_xyb_res?;
+                            let sub_ps = separate_frequencies_owned(sub_xyb, pool, &stop)?;
+                            let dm_res = compute_diffmap_with_precomputed(
+                                &half.psycho,
+                                &sub_ps,
+                                &half.mask,
+                                params,
+                                pool,
+                                &stop,
+                            );
+                            sub_ps.recycle(pool);
+                            Ok(Some(dm_res?))
+                        }
+                        None => Ok(None),
+                    }
+                },
+            );
+            let (ps2, block_diff_ac) = match rfull {
+                Ok(v) => v,
+                Err(e) => {
+                    if let Ok(Some(sub)) = rsub {
+                        sub.recycle(pool);
+                    }
+                    return Err(ButteraugliError::Cancelled(e));
+                }
+            };
+            let sub_diffmap = match rsub {
+                Ok(v) => v,
+                Err(e) => {
+                    ps2.recycle(pool);
+                    block_diff_ac.recycle(pool);
+                    return Err(ButteraugliError::Cancelled(e));
+                }
+            };
+            let reduced = crate::diff::combine_channels_and_reduce_score_only(
+                &full_mask.mask,
+                &full_psycho.lf,
+                &ps2.lf,
+                &block_diff_ac,
+                sub_diffmap.as_ref(),
+                params.xmul(),
+                stop,
+            );
+            ps2.recycle(pool);
+            block_diff_ac.recycle(pool);
+            if let Some(sub) = sub_diffmap {
+                sub.recycle(pool);
+            }
+            let (score, pnorm_3) = reduced.map_err(ButteraugliError::Cancelled)?;
+            return Ok(ButteraugliResult {
+                score,
+                pnorm_3,
+                diffmap: None,
+            });
+        }
+
         // Run full-res and half-res in parallel (shared pool via Mutex)
         let (rdiffmap, rsub) = maybe_join(
             || -> Result<ImageF, enough::StopReason> {
@@ -1257,48 +1461,64 @@ impl ButteraugliReference {
                     &stop,
                 )?;
                 let ps2 = separate_frequencies_owned(xyb2, pool, &stop)?;
-                let dm = compute_diffmap_with_precomputed(
+                let dm_res = compute_diffmap_with_precomputed(
                     full_psycho,
                     &ps2,
                     full_mask,
                     params,
                     pool,
                     &stop,
-                )?;
+                );
                 ps2.recycle(pool);
-                Ok(dm)
+                dm_res
             },
             || -> Result<Option<ImageF>, enough::StopReason> {
                 match half_ref {
                     Some(half) => {
-                        let (sub_rgb, sw, sh) = subsample_linear_rgb_2x(rgb, width, height, pool);
-                        let sub_xyb = linear_rgb_to_xyb_butteraugli_stop(
+                        let (sub_rgb, sw, sh) =
+                            subsample_linear_rgb_2x_stop(rgb, width, height, pool, &stop)?;
+                        let sub_xyb_res = linear_rgb_to_xyb_butteraugli_stop(
                             &sub_rgb,
                             sw,
                             sh,
                             intensity_target,
                             pool,
                             &stop,
-                        )?;
+                        );
                         pool.put(sub_rgb); // B7b: return subsample buffer to pool
+                        let sub_xyb = sub_xyb_res?;
                         let sub_ps = separate_frequencies_owned(sub_xyb, pool, &stop)?;
-                        let dm = compute_diffmap_with_precomputed(
+                        let dm_res = compute_diffmap_with_precomputed(
                             &half.psycho,
                             &sub_ps,
                             &half.mask,
                             params,
                             pool,
                             &stop,
-                        )?;
+                        );
                         sub_ps.recycle(pool);
-                        Ok(Some(dm))
+                        Ok(Some(dm_res?))
                     }
                     None => Ok(None),
                 }
             },
         );
-        let mut diffmap = rdiffmap.map_err(ButteraugliError::Cancelled)?;
-        let sub_diffmap = rsub.map_err(ButteraugliError::Cancelled)?;
+        let mut diffmap = match rdiffmap {
+            Ok(v) => v,
+            Err(e) => {
+                if let Ok(Some(sub)) = rsub {
+                    sub.recycle(pool);
+                }
+                return Err(ButteraugliError::Cancelled(e));
+            }
+        };
+        let sub_diffmap = match rsub {
+            Ok(v) => v,
+            Err(e) => {
+                diffmap.recycle(pool);
+                return Err(ButteraugliError::Cancelled(e));
+            }
+        };
 
         if let Some(sub) = sub_diffmap {
             add_supersampled_2x(&sub, 0.5, &mut diffmap);
@@ -1625,19 +1845,22 @@ fn compute_diffmap_with_precomputed(
         compute_psycho_diff_malta(ps1, ps2, params.hf_asymmetry(), params.xmul(), pool, &stop)?;
 
     // Apply distorted-side mask correction (blur + mask-to-error accumulation)
-    crate::mask::apply_mask_correction_precomputed_stop(
+    if let Err(e) = crate::mask::apply_mask_correction_precomputed_stop(
         precomputed_mask,
         &ps2.hf,
         &ps2.uhf,
         Some(block_diff_ac.plane_mut(1)),
         pool,
         &stop,
-    )?;
+    ) {
+        block_diff_ac.recycle(pool);
+        return Err(e);
+    }
 
     // Use precomputed mask directly (no copy needed — read-only reference).
     // B7a (2026-05-23): diffmap output now sourced from BufferPool so the
     // ~4 MB/call allocation at 1024² is recycled across buttloop iters.
-    let diffmap = combine_channels_to_diffmap_fused(
+    let diffmap = match combine_channels_to_diffmap_fused(
         &precomputed_mask.mask,
         &ps1.lf,
         &ps2.lf,
@@ -1645,7 +1868,13 @@ fn compute_diffmap_with_precomputed(
         params.xmul(),
         pool,
         stop,
-    )?;
+    ) {
+        Ok(dm) => dm,
+        Err(e) => {
+            block_diff_ac.recycle(pool);
+            return Err(e);
+        }
+    };
 
     // Recycle temporaries back to pool
     block_diff_ac.recycle(pool);
@@ -1715,9 +1944,31 @@ fn compute_psycho_diff_malta(
             );
 
             let (ruhf_y, (rhf_y, rmf_y)) = ry;
-            let uhf_y = ruhf_y?;
-            let hf_y = rhf_y?;
-            let mf_y = rmf_y?;
+            let (uhf_y, hf_y, mf_y) = match (ruhf_y, rhf_y, rmf_y) {
+                (Ok(u), Ok(h), Ok(m)) => (u, h, m),
+                (ru, rh, rm) => {
+                    let mut err = None;
+                    match ru {
+                        Ok(b) => b.recycle(pool),
+                        Err(e) => {
+                            err.get_or_insert(e);
+                        }
+                    }
+                    match rh {
+                        Ok(b) => b.recycle(pool),
+                        Err(e) => {
+                            err.get_or_insert(e);
+                        }
+                    }
+                    match rm {
+                        Ok(b) => b.recycle(pool),
+                        Err(e) => {
+                            err.get_or_insert(e);
+                        }
+                    }
+                    return Err(err.expect("at least one error"));
+                }
+            };
 
             // Use uhf_y directly as accumulator (no zero-init + add_to needed)
             let mut ac_y = uhf_y;
@@ -1783,9 +2034,31 @@ fn compute_psycho_diff_malta(
             );
 
             let (ruhf_x, (rhf_x, rmf_x)) = rx;
-            let uhf_x = ruhf_x?;
-            let hf_x = rhf_x?;
-            let mf_x = rmf_x?;
+            let (uhf_x, hf_x, mf_x) = match (ruhf_x, rhf_x, rmf_x) {
+                (Ok(u), Ok(h), Ok(m)) => (u, h, m),
+                (ru, rh, rm) => {
+                    let mut err = None;
+                    match ru {
+                        Ok(b) => b.recycle(pool),
+                        Err(e) => {
+                            err.get_or_insert(e);
+                        }
+                    }
+                    match rh {
+                        Ok(b) => b.recycle(pool),
+                        Err(e) => {
+                            err.get_or_insert(e);
+                        }
+                    }
+                    match rm {
+                        Ok(b) => b.recycle(pool),
+                        Err(e) => {
+                            err.get_or_insert(e);
+                        }
+                    }
+                    return Err(err.expect("at least one error"));
+                }
+            };
 
             // Use uhf_x directly as accumulator
             let mut ac_x = uhf_x;
@@ -1806,9 +2079,30 @@ fn compute_psycho_diff_malta(
             Ok(ac_x)
         },
     );
-    let plane_y = rplane_y?;
-    let plane_x = rplane_x?;
-    stop.check()?;
+    let (plane_y, plane_x) = match (rplane_y, rplane_x) {
+        (Ok(py), Ok(px)) => (py, px),
+        (ry, rx) => {
+            let mut err = None;
+            match ry {
+                Ok(b) => b.recycle(pool),
+                Err(e) => {
+                    err.get_or_insert(e);
+                }
+            }
+            match rx {
+                Ok(b) => b.recycle(pool),
+                Err(e) => {
+                    err.get_or_insert(e);
+                }
+            }
+            return Err(err.expect("at least one error"));
+        }
+    };
+    if let Err(e) = stop.check() {
+        plane_y.recycle(pool);
+        plane_x.recycle(pool);
+        return Err(e);
+    }
 
     // B channel L2Diff — write-only variant (no zero-init needed)
     let mut plane_b = ImageF::from_pool_dirty(width, height, pool);
@@ -1861,8 +2155,11 @@ fn combine_channels_to_diffmap_fused(
     let mdc_offset = MASK_DC_Y_OFFSET as f32;
 
     for y in 0..height {
-        if y.is_multiple_of(64) {
-            stop.check()?;
+        if y.is_multiple_of(64)
+            && let Err(e) = stop.check()
+        {
+            diffmap.recycle(pool);
+            return Err(e);
         }
         let mask_row = mask.row(y);
         let lf1_0 = lf1.plane(0).row(y);
@@ -2116,12 +2413,14 @@ fn add_supersampled_2x(_token: archmage::SimdToken, src: &ImageF, weight: f32, d
 /// iters. The interior loop + right/bottom edge handlers together write
 /// every cell of the output (even for odd dimensions), so no zero-fill is
 /// required even though `pool.take` returns potentially-stale data.
-fn subsample_linear_rgb_2x(
+fn subsample_linear_rgb_2x_stop(
     rgb: &[f32],
     width: usize,
     height: usize,
     pool: &BufferPool,
-) -> (Vec<f32>, usize, usize) {
+    stop: &dyn Stop,
+) -> Result<(Vec<f32>, usize, usize), enough::StopReason> {
+    stop.check()?;
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
     let out_size = out_width * out_height * 3;
@@ -2133,6 +2432,12 @@ fn subsample_linear_rgb_2x(
     let inv4 = 0.25f32;
 
     for oy in 0..interior_h {
+        if oy.is_multiple_of(64)
+            && let Err(e) = stop.check()
+        {
+            pool.put(output);
+            return Err(e);
+        }
         let row0 = oy * 2 * width * 3;
         let row1 = (oy * 2 + 1) * width * 3;
         for ox in 0..interior_w {
@@ -2155,6 +2460,12 @@ fn subsample_linear_rgb_2x(
         let ox = interior_w;
         let ix = ox * 2;
         for oy in 0..interior_h {
+            if oy.is_multiple_of(64)
+                && let Err(e) = stop.check()
+            {
+                pool.put(output);
+                return Err(e);
+            }
             let row0 = oy * 2 * width * 3 + ix * 3;
             let row1 = (oy * 2 + 1) * width * 3 + ix * 3;
             let out_idx = (oy * out_width + ox) * 3;
@@ -2166,6 +2477,10 @@ fn subsample_linear_rgb_2x(
 
     // Bottom edge row (if height is odd)
     if out_height > interior_h {
+        if let Err(e) = stop.check() {
+            pool.put(output);
+            return Err(e);
+        }
         let oy = interior_h;
         let row0 = oy * 2 * width * 3;
         for ox in 0..interior_w {
@@ -2189,7 +2504,11 @@ fn subsample_linear_rgb_2x(
         }
     }
 
-    (output, out_width, out_height)
+    if let Err(e) = stop.check() {
+        pool.put(output);
+        return Err(e);
+    }
+    Ok((output, out_width, out_height))
 }
 
 /// Subsamples a single planar channel by 2x (interior only).
@@ -2881,5 +3200,126 @@ mod tests {
             result,
             Err(ButteraugliError::InvalidBufferSize { .. })
         ));
+    }
+
+    #[test]
+    fn cancellation_recycles_pooled_scratch_in_fast_warm_path() {
+        use core::sync::atomic::{AtomicUsize, Ordering};
+
+        struct TripStop {
+            checks: AtomicUsize,
+            trip_at: usize,
+        }
+        impl enough::Stop for TripStop {
+            fn check(&self) -> Result<(), enough::StopReason> {
+                let n = self.checks.fetch_add(1, Ordering::Relaxed);
+                if n == self.trip_at {
+                    Err(enough::StopReason::TimedOut)
+                } else {
+                    Ok(())
+                }
+            }
+        }
+
+        let (width, height) = (32, 192);
+        let a: Vec<f32> = (0..width * height * 3)
+            .map(|i| ((i * 37 + 13) % 256) as f32 / 255.0)
+            .collect();
+        let b: Vec<f32> = a
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| (v + ((i % 7) as f32 * 0.02)).min(1.0))
+            .collect();
+        let params = ButteraugliParams::default();
+        let pool = BufferPool::with_capacity(64);
+        let mut rgb_a = Image3F::from_pool_dirty(width, height, &pool);
+        let mut rgb_b = Image3F::from_pool_dirty(width, height, &pool);
+        for y in 0..height {
+            for x in 0..width {
+                for c in 0..3 {
+                    rgb_a.plane_mut(c).row_mut(y)[x] = a[(y * width + x) * 3 + c];
+                    rgb_b.plane_mut(c).row_mut(y)[x] = b[(y * width + x) * 3 + c];
+                }
+            }
+        }
+        let ps1 = crate::psycho::separate_frequencies_owned(
+            crate::opsin::opsin_dynamics_image_stop(
+                &rgb_a,
+                params.intensity_target(),
+                &pool,
+                &enough::Unstoppable,
+            )
+            .unwrap(),
+            &pool,
+            &enough::Unstoppable,
+        )
+        .unwrap();
+        let mask1 = crate::mask::precompute_reference_mask(&ps1.hf, &ps1.uhf, &pool);
+        let ps2 = crate::psycho::separate_frequencies_owned(
+            crate::opsin::opsin_dynamics_image_stop(
+                &rgb_b,
+                params.intensity_target(),
+                &pool,
+                &enough::Unstoppable,
+            )
+            .unwrap(),
+            &pool,
+            &enough::Unstoppable,
+        )
+        .unwrap();
+        rgb_a.recycle(&pool);
+        rgb_b.recycle(&pool);
+
+        // Warm pool with one clean call and capture steady-state cached count + baseline bits.
+        let count_stop = TripStop {
+            checks: AtomicUsize::new(0),
+            trip_at: usize::MAX,
+        };
+        let baseline_dm =
+            compute_diffmap_with_precomputed(&ps1, &ps2, &mask1, &params, &pool, &count_stop)
+                .unwrap();
+        let baseline_score = crate::diff::compute_score_from_diffmap(&baseline_dm);
+        baseline_dm.recycle(&pool);
+        let total_checks = count_stop.checks.load(Ordering::Relaxed);
+        assert!(
+            total_checks >= 5,
+            "expected multi-phase checks in compute_diffmap_with_precomputed, saw {total_checks}"
+        );
+        let steady_count = pool.cached_count();
+        assert!(steady_count > 0, "pool should retain warmed scratch");
+
+        // Cancel specifically in every phase: Malta, apply_mask_correction_precomputed_stop,
+        // and combine_channels_to_diffmap_fused row loop (y=0,64,128).
+        for trip in 0..total_checks {
+            let stopper = TripStop {
+                checks: AtomicUsize::new(0),
+                trip_at: trip,
+            };
+            let err =
+                compute_diffmap_with_precomputed(&ps1, &ps2, &mask1, &params, &pool, &stopper)
+                    .expect_err("expected cancellation");
+            assert_eq!(err, enough::StopReason::TimedOut, "trip={trip}");
+            assert!(
+                pool.cached_count() >= steady_count,
+                "pool dropped scratch at trip={trip}/{total_checks}: {} < {}",
+                pool.cached_count(),
+                steady_count
+            );
+        }
+
+        // Subsequent clean run produces bit-exact score using recycled pool buffers.
+        let after_dm = compute_diffmap_with_precomputed(
+            &ps1,
+            &ps2,
+            &mask1,
+            &params,
+            &pool,
+            &enough::Unstoppable,
+        )
+        .unwrap();
+        let after_score = crate::diff::compute_score_from_diffmap(&after_dm);
+        after_dm.recycle(&pool);
+        assert_eq!(after_score.0.to_bits(), baseline_score.0.to_bits());
+        assert_eq!(after_score.1.to_bits(), baseline_score.1.to_bits());
     }
 }

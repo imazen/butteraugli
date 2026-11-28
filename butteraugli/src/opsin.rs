@@ -188,8 +188,21 @@ pub(crate) fn opsin_dynamics_image_stop(
     let sigma = 1.2;
     let weights = compute_separable5_weights(sigma);
     let blurred_r = blur_mirrored_5x5_stop(rgb.plane(0), &weights, pool, &stop)?;
-    let blurred_g = blur_mirrored_5x5_stop(rgb.plane(1), &weights, pool, &stop)?;
-    let blurred_b = blur_mirrored_5x5_stop(rgb.plane(2), &weights, pool, &stop)?;
+    let blurred_g = match blur_mirrored_5x5_stop(rgb.plane(1), &weights, pool, &stop) {
+        Ok(b) => b,
+        Err(e) => {
+            blurred_r.recycle(pool);
+            return Err(e);
+        }
+    };
+    let blurred_b = match blur_mirrored_5x5_stop(rgb.plane(2), &weights, pool, &stop) {
+        Ok(b) => b,
+        Err(e) => {
+            blurred_r.recycle(pool);
+            blurred_g.recycle(pool);
+            return Err(e);
+        }
+    };
 
     // Create output XYB image (fully overwritten in the loop below)
     let mut xyb = Image3F::from_pool_dirty(width, height, pool);
@@ -212,9 +225,13 @@ pub(crate) fn opsin_dynamics_image_stop(
     // Get mutable references to all three planes using split borrow
     let (plane_x, plane_y, plane_b) = xyb.planes_mut();
 
+    let mut loop_err = None;
     for y in 0..height {
-        if y.is_multiple_of(64) {
-            stop.check()?;
+        if y.is_multiple_of(64)
+            && let Err(e) = stop.check()
+        {
+            loop_err = Some(e);
+            break;
         }
         // Get row slices for cache-friendly access
         let row_r = rgb.plane(0).row(y);
@@ -273,6 +290,10 @@ pub(crate) fn opsin_dynamics_image_stop(
     blurred_r.recycle(pool);
     blurred_g.recycle(pool);
     blurred_b.recycle(pool);
+    if let Some(e) = loop_err {
+        xyb.recycle(pool);
+        return Err(e);
+    }
     Ok(xyb)
 }
 
@@ -408,7 +429,7 @@ pub(crate) fn linear_rgb_to_xyb_butteraugli_stop(
     assert_eq!(rgb.len(), width * height * 3);
 
     // Convert interleaved linear RGB to planar Image3F
-    let mut linear = Image3F::from_pool_dirty(width, height, pool);
+    let mut linear = crate::image::PooledImage3F::from_pool_dirty(width, height, pool);
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for y in 0..height {
@@ -428,9 +449,7 @@ pub(crate) fn linear_rgb_to_xyb_butteraugli_stop(
     }
 
     // Apply OpsinDynamicsImage
-    let xyb = opsin_dynamics_image_stop(&linear, intensity_target, pool, &stop)?;
-    linear.recycle(pool);
-    Ok(xyb)
+    opsin_dynamics_image_stop(&linear, intensity_target, pool, &stop)
 }
 
 /// Converts planar linear RGB f32 data to butteraugli XYB.
@@ -515,7 +534,7 @@ pub(crate) fn linear_planes_to_xyb_butteraugli_stop(
     let stop = stop.may_stop().then_some(stop);
     let (width, height) = (planes[0].width(), planes[0].height());
     // Copy planar data directly into Image3F (respecting source stride)
-    let mut linear = Image3F::from_pool_dirty(width, height, pool);
+    let mut linear = crate::image::PooledImage3F::from_pool_dirty(width, height, pool);
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for y in 0..height {
@@ -537,9 +556,7 @@ pub(crate) fn linear_planes_to_xyb_butteraugli_stop(
     }
 
     // Apply OpsinDynamicsImage
-    let xyb = opsin_dynamics_image_stop(&linear, intensity_target, pool, &stop)?;
-    linear.recycle(pool);
-    Ok(xyb)
+    opsin_dynamics_image_stop(&linear, intensity_target, pool, &stop)
 }
 
 /// Converts an sRGB image from ImgRef<RGB8> to butteraugli XYB.
@@ -566,7 +583,7 @@ pub(crate) fn imgref_srgb_to_xyb(
     let lut = &*SRGB_TO_LINEAR_LUT;
 
     // Convert sRGB u8 to linear RGB Image3F
-    let mut linear = Image3F::from_pool_dirty(width, height, pool);
+    let mut linear = crate::image::PooledImage3F::from_pool_dirty(width, height, pool);
     let (out_r, out_g, out_b) = linear.planes_mut();
 
     for (y, row) in img.rows().enumerate() {
@@ -584,9 +601,7 @@ pub(crate) fn imgref_srgb_to_xyb(
     }
 
     // Apply OpsinDynamicsImage
-    let xyb = opsin_dynamics_image_stop(&linear, intensity_target, pool, &stop)?;
-    linear.recycle(pool);
-    Ok(xyb)
+    opsin_dynamics_image_stop(&linear, intensity_target, pool, &stop)
 }
 
 /// Converts a linear RGB image from ImgRef<RGB<f32>> to butteraugli XYB.

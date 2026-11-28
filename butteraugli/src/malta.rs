@@ -1474,10 +1474,13 @@ where
     let width = lum0.width();
     let height = lum0.height();
     const PAD: usize = 4;
-    let padded = malta_scaled_differences(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool);
+    let padded = crate::image::PooledImageF::wrap(
+        malta_scaled_differences(lum0, lum1, w_0gt1, w_0lt1, norm1, use_lf, pool),
+        pool,
+    );
     let pad_stride = padded.stride();
 
-    let mut block_diff_ac = ImageF::from_pool_dirty(width, height, pool);
+    let mut block_diff_ac = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     let pad_data = padded.data();
 
     // All rows use the interior SIMD path — no border handling needed.
@@ -1491,9 +1494,7 @@ where
         interior_row(pad_data, center_base, pad_stride, width, use_lf, out);
     }
 
-    padded.recycle(pool);
-
-    Ok(block_diff_ac)
+    Ok(block_diff_ac.into_inner())
 }
 
 /// AVX2 dispatch variant: processes 8 interior pixels at a time.

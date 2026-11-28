@@ -55,7 +55,10 @@ fn blur5(
     if width < 10 {
         let mut out = ImageF::from_pool_dirty(width, height, pool);
         for y in 0..height {
-            stop.check()?;
+            if let Err(e) = stop.check() {
+                out.recycle(pool);
+                return Err(e);
+            }
             for x in 0..width {
                 let mut sum = 0.0_f32;
                 for dy in -2_isize..=2 {
@@ -72,9 +75,16 @@ fn blur5(
         return Ok(out);
     }
     let mut temp = ImageF::from_pool_dirty(width, height, pool);
-    blur5_pass::<false>(archmage::ScalarToken, input, &mut temp, w, stop)?;
+    if let Err(e) = blur5_pass::<false>(archmage::ScalarToken, input, &mut temp, w, stop) {
+        temp.recycle(pool);
+        return Err(e);
+    }
     let mut out = ImageF::from_pool_dirty(width, height, pool);
-    blur5_pass::<true>(archmage::ScalarToken, &temp, &mut out, w, stop)?;
+    if let Err(e) = blur5_pass::<true>(archmage::ScalarToken, &temp, &mut out, w, stop) {
+        temp.recycle(pool);
+        out.recycle(pool);
+        return Err(e);
+    }
     temp.recycle(pool);
     Ok(out)
 }
@@ -294,9 +304,16 @@ pub(crate) fn blur(
     let scale = 1.0 / k.iter().sum::<f32>();
     let sk: Vec<_> = k.iter().map(|&v| v * scale).collect();
     let mut temp = ImageF::from_pool_dirty(input.width(), input.height(), pool);
-    blur_pass::<false>(archmage::ScalarToken, input, &mut temp, &k, &sk, stop)?;
+    if let Err(e) = blur_pass::<false>(archmage::ScalarToken, input, &mut temp, &k, &sk, stop) {
+        temp.recycle(pool);
+        return Err(e);
+    }
     let mut out = ImageF::from_pool_dirty(input.width(), input.height(), pool);
-    blur_pass::<true>(archmage::ScalarToken, &temp, &mut out, &k, &sk, stop)?;
+    if let Err(e) = blur_pass::<true>(archmage::ScalarToken, &temp, &mut out, &k, &sk, stop) {
+        temp.recycle(pool);
+        out.recycle(pool);
+        return Err(e);
+    }
     temp.recycle(pool);
     Ok(out)
 }
@@ -401,13 +418,26 @@ pub(crate) enum Input<'a> {
 }
 
 impl Input<'_> {
-    pub(crate) fn subsample(self, w: usize, h: usize) -> Vec<f32> {
+    pub(crate) fn subsample_stop(
+        self,
+        w: usize,
+        h: usize,
+        stop: &dyn Stop,
+    ) -> Result<Vec<f32>, enough::StopReason> {
         match self {
-            Self::Interleaved(rgb) => crate::diff::subsample_linear_rgb_2x(rgb, w, h).0,
-            Self::Planar(planes, stride) => subsample_planar(planes, w, h, stride),
-            Self::Planes(planes) => {
-                subsample_planar_strides(planes.map(|p| *p.buf()), w, h, planes.map(|p| p.stride()))
+            Self::Interleaved(rgb) => {
+                crate::diff::subsample_linear_rgb_2x_stop(rgb, w, h, stop).map(|(v, _, _)| v)
             }
+            Self::Planar(planes, stride) => {
+                subsample_planar_strides_stop(planes, w, h, [stride; 3], stop)
+            }
+            Self::Planes(planes) => subsample_planar_strides_stop(
+                planes.map(|p| *p.buf()),
+                w,
+                h,
+                planes.map(|p| p.stride()),
+                stop,
+            ),
         }
     }
 }
@@ -462,13 +492,40 @@ fn prepare_image(
     stop: &dyn Stop,
 ) -> Result<PsychoImage, enough::StopReason> {
     let (w, h) = (image.width(), image.height());
-    let blurred = [
-        blur(image.plane(0), 1.2, pool, stop)?,
-        blur(image.plane(1), 1.2, pool, stop)?,
-        blur(image.plane(2), 1.2, pool, stop)?,
-    ];
+    let b0 = match blur(image.plane(0), 1.2, pool, stop) {
+        Ok(b) => b,
+        Err(e) => {
+            image.recycle(pool);
+            return Err(e);
+        }
+    };
+    let b1 = match blur(image.plane(1), 1.2, pool, stop) {
+        Ok(b) => b,
+        Err(e) => {
+            b0.recycle(pool);
+            image.recycle(pool);
+            return Err(e);
+        }
+    };
+    let b2 = match blur(image.plane(2), 1.2, pool, stop) {
+        Ok(b) => b,
+        Err(e) => {
+            b0.recycle(pool);
+            b1.recycle(pool);
+            image.recycle(pool);
+            return Err(e);
+        }
+    };
+    let blurred = [b0, b1, b2];
     let mut xyb = Image3F::from_pool_dirty(w, h, pool);
-    opsin_loop(&image, &blurred, &mut xyb, params.intensity_target(), stop)?;
+    if let Err(e) = opsin_loop(&image, &blurred, &mut xyb, params.intensity_target(), stop) {
+        xyb.recycle(pool);
+        image.recycle(pool);
+        for b in blurred {
+            b.recycle(pool);
+        }
+        return Err(e);
+    }
     image.recycle(pool);
     for b in blurred {
         b.recycle(pool);
@@ -532,7 +589,7 @@ pub(crate) fn compare_psycho(
         stop,
     )?;
     let mut owned_mask = None;
-    let mask = if let Some(precomputed) = precomputed {
+    let mask_res = if let Some(precomputed) = precomputed {
         crate::mask::apply_mask_correction_precomputed_stop_numerics::<true>(
             precomputed,
             &b.hf,
@@ -540,10 +597,9 @@ pub(crate) fn compare_psycho(
             Some(ac.plane_mut(1)),
             pool,
             stop,
-        )?;
-        &precomputed.mask
+        )
     } else {
-        owned_mask = Some(crate::mask::compute_mask_from_hf_uhf_stop_numerics::<true>(
+        match crate::mask::compute_mask_from_hf_uhf_stop_numerics::<true>(
             &a.hf,
             &a.uhf,
             &b.hf,
@@ -551,13 +607,30 @@ pub(crate) fn compare_psycho(
             Some(ac.plane_mut(1)),
             pool,
             stop,
-        )?);
-        owned_mask.as_ref().unwrap()
+        ) {
+            Ok(m) => {
+                owned_mask = Some(m);
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     };
+    if let Err(e) = mask_res {
+        ac.recycle(pool);
+        return Err(e);
+    }
+    let mask = precomputed.map_or_else(
+        || owned_mask.as_ref().expect("mask computed above"),
+        |p| &p.mask,
+    );
     let mut out = ImageF::from_pool_dirty(a.width(), a.height(), pool);
+    let mut loop_err = None;
     for y in 0..a.height() {
-        if y % 64 == 0 {
-            stop.check()?;
+        if y % 64 == 0
+            && let Err(e) = stop.check()
+        {
+            loop_err = Some(e);
+            break;
         }
         for x in 0..a.width() {
             let mv = crate::mask::mask_y(f64::from(mask.row(y)[x])) as f32;
@@ -578,7 +651,160 @@ pub(crate) fn compare_psycho(
         mask.recycle(pool);
     }
     ac.recycle(pool);
+    if let Some(e) = loop_err {
+        out.recycle(pool);
+        return Err(e);
+    }
     Ok(out)
+}
+
+/// Stream exact-mode channel combination + optional half-res exact blend (`merge`
+/// rounding at `(f64::from(d_full) * 0.85) as f32 + 0.5 * sub`) + max/pnorm3
+/// reduction row-by-row with **zero** full-resolution diffmap allocation.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compare_psycho_score_only(
+    a: &PsychoImage,
+    b: &PsychoImage,
+    precomputed: Option<&crate::mask::PrecomputedMask>,
+    sub_diffmap: Option<&ImageF>,
+    params: &ButteraugliParams,
+    pool: &BufferPool,
+    stop: &dyn Stop,
+) -> Result<(f64, f64), enough::StopReason> {
+    let mut ac = crate::diff::compute_psycho_diff_malta(
+        a,
+        b,
+        params.hf_asymmetry(),
+        params.xmul(),
+        pool,
+        stop,
+    )?;
+    let mut owned_mask = None;
+    let mask_res: Result<(), enough::StopReason> = if let Some(precomputed) = precomputed {
+        crate::mask::apply_mask_correction_precomputed_stop_numerics::<true>(
+            precomputed,
+            &b.hf,
+            &b.uhf,
+            Some(ac.plane_mut(1)),
+            pool,
+            stop,
+        )
+    } else {
+        match crate::mask::compute_mask_from_hf_uhf_stop_numerics::<true>(
+            &a.hf,
+            &a.uhf,
+            &b.hf,
+            &b.uhf,
+            Some(ac.plane_mut(1)),
+            pool,
+            stop,
+        ) {
+            Ok(m) => {
+                owned_mask = Some(m);
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    };
+    if let Err(e) = mask_res {
+        ac.recycle(pool);
+        return Err(e);
+    }
+    let mask = precomputed.map_or_else(
+        || owned_mask.as_ref().expect("mask computed above"),
+        |p| &p.mask,
+    );
+
+    let width = a.width();
+    let height = a.height();
+    let xmul = params.xmul();
+    let mut row_buf = vec![0.0f32; width];
+    let mut max_lanes = [0.0f32; 8];
+    let mut sum_p3 = [0.0f64; 8];
+    let mut sum_p6 = [0.0f64; 8];
+    let mut sum_p12 = [0.0f64; 8];
+
+    let mut loop_err: Option<enough::StopReason> = None;
+    for y in 0..height {
+        if y.is_multiple_of(64)
+            && let Err(e) = stop.check()
+        {
+            loop_err = Some(e);
+            break;
+        }
+        let sub_row = sub_diffmap.map(|sub| sub.row(y / 2));
+        for x in 0..width {
+            let mv = crate::mask::mask_y(f64::from(mask.row(y)[x])) as f32;
+            let dc_mv = crate::mask::mask_dc_y(f64::from(mask.row(y)[x])) as f32;
+            let dc: [f32; 3] = std::array::from_fn(|c| {
+                let dc_sum = a.lf.plane(c).row(y)[x] - b.lf.plane(c).row(y)[x];
+                dc_sum * dc_sum * crate::consts::WMUL[6 + c] as f32
+            });
+            let dc_sum = dc[0] * xmul * dc_mv + dc[1] * dc_mv + dc[2] * dc_mv;
+            let ac_sum = ac.plane(0).row(y)[x] * xmul * mv
+                + ac.plane(1).row(y)[x] * mv
+                + ac.plane(2).row(y)[x] * mv;
+            let mut val = (dc_sum + ac_sum).sqrt();
+            if let Some(sr) = sub_row {
+                let d = (f64::from(val) * 0.85) as f32;
+                val = d + 0.5 * sr[x / 2];
+            }
+            row_buf[x] = val;
+        }
+        for chunk in row_buf.chunks_exact(8) {
+            for i in 0..8 {
+                let v = chunk[i];
+                if v > max_lanes[i] {
+                    max_lanes[i] = v;
+                }
+                let d = f64::from(v);
+                let d3 = d * d * d;
+                sum_p3[i] += d3;
+                let d6 = d3 * d3;
+                sum_p6[i] += d6;
+                sum_p12[i] += d6 * d6;
+            }
+        }
+        for &v in row_buf.chunks_exact(8).remainder() {
+            if v > max_lanes[0] {
+                max_lanes[0] = v;
+            }
+            let d = f64::from(v);
+            let d3 = d * d * d;
+            sum_p3[0] += d3;
+            let d6 = d3 * d3;
+            sum_p6[0] += d6;
+            sum_p12[0] += d6 * d6;
+        }
+    }
+
+    if let Some(m) = owned_mask {
+        m.recycle(pool);
+    }
+    ac.recycle(pool);
+
+    if let Some(e) = loop_err {
+        return Err(e);
+    }
+
+    if width * height == 0 {
+        return Ok((0.0, 0.0));
+    }
+    let mut max_val = max_lanes[0];
+    for &m in &max_lanes[1..] {
+        if m > max_val {
+            max_val = m;
+        }
+    }
+    let total_p3: f64 = sum_p3.iter().sum();
+    let total_p6: f64 = sum_p6.iter().sum();
+    let total_p12: f64 = sum_p12.iter().sum();
+    let one_per_pixels = 1.0_f64 / ((width * height) as f64);
+    let v0 = (one_per_pixels * total_p3).powf(1.0 / 3.0);
+    let v1 = (one_per_pixels * total_p6).powf(1.0 / 6.0);
+    let v2 = (one_per_pixels * total_p12).powf(1.0 / 12.0);
+    let pnorm_3 = (v0 + v1 + v2) / 3.0;
+    Ok((f64::from(max_val), pnorm_3))
 }
 
 pub(crate) fn single(
@@ -620,8 +846,8 @@ pub(crate) fn multires(
     {
         return single(a, b, w, h, params, stop);
     }
-    let (a2, sw, sh) = crate::diff::subsample_linear_rgb_2x(a, w, h);
-    let (b2, _, _) = crate::diff::subsample_linear_rgb_2x(b, w, h);
+    let (a2, sw, sh) = crate::diff::subsample_linear_rgb_2x_stop(a, w, h, stop)?;
+    let (b2, _, _) = crate::diff::subsample_linear_rgb_2x_stop(b, w, h, stop)?;
     let (full, sub) = crate::diff::maybe_join(
         || single(a, b, w, h, params, stop),
         || single(&a2, &b2, sw, sh, params, stop),
@@ -631,20 +857,71 @@ pub(crate) fn multires(
     Ok(full)
 }
 
-pub(crate) fn linear(
-    a: &[f32],
-    b: &[f32],
-    w: usize,
-    h: usize,
+pub(crate) fn linear_mode(
+    src: &[f32],
+    dst: &[f32],
+    width: usize,
+    height: usize,
     params: &ButteraugliParams,
+    want_diffmap: bool,
     stop: &dyn Stop,
 ) -> Result<crate::diff::InternalResult, ButteraugliError> {
     stop.check().map_err(ButteraugliError::Cancelled)?;
-    let dm = if a == b {
-        ImageF::new(w, h)
-    } else {
-        multires(a, b, w, h, params, stop).map_err(ButteraugliError::Cancelled)?
-    };
+    if src == dst {
+        return Ok(crate::diff::InternalResult {
+            score: 0.0,
+            pnorm_3: 0.0,
+            diffmap: want_diffmap.then(|| ImageF::new(width, height)),
+        });
+    }
+    if !want_diffmap {
+        let need_sub = !params.single_resolution()
+            && width >= crate::diff::MIN_SIZE_FOR_SUBSAMPLE
+            && height >= crate::diff::MIN_SIZE_FOR_SUBSAMPLE;
+        let sub_diffmap = if need_sub {
+            let (src2, sw, sh) =
+                crate::diff::subsample_linear_rgb_2x_stop(src, width, height, stop)
+                    .map_err(ButteraugliError::Cancelled)?;
+            let (dst2, _, _) = crate::diff::subsample_linear_rgb_2x_stop(dst, width, height, stop)
+                .map_err(ButteraugliError::Cancelled)?;
+            Some(single(&src2, &dst2, sw, sh, params, stop).map_err(ButteraugliError::Cancelled)?)
+        } else {
+            None
+        };
+        let pool = BufferPool::new();
+        let (ra, rb) = crate::diff::maybe_join(
+            || prepare(Input::Interleaved(src), width, height, params, &pool, stop),
+            || prepare(Input::Interleaved(dst), width, height, params, &pool, stop),
+        );
+        let pa = match ra {
+            Ok(val) => val,
+            Err(err) => {
+                if let Ok(pb) = rb {
+                    pb.recycle(&pool);
+                }
+                return Err(ButteraugliError::Cancelled(err));
+            }
+        };
+        let pb = match rb {
+            Ok(val) => val,
+            Err(err) => {
+                pa.recycle(&pool);
+                return Err(ButteraugliError::Cancelled(err));
+            }
+        };
+        let reduced =
+            compare_psycho_score_only(&pa, &pb, None, sub_diffmap.as_ref(), params, &pool, stop);
+        pa.recycle(&pool);
+        pb.recycle(&pool);
+        let (score, pnorm_3) = reduced.map_err(ButteraugliError::Cancelled)?;
+        return Ok(crate::diff::InternalResult {
+            score,
+            pnorm_3,
+            diffmap: None,
+        });
+    }
+    let dm =
+        multires(src, dst, width, height, params, stop).map_err(ButteraugliError::Cancelled)?;
     let (score, pnorm_3) = crate::diff::compute_score_from_diffmap(&dm);
     Ok(crate::diff::InternalResult {
         score,
@@ -655,17 +932,19 @@ pub(crate) fn linear(
 
 /// Only half-resolution input is interleaved (12 bytes per half-scale pixel).
 /// Sum order matches diff::subsample_linear_rgb_2x, including odd edges.
-pub(crate) fn subsample_planar(planes: [&[f32]; 3], w: usize, h: usize, stride: usize) -> Vec<f32> {
-    subsample_planar_strides(planes, w, h, [stride; 3])
-}
-fn subsample_planar_strides(
+fn subsample_planar_strides_stop(
     planes: [&[f32]; 3],
     w: usize,
     h: usize,
     strides: [usize; 3],
-) -> Vec<f32> {
+    stop: &dyn Stop,
+) -> Result<Vec<f32>, enough::StopReason> {
+    stop.check()?;
     let mut out = Vec::with_capacity(w.div_ceil(2) * h.div_ceil(2) * 3);
-    for y in (0..h).step_by(2) {
+    for (oy, y) in (0..h).step_by(2).enumerate() {
+        if oy.is_multiple_of(64) {
+            stop.check()?;
+        }
         for x in (0..w).step_by(2) {
             let x1 = (x + 1).min(w - 1);
             let y1 = (y + 1).min(h - 1);
@@ -686,7 +965,8 @@ fn subsample_planar_strides(
             }
         }
     }
-    out
+    stop.check()?;
+    Ok(out)
 }
 
 pub(crate) fn compare_reference(
@@ -698,36 +978,133 @@ pub(crate) fn compare_reference(
     pool: &BufferPool,
     stop: &dyn Stop,
 ) -> Result<crate::ButteraugliResult, ButteraugliError> {
+    compare_reference_mode(
+        reference,
+        reference_mask,
+        half,
+        input,
+        params,
+        pool,
+        true,
+        stop,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compare_reference_mode(
+    reference: &PsychoImage,
+    reference_mask: &crate::mask::PrecomputedMask,
+    half: Option<(&PsychoImage, &crate::mask::PrecomputedMask)>,
+    input: Input<'_>,
+    params: &ButteraugliParams,
+    pool: &BufferPool,
+    want_diffmap: bool,
+    stop: &dyn Stop,
+) -> Result<crate::ButteraugliResult, ButteraugliError> {
     let w = reference.width();
     let h = reference.height();
     let candidate =
         prepare(input, w, h, params, pool, stop).map_err(ButteraugliError::Cancelled)?;
-    let mut dm = compare_psycho(
+
+    if !want_diffmap {
+        let sub_diffmap = if let Some((half, mask)) = half {
+            let sub_in = match input.subsample_stop(w, h, stop) {
+                Ok(v) => v,
+                Err(e) => {
+                    candidate.recycle(pool);
+                    return Err(ButteraugliError::Cancelled(e));
+                }
+            };
+            let sub_cand = match prepare(
+                Input::Interleaved(&sub_in),
+                w.div_ceil(2),
+                h.div_ceil(2),
+                params,
+                pool,
+                stop,
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    candidate.recycle(pool);
+                    return Err(ButteraugliError::Cancelled(e));
+                }
+            };
+            let sub_dm = compare_psycho(half, &sub_cand, Some(mask), params, pool, stop);
+            sub_cand.recycle(pool);
+            match sub_dm {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    candidate.recycle(pool);
+                    return Err(ButteraugliError::Cancelled(e));
+                }
+            }
+        } else {
+            None
+        };
+        let reduced = compare_psycho_score_only(
+            reference,
+            &candidate,
+            Some(reference_mask),
+            sub_diffmap.as_ref(),
+            params,
+            pool,
+            stop,
+        );
+        candidate.recycle(pool);
+        if let Some(sub) = sub_diffmap {
+            sub.recycle(pool);
+        }
+        let (score, pnorm_3) = reduced.map_err(ButteraugliError::Cancelled)?;
+        return Ok(crate::ButteraugliResult {
+            score,
+            pnorm_3,
+            diffmap: None,
+        });
+    }
+
+    let dm_res = compare_psycho(
         reference,
         &candidate,
         Some(reference_mask),
         params,
         pool,
         stop,
-    )
-    .map_err(ButteraugliError::Cancelled)?;
+    );
     candidate.recycle(pool);
+    let mut dm = dm_res.map_err(ButteraugliError::Cancelled)?;
     if let Some((half, mask)) = half {
-        let sub = input.subsample(w, h);
-        let candidate = prepare(
-            Input::Interleaved(&sub),
+        let sub_in = match input.subsample_stop(w, h, stop) {
+            Ok(v) => v,
+            Err(e) => {
+                dm.recycle(pool);
+                return Err(ButteraugliError::Cancelled(e));
+            }
+        };
+        let sub_cand = match prepare(
+            Input::Interleaved(&sub_in),
             w.div_ceil(2),
             h.div_ceil(2),
             params,
             pool,
             stop,
-        )
-        .map_err(ButteraugliError::Cancelled)?;
-        let sub = compare_psycho(half, &candidate, Some(mask), params, pool, stop)
-            .map_err(ButteraugliError::Cancelled)?;
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                dm.recycle(pool);
+                return Err(ButteraugliError::Cancelled(e));
+            }
+        };
+        let sub_res = compare_psycho(half, &sub_cand, Some(mask), params, pool, stop);
+        sub_cand.recycle(pool);
+        let sub = match sub_res {
+            Ok(v) => v,
+            Err(e) => {
+                dm.recycle(pool);
+                return Err(ButteraugliError::Cancelled(e));
+            }
+        };
         merge(&sub, &mut dm);
         sub.recycle(pool);
-        candidate.recycle(pool);
     }
     let (score, pnorm_3) = crate::diff::compute_score_from_diffmap(&dm);
     Ok(crate::ButteraugliResult {

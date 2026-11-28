@@ -438,7 +438,10 @@ fn separate_mf_hf_channel_numerics<const EXACT: bool>(
 ) -> Result<(), enough::StopReason> {
     let stop = stop.may_stop().then_some(stop);
     // Blur the original MF plane
-    let blurred = crate::exact::blur_numerics::<EXACT>(mf_plane, sigma, pool, &stop)?;
+    let blurred = crate::image::PooledImageF::wrap(
+        crate::exact::blur_numerics::<EXACT>(mf_plane, sigma, pool, &stop)?,
+        pool,
+    );
 
     // HF = orig - blurred (autoversioned SIMD subtraction)
     subtract_images(mf_plane, &blurred, hf_plane);
@@ -451,7 +454,6 @@ fn separate_mf_hf_channel_numerics<const EXACT: bool>(
         apply_remove_range(&blurred, range, mf_plane);
     }
 
-    blurred.recycle(pool);
     Ok(())
 }
 
@@ -631,10 +633,21 @@ pub(crate) fn separate_frequencies_owned_numerics<const EXACT: bool>(
 ) -> Result<PsychoImage, enough::StopReason> {
     let stop = stop.may_stop().then_some(stop);
     let mut ps = PsychoImage::from_pool(xyb.width(), xyb.height(), pool);
-    separate_lf_and_mf_numerics::<EXACT>(&xyb, &mut ps.lf, &mut ps.mf, pool, &stop)?;
+    if let Err(e) = separate_lf_and_mf_numerics::<EXACT>(&xyb, &mut ps.lf, &mut ps.mf, pool, &stop)
+    {
+        xyb.recycle(pool);
+        ps.recycle(pool);
+        return Err(e);
+    }
     xyb.recycle(pool);
-    separate_mf_and_hf_numerics::<EXACT>(&mut ps.mf, &mut ps.hf, pool, &stop)?;
-    separate_hf_and_uhf_numerics::<EXACT>(&mut ps.hf, &mut ps.uhf, pool, &stop)?;
+    if let Err(e) = separate_mf_and_hf_numerics::<EXACT>(&mut ps.mf, &mut ps.hf, pool, &stop) {
+        ps.recycle(pool);
+        return Err(e);
+    }
+    if let Err(e) = separate_hf_and_uhf_numerics::<EXACT>(&mut ps.hf, &mut ps.uhf, pool, &stop) {
+        ps.recycle(pool);
+        return Err(e);
+    }
     Ok(ps)
 }
 

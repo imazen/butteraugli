@@ -1032,7 +1032,7 @@ fn gaussian_blur_dispatch_v4(
     let border2 = if width > half { width - half } else { 0 };
 
     // H-pass: non-transposing
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false, &stop)?;
     stop.check()?;
     if border2 > border1 {
@@ -1043,11 +1043,10 @@ fn gaussian_blur_dispatch_v4(
     stop.check()?;
 
     // V-pass: accumulate across rows
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_v4(token, &temp, kernel, scaled, 0.0, &mut output, &stop)?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -1071,7 +1070,7 @@ fn gaussian_blur_dispatch_v3(
     let border2 = if width > half { width - half } else { 0 };
 
     // H-pass: non-transposing
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false, &stop)?;
     stop.check()?;
     if border2 > border1 {
@@ -1082,11 +1081,10 @@ fn gaussian_blur_dispatch_v3(
     stop.check()?;
 
     // V-pass: accumulate across rows
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_v3(token, &temp, kernel, scaled, 0.0, &mut output, &stop)?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -1109,7 +1107,7 @@ fn gaussian_blur_dispatch_neon(
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false, &stop)?;
     stop.check()?;
     if border2 > border1 {
@@ -1119,11 +1117,10 @@ fn gaussian_blur_dispatch_neon(
     }
     stop.check()?;
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_neon(token, &temp, kernel, scaled, 0.0, &mut output, &stop)?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1146,7 +1143,7 @@ fn gaussian_blur_dispatch_wasm128(
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, false, &stop)?;
     stop.check()?;
     if border2 > border1 {
@@ -1156,11 +1153,10 @@ fn gaussian_blur_dispatch_wasm128(
     }
     stop.check()?;
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_wasm128(token, &temp, &kernel, &scaled, 0.0, &mut output, &stop)?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 // Reached via incant!'s implicit scalar fallback from gaussian_blur (FIR
@@ -1183,15 +1179,14 @@ fn gaussian_blur_dispatch_scalar(
     let width = input.width();
     let height = input.height();
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, 0.0, &mut temp, true, &stop)?;
     stop.check()?;
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_scalar(&temp, kernel, scaled, 0.0, &mut output, &stop)?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 /// Blur with border ratio parameter (matches C++ Blur signature).
@@ -1250,7 +1245,7 @@ fn blur_with_border_dispatch_v4(
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false, &stop)?;
     stop.check()?;
     if border2 > border1 {
@@ -1260,7 +1255,7 @@ fn blur_with_border_dispatch_v4(
     }
     stop.check()?;
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_v4(
         token,
         &temp,
@@ -1271,8 +1266,7 @@ fn blur_with_border_dispatch_v4(
         &stop,
     )?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -1296,7 +1290,7 @@ fn blur_with_border_dispatch_v3(
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false, &stop)?;
     stop.check()?;
     if border2 > border1 {
@@ -1306,7 +1300,7 @@ fn blur_with_border_dispatch_v3(
     }
     stop.check()?;
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_v3(
         token,
         &temp,
@@ -1317,8 +1311,7 @@ fn blur_with_border_dispatch_v3(
         &stop,
     )?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -1342,7 +1335,7 @@ fn blur_with_border_dispatch_neon(
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false, &stop)?;
     stop.check()?;
     if border2 > border1 {
@@ -1352,7 +1345,7 @@ fn blur_with_border_dispatch_neon(
     }
     stop.check()?;
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_neon(
         token,
         &temp,
@@ -1363,8 +1356,7 @@ fn blur_with_border_dispatch_neon(
         &stop,
     )?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -1388,7 +1380,7 @@ fn blur_with_border_dispatch_wasm128(
     let border1 = half.min(width);
     let border2 = if width > half { width - half } else { 0 };
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, false, &stop)?;
     stop.check()?;
     if border2 > border1 {
@@ -1398,7 +1390,7 @@ fn blur_with_border_dispatch_wasm128(
     }
     stop.check()?;
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_wasm128(
         token,
         &temp,
@@ -1409,8 +1401,7 @@ fn blur_with_border_dispatch_wasm128(
         &stop,
     )?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 fn blur_with_border_dispatch_scalar(
@@ -1429,15 +1420,14 @@ fn blur_with_border_dispatch_scalar(
     let width = input.width();
     let height = input.height();
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_horizontal_borders(input, kernel, scaled, border_ratio, &mut temp, true, &stop)?;
     stop.check()?;
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     convolve_vertical_scalar(&temp, kernel, scaled, border_ratio, &mut output, &stop)?;
     stop.check()?;
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 /// Applies blur in-place (modifies the input image).
@@ -1531,7 +1521,7 @@ fn blur_mirrored_5x5_v4(
     let iheight = height as i32;
 
     // Temporary for horizontal pass (NOT transposed for SIMD efficiency)
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
 
     // Horizontal pass - SIMD for interior, scalar for borders
     let border = 2.min(width);
@@ -1592,7 +1582,7 @@ fn blur_mirrored_5x5_v4(
     }
 
     // Vertical pass - row-major with SIMD on x dimension (cache-friendly)
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
@@ -1682,8 +1672,7 @@ fn blur_mirrored_5x5_v4(
         }
     }
 
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -1712,7 +1701,7 @@ fn blur_mirrored_5x5_v3(
     let iwidth = width as i32;
     let iheight = height as i32;
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
 
     let border = 2.min(width);
     let interior_end = if width > 4 { width - 2 } else { 0 };
@@ -1773,7 +1762,7 @@ fn blur_mirrored_5x5_v3(
     }
 
     // Vertical pass - row-major with SIMD on x dimension (cache-friendly)
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
@@ -1860,8 +1849,7 @@ fn blur_mirrored_5x5_v3(
         }
     }
 
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -1890,7 +1878,7 @@ fn blur_mirrored_5x5_neon(
     let iwidth = width as i32;
     let iheight = height as i32;
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
 
     let border = 2.min(width);
     let interior_end = if width > 4 { width - 2 } else { 0 };
@@ -1951,7 +1939,7 @@ fn blur_mirrored_5x5_neon(
     }
 
     // Vertical pass - row-major with SIMD on x dimension (cache-friendly)
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
@@ -2038,8 +2026,7 @@ fn blur_mirrored_5x5_neon(
         }
     }
 
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -2068,7 +2055,7 @@ fn blur_mirrored_5x5_wasm128(
     let iwidth = width as i32;
     let iheight = height as i32;
 
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
 
     let border = 2.min(width);
     let interior_end = if width > 4 { width - 2 } else { 0 };
@@ -2124,7 +2111,7 @@ fn blur_mirrored_5x5_wasm128(
         }
     }
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     let v_border = 2.min(height);
     let v_interior_end = if height > 4 { height - 2 } else { 0 };
 
@@ -2211,8 +2198,7 @@ fn blur_mirrored_5x5_wasm128(
         }
     }
 
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 fn blur_mirrored_5x5_scalar(
@@ -2233,7 +2219,7 @@ fn blur_mirrored_5x5_scalar(
     let iwidth = width as i32;
     let iheight = height as i32;
 
-    let mut temp = ImageF::from_pool_dirty(height, width, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(height, width, pool);
 
     for y in 0..height {
         if y.is_multiple_of(BLUR_STOP_ROWS) {
@@ -2252,7 +2238,7 @@ fn blur_mirrored_5x5_scalar(
         }
     }
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     for x in 0..width {
         let col = temp.row(x);
         for y0 in (0..height).step_by(BLUR_STOP_ROWS) {
@@ -2270,8 +2256,7 @@ fn blur_mirrored_5x5_scalar(
         }
     }
 
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 /// Fast blur for small sigma values (optimized 5x5 kernel).

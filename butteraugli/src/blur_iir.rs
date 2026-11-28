@@ -544,7 +544,7 @@ pub(crate) fn gaussian_blur_iir_stop(
     // into the visible region, producing wildly different scores on
     // consecutive calls against the same input (pre-fix repro: 3.34 →
     // 1095 → 342388 on a 48×48 synthetic).
-    let mut temp = ImageF::from_pool_dirty(width, height, pool);
+    let mut temp = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     debug_assert_eq!(temp.stride(), stride);
     horizontal_pass(
         input.data(),
@@ -556,7 +556,7 @@ pub(crate) fn gaussian_blur_iir_stop(
     );
     stop.check()?;
 
-    let mut output = ImageF::from_pool_dirty(width, height, pool);
+    let mut output = crate::image::PooledImageF::from_pool_dirty(width, height, pool);
     debug_assert_eq!(output.stride(), stride);
     vertical_pass(
         temp.data(),
@@ -566,8 +566,7 @@ pub(crate) fn gaussian_blur_iir_stop(
         stride,
         &coeffs,
     );
-    temp.recycle(pool);
-    Ok(output)
+    Ok(output.into_inner())
 }
 
 #[cfg(test)]

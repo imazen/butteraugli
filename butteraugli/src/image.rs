@@ -63,6 +63,11 @@ impl BufferPool {
         Self::default()
     }
 
+    #[cfg(test)]
+    pub(crate) fn cached_count(&self) -> usize {
+        self.buffers.lock().unwrap().len()
+    }
+
     /// Creates an internally bounded pool; the public default remains eight.
     pub(crate) fn with_capacity(max_buffers: usize) -> Self {
         Self {
@@ -617,7 +622,95 @@ impl Image3F {
         p1.recycle(pool);
         p2.recycle(pool);
     }
+}
 
+/// RAII guard that automatically recycles a pooled [`ImageF`] on drop unless
+/// ownership is explicitly transferred with [`Self::into_inner`].
+pub(crate) struct PooledImageF<'a> {
+    img: Option<ImageF>,
+    pool: &'a BufferPool,
+}
+
+impl<'a> PooledImageF<'a> {
+    pub(crate) fn from_pool_dirty(width: usize, height: usize, pool: &'a BufferPool) -> Self {
+        Self {
+            img: Some(ImageF::from_pool_dirty(width, height, pool)),
+            pool,
+        }
+    }
+
+    pub(crate) fn wrap(img: ImageF, pool: &'a BufferPool) -> Self {
+        Self {
+            img: Some(img),
+            pool,
+        }
+    }
+
+    pub(crate) fn into_inner(mut self) -> ImageF {
+        self.img.take().expect("PooledImageF still holds image")
+    }
+}
+
+impl core::ops::Deref for PooledImageF<'_> {
+    type Target = ImageF;
+
+    fn deref(&self) -> &ImageF {
+        self.img.as_ref().expect("PooledImageF still holds image")
+    }
+}
+
+impl core::ops::DerefMut for PooledImageF<'_> {
+    fn deref_mut(&mut self) -> &mut ImageF {
+        self.img.as_mut().expect("PooledImageF still holds image")
+    }
+}
+
+impl Drop for PooledImageF<'_> {
+    fn drop(&mut self) {
+        if let Some(img) = self.img.take() {
+            img.recycle(self.pool);
+        }
+    }
+}
+
+/// RAII guard that automatically recycles a pooled [`Image3F`] on drop.
+pub(crate) struct PooledImage3F<'a> {
+    img: Option<Image3F>,
+    pool: &'a BufferPool,
+}
+
+impl<'a> PooledImage3F<'a> {
+    pub(crate) fn from_pool_dirty(width: usize, height: usize, pool: &'a BufferPool) -> Self {
+        Self {
+            img: Some(Image3F::from_pool_dirty(width, height, pool)),
+            pool,
+        }
+    }
+}
+
+impl core::ops::Deref for PooledImage3F<'_> {
+    type Target = Image3F;
+
+    fn deref(&self) -> &Image3F {
+        self.img.as_ref().expect("PooledImage3F still holds image")
+    }
+}
+
+impl core::ops::DerefMut for PooledImage3F<'_> {
+    fn deref_mut(&mut self) -> &mut Image3F {
+        self.img.as_mut().expect("PooledImage3F still holds image")
+    }
+}
+
+impl Drop for PooledImage3F<'_> {
+    fn drop(&mut self) {
+        if let Some(img) = self.img.take() {
+            img.recycle(self.pool);
+        }
+    }
+}
+
+impl Image3F {
     /// Creates from three separate planes.
     #[must_use]
     pub fn from_planes(plane0: ImageF, plane1: ImageF, plane2: ImageF) -> Self {

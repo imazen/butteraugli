@@ -398,18 +398,41 @@ pub(crate) fn compute_mask_from_hf_uhf_stop_numerics<const EXACT: bool>(
     // Fused combine + precompute for image 1
     let mut diff1 = ImageF::from_pool_dirty(width, height, pool);
     combine_and_precompute(hf1, uhf1, &mut diff1);
-    stop.check()?;
+    if let Err(e) = stop.check() {
+        diff0.recycle(pool);
+        diff1.recycle(pool);
+        return Err(e);
+    }
 
     // Blur diff0 and diff1
-    let blurred0 = crate::exact::blur_numerics::<EXACT>(&diff0, MASK_RADIUS, pool, &stop)?;
-    let blurred1 = crate::exact::blur_numerics::<EXACT>(&diff1, MASK_RADIUS, pool, &stop)?;
+    let blurred0 = match crate::exact::blur_numerics::<EXACT>(&diff0, MASK_RADIUS, pool, &stop) {
+        Ok(b) => b,
+        Err(e) => {
+            diff0.recycle(pool);
+            diff1.recycle(pool);
+            return Err(e);
+        }
+    };
     diff0.recycle(pool);
+    let blurred1 = match crate::exact::blur_numerics::<EXACT>(&diff1, MASK_RADIUS, pool, &stop) {
+        Ok(b) => b,
+        Err(e) => {
+            diff1.recycle(pool);
+            blurred0.recycle(pool);
+            return Err(e);
+        }
+    };
     diff1.recycle(pool);
 
     // FuzzyErosion on blurred0 — result IS the mask (no copy needed)
     let mut mask = ImageF::from_pool_dirty(width, height, pool);
     fuzzy_erosion(&blurred0, &mut mask);
-    stop.check()?;
+    if let Err(e) = stop.check() {
+        blurred0.recycle(pool);
+        blurred1.recycle(pool);
+        mask.recycle(pool);
+        return Err(e);
+    }
 
     // Accumulate mask-to-error difference into diff_ac if requested
     if let Some(ac) = diff_ac {
@@ -505,9 +528,18 @@ pub(crate) fn precompute_reference_mask_stop_numerics<const EXACT: bool>(
 
     let mut diff = ImageF::from_pool_dirty(width, height, pool);
     combine_and_precompute(hf, uhf, &mut diff);
-    stop.check()?;
+    if let Err(e) = stop.check() {
+        diff.recycle(pool);
+        return Err(e);
+    }
 
-    let blurred = crate::exact::blur_numerics::<EXACT>(&diff, MASK_RADIUS, pool, &stop)?;
+    let blurred = match crate::exact::blur_numerics::<EXACT>(&diff, MASK_RADIUS, pool, &stop) {
+        Ok(b) => b,
+        Err(e) => {
+            diff.recycle(pool);
+            return Err(e);
+        }
+    };
     diff.recycle(pool);
 
     let mut mask = ImageF::from_pool_dirty(width, height, pool);
@@ -581,9 +613,18 @@ pub(crate) fn apply_mask_correction_precomputed_stop_numerics<const EXACT: bool>
     // Only compute the distorted side
     let mut diff1 = ImageF::from_pool_dirty(width, height, pool);
     combine_and_precompute(hf1, uhf1, &mut diff1);
-    stop.check()?;
+    if let Err(e) = stop.check() {
+        diff1.recycle(pool);
+        return Err(e);
+    }
 
-    let blurred1 = crate::exact::blur_numerics::<EXACT>(&diff1, MASK_RADIUS, pool, &stop)?;
+    let blurred1 = match crate::exact::blur_numerics::<EXACT>(&diff1, MASK_RADIUS, pool, &stop) {
+        Ok(b) => b,
+        Err(e) => {
+            diff1.recycle(pool);
+            return Err(e);
+        }
+    };
     diff1.recycle(pool);
 
     // Accumulate mask-to-error using precomputed reference blur

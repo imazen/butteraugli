@@ -359,20 +359,26 @@ pub(crate) fn compute_psycho_diff_malta(
         },
     );
 
-    let uhf_y_diff = ruhf_y?;
-    let uhf_x_diff = ruhf_x?;
+    let ruhf_y = ruhf_y.map(|b| crate::image::PooledImageF::wrap(b, pool));
+    let ruhf_x = ruhf_x.map(|b| crate::image::PooledImageF::wrap(b, pool));
+    let rhf_y = rhf_y.map(|b| crate::image::PooledImageF::wrap(b, pool));
+    let rhf_x = rhf_x.map(|b| crate::image::PooledImageF::wrap(b, pool));
+    let rmf_y = rmf_y.map(|b| crate::image::PooledImageF::wrap(b, pool));
+    let rmf_x = rmf_x.map(|b| crate::image::PooledImageF::wrap(b, pool));
+
+    // Use UHF Malta results directly as accumulators (no zero-init + add_to needed).
+    // Every guard recycles its buffer automatically on early cancellation or normal drop.
+    let mut plane_y = ruhf_y?;
+    let mut plane_x = ruhf_x?;
     let hf_y_diff = rhf_y?;
     let hf_x_diff = rhf_x?;
     let mf_y_diff = rmf_y?;
     let mf_x_diff = rmf_x?;
 
-    // Use UHF Malta results directly as accumulators (no zero-init + add_to needed)
-    let mut plane_x = uhf_x_diff;
-    let mut plane_y = uhf_y_diff;
-
     // Fuse HF + MF Malta into single accumulation pass per channel
     accumulate_two(&hf_y_diff, &mf_y_diff, &mut plane_y);
     accumulate_two(&hf_x_diff, &mf_x_diff, &mut plane_x);
+    drop((hf_y_diff, hf_x_diff, mf_y_diff, mf_x_diff));
     stop.check()?;
 
     // Add L2DiffAsymmetric for HF channels (X and Y, no blue)
@@ -407,7 +413,7 @@ pub(crate) fn compute_psycho_diff_malta(
     );
 
     // B channel: only L2Diff — use write-only variant (no zero-init needed)
-    let mut plane_b = ImageF::new_uninit(width, height);
+    let mut plane_b = ImageF::from_pool_dirty(width, height, pool);
     l2_diff_write(
         ps0.mf.plane(2),
         ps1.mf.plane(2),
@@ -415,7 +421,11 @@ pub(crate) fn compute_psycho_diff_malta(
         &mut plane_b,
     );
 
-    Ok(Image3F::from_planes(plane_x, plane_y, plane_b))
+    Ok(Image3F::from_planes(
+        plane_x.into_inner(),
+        plane_y.into_inner(),
+        plane_b,
+    ))
 }
 
 /// Computes the mask from two PsychoImages.
@@ -511,6 +521,156 @@ pub(crate) fn combine_channels_to_diffmap_fused(
     Ok(diffmap)
 }
 
+/// Fused score-only channel combination + optional half-resolution supersample blend
+/// + max-norm & libjxl 3-norm reduction, operating row-by-row with a single `width`-float
+/// scratch buffer and **zero** full-resolution diffmap allocation.
+///
+/// Produces bit-identical `(score, pnorm_3)` to `combine_channels_to_diffmap_fused`
+/// (+ `add_supersampled_2x(..., 0.5, ...)` when `sub_diffmap` is `Some`) followed by
+/// `compute_score_from_diffmap`.
+#[allow(clippy::too_many_arguments)]
+#[archmage::autoversion]
+pub(crate) fn combine_channels_and_reduce_score_only(
+    _token: archmage::SimdToken,
+    mask: &ImageF,
+    lf1: &Image3F,
+    lf2: &Image3F,
+    block_diff_ac: &Image3F,
+    sub_diffmap: Option<&ImageF>,
+    xmul: f32,
+    stop: Option<&dyn Stop>,
+) -> Result<(f64, f64), enough::StopReason> {
+    let width = mask.width();
+    let height = mask.height();
+    if width * height == 0 {
+        return Ok((0.0, 0.0));
+    }
+
+    let dc_w0 = WMUL[6] as f32;
+    let dc_w1 = WMUL[7] as f32;
+    let dc_w2 = WMUL[8] as f32;
+
+    let global_scale = crate::consts::GLOBAL_SCALE;
+    let my_mul = crate::consts::MASK_Y_MUL as f32;
+    let my_scaler = crate::consts::MASK_Y_SCALER as f32;
+    let my_offset = crate::consts::MASK_Y_OFFSET as f32;
+    let mdc_mul = crate::consts::MASK_DC_Y_MUL as f32;
+    let mdc_scaler = crate::consts::MASK_DC_Y_SCALER as f32;
+    let mdc_offset = crate::consts::MASK_DC_Y_OFFSET as f32;
+
+    const SUB_WEIGHT: f32 = 0.5;
+    const SUB_BLEND: f32 = 1.0 - 0.3 * SUB_WEIGHT;
+
+    let mut row_buf = vec![0.0f32; width];
+    let mut max_lanes = [0.0f32; 8];
+    let mut sum_p3 = [0.0f64; 8];
+    let mut sum_p6 = [0.0f64; 8];
+    let mut sum_p12 = [0.0f64; 8];
+
+    for y in 0..height {
+        if y.is_multiple_of(64) {
+            stop.check()?;
+        }
+        let mask_row = mask.row(y);
+        let lf1_0 = lf1.plane(0).row(y);
+        let lf1_1 = lf1.plane(1).row(y);
+        let lf1_2 = lf1.plane(2).row(y);
+        let lf2_0 = lf2.plane(0).row(y);
+        let lf2_1 = lf2.plane(1).row(y);
+        let lf2_2 = lf2.plane(2).row(y);
+        let ac0 = block_diff_ac.plane(0).row(y);
+        let ac1 = block_diff_ac.plane(1).row(y);
+        let ac2 = block_diff_ac.plane(2).row(y);
+
+        for x in 0..width {
+            let val = mask_row[x];
+
+            let c_y = my_mul / my_scaler.mul_add(val, my_offset);
+            let r_y = global_scale.mul_add(c_y, global_scale);
+            let maskval = r_y * r_y;
+
+            let c_dc = mdc_mul / mdc_scaler.mul_add(val, mdc_offset);
+            let r_dc = global_scale.mul_add(c_dc, global_scale);
+            let dc_maskval = r_dc * r_dc;
+
+            let d0 = lf1_0[x] - lf2_0[x];
+            let d1 = lf1_1[x] - lf2_1[x];
+            let d2 = lf1_2[x] - lf2_2[x];
+            let dc_masked = (d0 * d0 * dc_w0 * xmul).mul_add(
+                dc_maskval,
+                (d1 * d1 * dc_w1).mul_add(dc_maskval, d2 * d2 * dc_w2 * dc_maskval),
+            );
+
+            let ac_masked =
+                (ac0[x] * xmul).mul_add(maskval, ac1[x].mul_add(maskval, ac2[x] * maskval));
+
+            row_buf[x] = (dc_masked + ac_masked).sqrt();
+        }
+
+        if let Some(sub) = sub_diffmap {
+            let src_y = (y / 2).min(sub.height() - 1);
+            let src_row = sub.row(src_y);
+            let src_w = sub.width();
+            let n_pairs = (width / 2).min(src_w);
+            for (pair, &sv) in row_buf[..n_pairs * 2]
+                .chunks_exact_mut(2)
+                .zip(src_row[..n_pairs].iter())
+            {
+                let ws = SUB_WEIGHT * sv;
+                pair[0] = pair[0].mul_add(SUB_BLEND, ws);
+                pair[1] = pair[1].mul_add(SUB_BLEND, ws);
+            }
+            if width > n_pairs * 2 {
+                let sv = src_row[(width / 2).min(src_w - 1)];
+                row_buf[width - 1] = row_buf[width - 1].mul_add(SUB_BLEND, SUB_WEIGHT * sv);
+            }
+        }
+
+        for chunk in row_buf.chunks_exact(8) {
+            for i in 0..8 {
+                let v = chunk[i];
+                if v > max_lanes[i] {
+                    max_lanes[i] = v;
+                }
+                let d = f64::from(v);
+                let d3 = d * d * d;
+                sum_p3[i] += d3;
+                let d6 = d3 * d3;
+                sum_p6[i] += d6;
+                sum_p12[i] += d6 * d6;
+            }
+        }
+        for &v in row_buf.chunks_exact(8).remainder() {
+            if v > max_lanes[0] {
+                max_lanes[0] = v;
+            }
+            let d = f64::from(v);
+            let d3 = d * d * d;
+            sum_p3[0] += d3;
+            let d6 = d3 * d3;
+            sum_p6[0] += d6;
+            sum_p12[0] += d6 * d6;
+        }
+    }
+
+    let mut max_val = 0.0f32;
+    for &m in &max_lanes {
+        if m > max_val {
+            max_val = m;
+        }
+    }
+    let total_p3: f64 = sum_p3.iter().sum();
+    let total_p6: f64 = sum_p6.iter().sum();
+    let total_p12: f64 = sum_p12.iter().sum();
+    let one_per_pixels = 1.0_f64 / ((width * height) as f64);
+    let v0 = (one_per_pixels * total_p3).powf(1.0 / 3.0);
+    let v1 = (one_per_pixels * total_p6).powf(1.0 / 6.0);
+    let v2 = (one_per_pixels * total_p12).powf(1.0 / 12.0);
+    let pnorm_3 = (v0 + v1 + v2) / 3.0;
+
+    Ok((f64::from(max_val), pnorm_3))
+}
+
 /// Computes the global max-norm score AND the libjxl 3-norm aggregation
 /// from a difference map in a single pass.
 ///
@@ -596,16 +756,31 @@ pub(crate) fn subsample_linear_rgb_2x(
     width: usize,
     height: usize,
 ) -> (Vec<f32>, usize, usize) {
+    subsample_linear_rgb_2x_stop(rgb, width, height, &enough::Unstoppable)
+        .expect("Unstoppable never cancels")
+}
+
+/// Cancellable variant of [`subsample_linear_rgb_2x`], polling `stop` every 64 output rows.
+pub(crate) fn subsample_linear_rgb_2x_stop(
+    rgb: &[f32],
+    width: usize,
+    height: usize,
+    stop: &dyn Stop,
+) -> Result<(Vec<f32>, usize, usize), enough::StopReason> {
+    stop.check()?;
     let out_width = width.div_ceil(2);
     let out_height = height.div_ceil(2);
     let mut output = vec![0.0f32; out_width * out_height * 3];
 
-    // Interior: full 2x2 blocks (no boundary checks needed)
+    // Fast interior: all 2x2 blocks fully within bounds
     let interior_w = width / 2;
     let interior_h = height / 2;
     let inv4 = 0.25f32;
 
     for oy in 0..interior_h {
+        if oy.is_multiple_of(64) {
+            stop.check()?;
+        }
         let iy = oy * 2;
         let row0 = iy * width * 3;
         let row1 = (iy + 1) * width * 3;
@@ -629,6 +804,9 @@ pub(crate) fn subsample_linear_rgb_2x(
         let ox = interior_w;
         let ix = ox * 2;
         for oy in 0..interior_h {
+            if oy.is_multiple_of(64) {
+                stop.check()?;
+            }
             let iy = oy * 2;
             let i00 = (iy * width + ix) * 3;
             let i01 = ((iy + 1) * width + ix) * 3;
@@ -642,6 +820,7 @@ pub(crate) fn subsample_linear_rgb_2x(
 
     // Bottom edge row (if height is odd)
     if out_height > interior_h {
+        stop.check()?;
         let oy = interior_h;
         let iy = oy * 2;
         let row0 = iy * width * 3;
@@ -667,26 +846,23 @@ pub(crate) fn subsample_linear_rgb_2x(
         }
     }
 
-    (output, out_width, out_height)
+    stop.check()?;
+    Ok((output, out_width, out_height))
 }
 
-/// Computes the diffmap for a single resolution level (linear RGB input).
-pub(crate) fn compute_diffmap_single_resolution_linear(
+/// Computes the full-res intermediate planes `(mask, ps1, ps2, block_diff_ac)` for
+/// one resolution level so callers can either materialize a full diffmap or reduce
+/// directly to `(score, pnorm_3)` row-by-row without allocating a full-res diffmap.
+fn compute_single_resolution_intermediates(
     rgb1: &[f32],
     rgb2: &[f32],
     width: usize,
     height: usize,
     params: &ButteraugliParams,
-    stop: &dyn Stop,
-) -> Result<ImageF, enough::StopReason> {
-    if params.numerics() == crate::Numerics::LibjxlExact {
-        return crate::exact::single(rgb1, rgb2, width, height, params, stop);
-    }
-
-    let stop = stop.may_stop().then_some(stop);
+    stop: Option<&dyn Stop>,
+) -> Result<(ImageF, PsychoImage, PsychoImage, Image3F), enough::StopReason> {
     let intensity_target = params.intensity_target();
 
-    // Parallel: XYB conversion + frequency decomposition for both images
     let (rps1, rps2) = maybe_join(
         || {
             let pool = BufferPool::new();
@@ -704,7 +880,6 @@ pub(crate) fn compute_diffmap_single_resolution_linear(
     let ps1 = rps1?;
     let ps2 = rps2?;
 
-    // Compute AC differences using Malta filter (internally parallelized)
     let pool = BufferPool::new();
     let mut block_diff_ac = compute_psycho_diff_malta(
         &ps1,
@@ -715,9 +890,68 @@ pub(crate) fn compute_diffmap_single_resolution_linear(
         &stop,
     )?;
     let mask = mask_psycho_image(&ps1, &ps2, Some(block_diff_ac.plane_mut(1)), &pool, &stop)?;
+    Ok((mask, ps1, ps2, block_diff_ac))
+}
 
-    // Combine channels to final diffmap (DC diff computed inline from LF planes)
+/// Computes the diffmap for a single resolution level (linear RGB input).
+pub(crate) fn compute_diffmap_single_resolution_linear(
+    rgb1: &[f32],
+    rgb2: &[f32],
+    width: usize,
+    height: usize,
+    params: &ButteraugliParams,
+    stop: &dyn Stop,
+) -> Result<ImageF, enough::StopReason> {
+    if params.numerics() == crate::Numerics::LibjxlExact {
+        return crate::exact::single(rgb1, rgb2, width, height, params, stop);
+    }
+
+    let stop = stop.may_stop().then_some(stop);
+    let (mask, ps1, ps2, block_diff_ac) =
+        compute_single_resolution_intermediates(rgb1, rgb2, width, height, params, stop)?;
     combine_channels_to_diffmap_fused(&mask, &ps1.lf, &ps2.lf, &block_diff_ac, params.xmul(), stop)
+}
+
+/// Score-only multiresolution butteraugli reduction with zero full-resolution diffmap allocation.
+fn compute_score_only_multiresolution_linear(
+    rgb1: &[f32],
+    rgb2: &[f32],
+    width: usize,
+    height: usize,
+    params: &ButteraugliParams,
+    stop: &dyn Stop,
+) -> Result<(f64, f64), enough::StopReason> {
+    let stop = stop.may_stop().then_some(stop);
+    let need_sub = !params.single_resolution()
+        && width >= MIN_SIZE_FOR_SUBSAMPLE
+        && height >= MIN_SIZE_FOR_SUBSAMPLE;
+
+    let (rsub, rfull) = maybe_join(
+        || -> Result<Option<ImageF>, enough::StopReason> {
+            if !need_sub {
+                return Ok(None);
+            }
+            let (sub_rgb1, sw, sh) = subsample_linear_rgb_2x(rgb1, width, height);
+            stop.check()?;
+            let (sub_rgb2, _, _) = subsample_linear_rgb_2x(rgb2, width, height);
+            let sub = compute_diffmap_single_resolution_linear(
+                &sub_rgb1, &sub_rgb2, sw, sh, params, &stop,
+            )?;
+            Ok(Some(sub))
+        },
+        || compute_single_resolution_intermediates(rgb1, rgb2, width, height, params, stop),
+    );
+    let sub_diffmap = rsub?;
+    let (mask, ps1, ps2, block_diff_ac) = rfull?;
+    combine_channels_and_reduce_score_only(
+        &mask,
+        &ps1.lf,
+        &ps2.lf,
+        &block_diff_ac,
+        sub_diffmap.as_ref(),
+        params.xmul(),
+        stop,
+    )
 }
 
 /// Computes butteraugli diffmap with single-level multiresolution (linear RGB input).
@@ -824,6 +1058,7 @@ pub fn compute_butteraugli_impl(
 /// # Errors
 ///
 /// Returns [`ButteraugliError::Cancelled`] if `stop` signals cancellation.
+#[cfg(test)]
 pub fn compute_butteraugli_linear_impl(
     rgb1: &[f32],
     rgb2: &[f32],
@@ -832,8 +1067,20 @@ pub fn compute_butteraugli_linear_impl(
     params: &ButteraugliParams,
     stop: &dyn Stop,
 ) -> Result<InternalResult, ButteraugliError> {
+    compute_butteraugli_linear_impl_mode(rgb1, rgb2, width, height, params, true, stop)
+}
+
+pub(crate) fn compute_butteraugli_linear_impl_mode(
+    rgb1: &[f32],
+    rgb2: &[f32],
+    width: usize,
+    height: usize,
+    params: &ButteraugliParams,
+    want_diffmap: bool,
+    stop: &dyn Stop,
+) -> Result<InternalResult, ButteraugliError> {
     if params.numerics() == crate::Numerics::LibjxlExact {
-        return crate::exact::linear(rgb1, rgb2, width, height, params, stop);
+        return crate::exact::linear_mode(rgb1, rgb2, width, height, params, want_diffmap, stop);
     }
 
     assert_eq!(rgb1.len(), width * height * 3);
@@ -848,7 +1095,36 @@ pub fn compute_butteraugli_linear_impl(
         return Ok(InternalResult {
             score: 0.0,
             pnorm_3: 0.0,
-            diffmap: Some(ImageF::new(width, height)),
+            diffmap: want_diffmap.then(|| ImageF::new(width, height)),
+        });
+    }
+
+    if !want_diffmap {
+        let (score, pnorm_3) =
+            if width < MIN_SIZE_FOR_MULTIRESOLUTION || height < MIN_SIZE_FOR_MULTIRESOLUTION {
+                let stop_opt = stop.may_stop().then_some(stop);
+                let (mask, ps1, ps2, block_diff_ac) = compute_single_resolution_intermediates(
+                    rgb1, rgb2, width, height, params, stop_opt,
+                )
+                .map_err(ButteraugliError::Cancelled)?;
+                combine_channels_and_reduce_score_only(
+                    &mask,
+                    &ps1.lf,
+                    &ps2.lf,
+                    &block_diff_ac,
+                    None,
+                    params.xmul(),
+                    stop_opt,
+                )
+                .map_err(ButteraugliError::Cancelled)?
+            } else {
+                compute_score_only_multiresolution_linear(rgb1, rgb2, width, height, params, stop)
+                    .map_err(ButteraugliError::Cancelled)?
+            };
+        return Ok(InternalResult {
+            score,
+            pnorm_3,
+            diffmap: None,
         });
     }
 
@@ -888,14 +1164,15 @@ pub(crate) fn compute_butteraugli_imgref(
     let linear1 = convert(img1);
     let linear2 = convert(img2);
 
-    let mut result =
-        compute_butteraugli_linear_impl(&linear1, &linear2, width, height, params, stop)?;
-
-    if !compute_diffmap {
-        result.diffmap = None;
-    }
-
-    Ok(result)
+    compute_butteraugli_linear_impl_mode(
+        &linear1,
+        &linear2,
+        width,
+        height,
+        params,
+        compute_diffmap,
+        stop,
+    )
 }
 
 /// Converts ImgRef<RGB8> directly to interleaved linear f32, skipping
@@ -930,15 +1207,7 @@ pub(crate) fn compute_butteraugli_linear_imgref(
     let rgb1 = imgref_rgbf32_to_f32_vec(img1);
     let rgb2 = imgref_rgbf32_to_f32_vec(img2);
 
-    // Use the existing proven implementation with multiresolution support
-    let mut result = compute_butteraugli_linear_impl(&rgb1, &rgb2, width, height, params, stop)?;
-
-    // Drop diffmap if not requested
-    if !compute_diffmap {
-        result.diffmap = None;
-    }
-
-    Ok(result)
+    compute_butteraugli_linear_impl_mode(&rgb1, &rgb2, width, height, params, compute_diffmap, stop)
 }
 
 /// Converts ImgRef<RGB<f32>> to a contiguous Vec<f32> in RGB order.

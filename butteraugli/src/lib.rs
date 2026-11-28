@@ -186,6 +186,11 @@ pub use precompute::ButteraugliReference;
 #[cfg(feature = "linear-planes")]
 pub mod linear_planes;
 
+#[cfg(feature = "zenpsy-api")]
+mod zenpsy_compat;
+#[cfg(feature = "zenpsy-api")]
+pub use zenpsy_compat::{ButteraugliEvaluation, ButteraugliMetric, PreparedButteraugli};
+
 mod strip;
 pub use strip::{
     ButteraugliStripConfig, HALO_ROWS_DEFAULT, MIN_STRIP_HEIGHT, butteraugli_linear_strip,

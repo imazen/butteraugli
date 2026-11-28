@@ -213,3 +213,171 @@ fn blur_chunks_and_remainders_match_scalar_order() {
         }
     }
 }
+
+#[test]
+fn cancellation_recycles_pooled_scratch_in_prepare_and_compare_psycho() {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
+    struct TripStop {
+        checks: AtomicUsize,
+        trip_at: usize,
+    }
+    impl Stop for TripStop {
+        fn check(&self) -> Result<(), enough::StopReason> {
+            let n = self.checks.fetch_add(1, Ordering::Relaxed);
+            if n == self.trip_at {
+                Err(enough::StopReason::TimedOut)
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    let (w, h) = (32, 192);
+    let a: Vec<f32> = (0..w * h * 3)
+        .map(|i| ((i * 53 + 7) % 256) as f32 / 255.0)
+        .collect();
+    let b: Vec<f32> = a
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| (v + ((i % 11) as f32 * 0.015)).min(1.0))
+        .collect();
+    let params = ButteraugliParams::new().with_numerics(crate::Numerics::LibjxlExact);
+    let pool = BufferPool::with_capacity(64);
+
+    // Precompute reference and half-scale reference outside the scratch pool.
+    let ref_pool = BufferPool::with_capacity(64);
+    let ref_ps = prepare(
+        Input::Interleaved(&a),
+        w,
+        h,
+        &params,
+        &ref_pool,
+        &enough::Unstoppable,
+    )
+    .unwrap();
+    let ref_mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
+        &ref_ps.hf,
+        &ref_ps.uhf,
+        &ref_pool,
+        &enough::Unstoppable,
+    )
+    .unwrap();
+    let sub_a = Input::Interleaved(&a)
+        .subsample_stop(w, h, &enough::Unstoppable)
+        .unwrap();
+    let half_ps = prepare(
+        Input::Interleaved(&sub_a),
+        w.div_ceil(2),
+        h.div_ceil(2),
+        &params,
+        &ref_pool,
+        &enough::Unstoppable,
+    )
+    .unwrap();
+    let half_mask = crate::mask::precompute_reference_mask_stop_numerics::<true>(
+        &half_ps.hf,
+        &half_ps.uhf,
+        &ref_pool,
+        &enough::Unstoppable,
+    )
+    .unwrap();
+
+    // 1. Sweep every check inside exact::prepare (blur + opsin_loop + separate_frequencies_owned).
+    let prep_counter = TripStop {
+        checks: AtomicUsize::new(0),
+        trip_at: usize::MAX,
+    };
+    let warmed_ps = prepare(Input::Interleaved(&b), w, h, &params, &pool, &prep_counter).unwrap();
+    warmed_ps.recycle(&pool);
+    let prep_checks = prep_counter.checks.load(Ordering::Relaxed);
+    assert!(
+        prep_checks >= 10,
+        "expected multi-phase prepare checks, saw {prep_checks}"
+    );
+    let steady_after_prep = pool.cached_count();
+    for trip in 0..prep_checks {
+        let stopper = TripStop {
+            checks: AtomicUsize::new(0),
+            trip_at: trip,
+        };
+        let err = prepare(Input::Interleaved(&b), w, h, &params, &pool, &stopper)
+            .expect_err("expected prepare cancellation");
+        assert_eq!(err, enough::StopReason::TimedOut, "prepare trip={trip}");
+        assert!(
+            pool.cached_count() >= steady_after_prep,
+            "prepare leaked scratch at trip={trip}/{prep_checks}: {} < {}",
+            pool.cached_count(),
+            steady_after_prep
+        );
+    }
+
+    // 2. Sweep every check inside compare_reference_mode (score-only, including half-scale
+    // prepare + compare_psycho + full-scale compare_psycho_score_only).
+    let cmp_counter = TripStop {
+        checks: AtomicUsize::new(0),
+        trip_at: usize::MAX,
+    };
+    let baseline = compare_reference_mode(
+        &ref_ps,
+        &ref_mask,
+        Some((&half_ps, &half_mask)),
+        Input::Interleaved(&b),
+        &params,
+        &pool,
+        false,
+        &cmp_counter,
+    )
+    .unwrap();
+    let cmp_checks = cmp_counter.checks.load(Ordering::Relaxed);
+    assert!(
+        cmp_checks >= 15,
+        "expected multi-phase compare checks, saw {cmp_checks}"
+    );
+    let steady_after_cmp = pool.cached_count();
+    for trip in 0..cmp_checks {
+        let stopper = TripStop {
+            checks: AtomicUsize::new(0),
+            trip_at: trip,
+        };
+        let err = compare_reference_mode(
+            &ref_ps,
+            &ref_mask,
+            Some((&half_ps, &half_mask)),
+            Input::Interleaved(&b),
+            &params,
+            &pool,
+            false,
+            &stopper,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ButteraugliError::Cancelled(enough::StopReason::TimedOut)
+            ),
+            "compare trip={trip}: {err:?}"
+        );
+        assert!(
+            pool.cached_count() >= steady_after_cmp,
+            "compare_reference_mode leaked scratch at trip={trip}/{cmp_checks}: {} < {}",
+            pool.cached_count(),
+            steady_after_cmp
+        );
+    }
+
+    // 3. Subsequent clean run matches baseline bit-for-bit using recycled pool scratch.
+    let after = compare_reference_mode(
+        &ref_ps,
+        &ref_mask,
+        Some((&half_ps, &half_mask)),
+        Input::Interleaved(&b),
+        &params,
+        &pool,
+        false,
+        &enough::Unstoppable,
+    )
+    .unwrap();
+    assert_eq!(after.score.to_bits(), baseline.score.to_bits());
+    assert_eq!(after.pnorm_3.to_bits(), baseline.pnorm_3.to_bits());
+}
