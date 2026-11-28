@@ -337,7 +337,7 @@ impl Metric for ButteraugliMetric {
 
         if !internal.score.is_finite() || !internal.pnorm_3.is_finite() {
             return fail(
-                MetricError::new(ErrorKind::InvalidInput)
+                MetricError::new(ErrorKind::Internal)
                     .with_metric("butteraugli")
                     .with_message("score computation produced non-finite value"),
             );
@@ -454,9 +454,8 @@ fn map_butteraugli_error(
                 | ButteraugliError::InvalidDimensions { .. } => ErrorKind::TooSmall,
                 ButteraugliError::DimensionOverflow { .. } => ErrorKind::Resource,
                 ButteraugliError::InvalidParameter { .. } => ErrorKind::InvalidConfig,
-                ButteraugliError::InvalidBufferSize { .. } | ButteraugliError::NonFiniteResult => {
-                    ErrorKind::InvalidInput
-                }
+                ButteraugliError::InvalidBufferSize { .. } => ErrorKind::InvalidInput,
+                ButteraugliError::NonFiniteResult => ErrorKind::Internal,
                 ButteraugliError::Cancelled(_) => unreachable!(),
             };
             whereat::at(MetricError::from_detail(kind, other).with_metric("butteraugli"))
@@ -867,4 +866,24 @@ fn view_to_padded_linear_rgb(
 
     check_stop(latch)?;
     Ok((out, orig_w, orig_h, pw, ph))
+}
+
+#[cfg(test)]
+mod non_finite_error_tests {
+    use super::*;
+
+    #[test]
+    fn non_finite_result_maps_to_internal_distinct_from_invalid_input() {
+        let latch = LatchingStop::new(&enough::Unstoppable);
+        let nf = map_butteraugli_error(ButteraugliError::NonFiniteResult, &latch);
+        assert_eq!(nf.error().kind(), ErrorKind::Internal);
+        let bad_buf = map_butteraugli_error(
+            ButteraugliError::InvalidBufferSize {
+                expected: 16,
+                actual: 8,
+            },
+            &latch,
+        );
+        assert_eq!(bad_buf.error().kind(), ErrorKind::InvalidInput);
+    }
 }
